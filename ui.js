@@ -1,34 +1,10 @@
 document.addEventListener("DOMContentLoaded", () => {
   if (typeof window.UIManager !== "function") return;
 
-  const AppStates = {
-    READY: "READY",
-    RUNNING: "RUNNING",
-    PAUSED: "PAUSED",
-  };
-
-  const AppCommandTypes = {
-    SET_STATE: "SET_STATE",
-    START: "START",
-    RESET: "RESET",
-    TOGGLE_PAUSE: "TOGGLE_PAUSE",
-    SYNC: "SYNC",
-  };
-
-  const AppEvents = {
-    COMMAND: "koz:command",
-    UI_SYNC: "koz:ui-sync",
-  };
-
-  let currentState = AppStates.READY;
-  let currentTime = 0;
-
-  function sendCommand(type, extra = {}) {
-    window.dispatchEvent(
-      new CustomEvent(AppEvents.COMMAND, {
-        detail: { type, ...extra },
-      })
-    );
+  function withState(handler) {
+    const manager = window.KozStateManager;
+    if (!manager) return;
+    handler(manager);
   }
 
   function bindScreenVisibility(node) {
@@ -60,7 +36,6 @@ document.addEventListener("DOMContentLoaded", () => {
     <section class="app-panel app-panel-hud" data-ui="hud">
       <div class="ui-card">
         <div class="status" id="hudStatus">State: READY</div>
-        <div class="status" id="hudTime">Time: 0.0s</div>
         <div class="row">
           <button id="pauseBtn">Pause / Resume</button>
           <button id="hudResetBtn">Reset</button>
@@ -75,14 +50,24 @@ document.addEventListener("DOMContentLoaded", () => {
   const hudPanel = bindScreenVisibility(shell.querySelector('[data-ui="hud"]'));
 
   const hudStatus = shell.querySelector("#hudStatus");
-  const hudTime = shell.querySelector("#hudTime");
 
-  shell.querySelector("#startBtn").addEventListener("click", () => sendCommand(AppCommandTypes.START));
-  shell.querySelector("#resetBtn").addEventListener("click", () => sendCommand(AppCommandTypes.RESET));
-  shell.querySelector("#pauseBtn").addEventListener("click", () => sendCommand(AppCommandTypes.TOGGLE_PAUSE));
-  shell.querySelector("#hudResetBtn").addEventListener("click", () => sendCommand(AppCommandTypes.RESET));
+  shell.querySelector("#startBtn").addEventListener("click", () => {
+    withState((manager) => manager.setState("RUNNING"));
+  });
+  shell.querySelector("#resetBtn").addEventListener("click", () => {
+    withState((manager) => manager.setState("READY"));
+  });
+  shell.querySelector("#pauseBtn").addEventListener("click", () => {
+    withState((manager) => {
+      if (manager.is("RUNNING")) manager.setState("PAUSED");
+      else if (manager.is("PAUSED")) manager.setState("RUNNING");
+    });
+  });
+  shell.querySelector("#hudResetBtn").addEventListener("click", () => {
+    withState((manager) => manager.setState("READY"));
+  });
   shell.querySelector("#readyBtn").addEventListener("click", () => {
-    sendCommand(AppCommandTypes.SET_STATE, { state: AppStates.READY });
+    withState((manager) => manager.setState("READY"));
   });
 
   function alignToCanvas() {
@@ -96,29 +81,27 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function refreshUiText() {
-    hudStatus.textContent = `State: ${currentState}`;
-    hudTime.textContent = `Time: ${currentTime.toFixed(1)}s`;
+    const manager = window.KozStateManager;
+    const state = manager ? manager.getState() || "READY" : "READY";
+    hudStatus.textContent = `State: ${state}`;
   }
 
   const uiManager = new window.UIManager();
   uiManager.registerScreen("menuPanel", {
     create: () => menuPanel,
-    validStates: [AppStates.READY],
+    validStates: ["READY"],
   });
   uiManager.registerScreen("hudPanel", {
     create: () => hudPanel,
-    validStates: [AppStates.RUNNING, AppStates.PAUSED],
+    validStates: ["RUNNING", "PAUSED"],
   });
 
-  window.addEventListener(AppEvents.UI_SYNC, (event) => {
+  window.addEventListener("koz:state-change", (event) => {
     const detail = event && event.detail ? event.detail : null;
     if (!detail) return;
 
-    if (detail.state) currentState = detail.state;
-    if (detail.appTime !== undefined) currentTime = Number(detail.appTime) || 0;
-
     refreshUiText();
-    uiManager.onGameStateChange(currentState);
+    uiManager.onGameStateChange(detail.state || "READY");
   });
 
   const timerId = setInterval(alignToCanvas, 120);
@@ -127,6 +110,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   alignToCanvas();
   refreshUiText();
-  uiManager.onGameStateChange(currentState);
-  sendCommand(AppCommandTypes.SYNC);
+  const manager = window.KozStateManager;
+  uiManager.onGameStateChange(manager ? manager.getState() || "READY" : "READY");
 });
