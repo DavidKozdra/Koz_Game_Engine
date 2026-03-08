@@ -2,24 +2,26 @@ document.addEventListener("DOMContentLoaded", () => {
   if (typeof window.UIManager !== "function") return;
 
   const AppStates = {
-    MAIN_MENU: "MAIN_MENU",
-    GAMEPLAY: "GAMEPLAY",
+    READY: "READY",
+    RUNNING: "RUNNING",
     PAUSED: "PAUSED",
   };
+
   const AppCommandTypes = {
     SET_STATE: "SET_STATE",
-    START_MATCH: "START_MATCH",
-    RESET_MATCH: "RESET_MATCH",
+    START: "START",
+    RESET: "RESET",
     TOGGLE_PAUSE: "TOGGLE_PAUSE",
     SYNC: "SYNC",
   };
+
   const AppEvents = {
     COMMAND: "koz:command",
     UI_SYNC: "koz:ui-sync",
   };
-  let currentState = AppStates.MAIN_MENU;
-  let currentWinnerLabel = "";
-  let currentScores = { left: 0, right: 0 };
+
+  let currentState = AppStates.READY;
+  let currentTime = 0;
 
   function sendCommand(type, extra = {}) {
     window.dispatchEvent(
@@ -41,46 +43,29 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   const shell = document.createElement("div");
-  shell.className = "pong-ui";
+  shell.className = "app-ui";
   shell.innerHTML = `
-    <section class="pong-panel pong-panel-menu" data-ui="menu">
-      <div class="ui-card ui-card-menu">
-        <h1>PONG</h1>
-        <p>First to 7 points wins</p>
-        <div class="row menu-row">
-          <button id="startMatchBtn">Start Match</button>
-          <button id="menuResetBtn">Reset Match</button>
-        </div>
-        <p class="hint">W/S or Arrows move. P pauses. Esc menu. Space starts.</p>
-        <div class="state-line" id="menuStatusLine"></div>
-      </div>
-    </section>
-
-    <section class="pong-panel pong-panel-hud" data-ui="hud">
-      <div class="ui-card ui-card-hud">
-        <div class="ui-scoreboard">
-          <div class="score-side">
-            <span class="score-label">Player</span>
-            <span class="score-value" id="scoreLeft">0</span>
-          </div>
-          <div class="score-divider">:</div>
-          <div class="score-side">
-            <span class="score-label">CPU</span>
-            <span class="score-value" id="scoreRight">0</span>
-          </div>
-        </div>
+    <section class="app-panel app-panel-menu" data-ui="menu">
+      <div class="ui-card">
+        <h1>Koz Boilerplate</h1>
+        <p>Minimal starter template. Wire your game logic in <code>game.js</code>.</p>
         <div class="row">
-          <button id="pauseResumeBtn">Pause/Resume</button>
-          <button id="hudResetBtn">Reset</button>
-          <button id="hudMenuBtn">Menu</button>
+          <button id="startBtn">Start</button>
+          <button id="resetBtn">Reset</button>
         </div>
+        <p class="hint">Space = start, P = pause/resume, R = reset, Esc = ready</p>
       </div>
     </section>
 
-    <section class="pong-panel pong-panel-pause" data-ui="pause">
-      <div class="ui-card ui-card-pause">
-        <h2>Paused</h2>
-        <p>Press P to resume</p>
+    <section class="app-panel app-panel-hud" data-ui="hud">
+      <div class="ui-card">
+        <div class="status" id="hudStatus">State: READY</div>
+        <div class="status" id="hudTime">Time: 0.0s</div>
+        <div class="row">
+          <button id="pauseBtn">Pause / Resume</button>
+          <button id="hudResetBtn">Reset</button>
+          <button id="readyBtn">Ready</button>
+        </div>
       </div>
     </section>
   `;
@@ -88,18 +73,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const menuPanel = bindScreenVisibility(shell.querySelector('[data-ui="menu"]'));
   const hudPanel = bindScreenVisibility(shell.querySelector('[data-ui="hud"]'));
-  const pausePanel = bindScreenVisibility(shell.querySelector('[data-ui="pause"]'));
 
-  const menuStatusLine = shell.querySelector("#menuStatusLine");
-  const scoreLeft = shell.querySelector("#scoreLeft");
-  const scoreRight = shell.querySelector("#scoreRight");
+  const hudStatus = shell.querySelector("#hudStatus");
+  const hudTime = shell.querySelector("#hudTime");
 
-  shell.querySelector("#startMatchBtn").addEventListener("click", () => sendCommand(AppCommandTypes.START_MATCH));
-  shell.querySelector("#menuResetBtn").addEventListener("click", () => sendCommand(AppCommandTypes.RESET_MATCH));
-  shell.querySelector("#pauseResumeBtn").addEventListener("click", () => sendCommand(AppCommandTypes.TOGGLE_PAUSE));
-  shell.querySelector("#hudResetBtn").addEventListener("click", () => sendCommand(AppCommandTypes.RESET_MATCH));
-  shell.querySelector("#hudMenuBtn").addEventListener("click", () => {
-    sendCommand(AppCommandTypes.SET_STATE, { state: AppStates.MAIN_MENU });
+  shell.querySelector("#startBtn").addEventListener("click", () => sendCommand(AppCommandTypes.START));
+  shell.querySelector("#resetBtn").addEventListener("click", () => sendCommand(AppCommandTypes.RESET));
+  shell.querySelector("#pauseBtn").addEventListener("click", () => sendCommand(AppCommandTypes.TOGGLE_PAUSE));
+  shell.querySelector("#hudResetBtn").addEventListener("click", () => sendCommand(AppCommandTypes.RESET));
+  shell.querySelector("#readyBtn").addEventListener("click", () => {
+    sendCommand(AppCommandTypes.SET_STATE, { state: AppStates.READY });
   });
 
   function alignToCanvas() {
@@ -113,45 +96,32 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function refreshUiText() {
-    const winner = currentWinnerLabel;
-    menuStatusLine.textContent = winner ? `${winner}. Start a new match.` : "Ready.";
-    const s = currentScores;
-    scoreLeft.textContent = String(s.left);
-    scoreRight.textContent = String(s.right);
+    hudStatus.textContent = `State: ${currentState}`;
+    hudTime.textContent = `Time: ${currentTime.toFixed(1)}s`;
   }
 
   const uiManager = new window.UIManager();
-  uiManager.registerScreen("mainMenuPanel", {
+  uiManager.registerScreen("menuPanel", {
     create: () => menuPanel,
-    validStates: [AppStates.MAIN_MENU],
+    validStates: [AppStates.READY],
   });
   uiManager.registerScreen("hudPanel", {
     create: () => hudPanel,
-    validStates: [AppStates.GAMEPLAY, AppStates.PAUSED],
-  });
-  uiManager.registerScreen("pausePanel", {
-    create: () => pausePanel,
-    validStates: [AppStates.PAUSED],
+    validStates: [AppStates.RUNNING, AppStates.PAUSED],
   });
 
   window.addEventListener(AppEvents.UI_SYNC, (event) => {
     const detail = event && event.detail ? event.detail : null;
     if (!detail) return;
+
     if (detail.state) currentState = detail.state;
-    if (detail.winnerLabel !== undefined) currentWinnerLabel = detail.winnerLabel;
-    if (detail.scores) {
-      currentScores = {
-        left: Number(detail.scores.left) || 0,
-        right: Number(detail.scores.right) || 0,
-      };
-    }
+    if (detail.appTime !== undefined) currentTime = Number(detail.appTime) || 0;
+
     refreshUiText();
     uiManager.onGameStateChange(currentState);
   });
 
-  const timerId = setInterval(() => {
-    alignToCanvas();
-  }, 120);
+  const timerId = setInterval(alignToCanvas, 120);
   window.addEventListener("beforeunload", () => clearInterval(timerId));
   window.addEventListener("resize", alignToCanvas);
 

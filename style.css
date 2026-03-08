@@ -1,9 +1,11 @@
 :root {
-  --bg: #0b1a2b;
-  --panel: rgba(10, 20, 35, 0.92);
-  --line: rgba(125, 211, 252, 0.35);
-  --text: #e6f2ff;
-  --muted: #9fb6cf;
+  --bg: #0f172a;
+  --panel: rgba(15, 23, 42, 0.86);
+  --line: rgba(148, 163, 184, 0.3);
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --button: #1e293b;
+  --button-hover: #334155;
 }
 
 * {
@@ -15,7 +17,7 @@ body {
   min-height: 100vh;
   position: relative;
   overflow: hidden;
-  background: linear-gradient(135deg, #091521, #12253d 60%, #0f2138);
+  background: radial-gradient(circle at top, #1e293b, #0b1220 60%);
   color: var(--text);
   font-family: "Segoe UI", "Trebuchet MS", sans-serif;
 }
@@ -24,7 +26,7 @@ canvas {
   display: block;
 }
 
-.pong-ui {
+.app-ui {
   position: fixed;
   left: 0;
   top: 0;
@@ -34,29 +36,22 @@ canvas {
   pointer-events: none;
 }
 
-.pong-panel {
+.app-panel {
   position: absolute;
   pointer-events: auto;
 }
 
-.pong-panel-menu {
+.app-panel-menu {
   inset: 0;
   display: grid;
   place-items: center;
   padding: 16px;
 }
 
-.pong-panel-hud {
+.app-panel-hud {
   top: 12px;
   left: 12px;
   width: min(560px, calc(100% - 24px));
-}
-
-.pong-panel-pause {
-  inset: 0;
-  display: grid;
-  place-items: start center;
-  padding-top: 18px;
 }
 
 .ui-card {
@@ -64,71 +59,11 @@ canvas {
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 14px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
-}
-
-.ui-card-menu {
-  width: min(560px, calc(100vw - 32px));
-  text-align: center;
-}
-
-.ui-card-hud {
-  width: 100%;
-}
-
-.ui-card-pause {
-  width: min(320px, calc(100vw - 32px));
-  text-align: center;
-}
-
-.ui-card-pause h2 {
-  margin: 0 0 8px;
-}
-
-.ui-card-pause p {
-  margin: 0;
-}
-
-.menu-row {
-  justify-content: center;
-}
-
-.ui-scoreboard {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  margin-bottom: 10px;
-}
-
-.score-side {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.score-label {
-  color: var(--muted);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.score-value {
-  font-size: 42px;
-  font-weight: 700;
-  line-height: 1;
-  color: #e8f2ff;
-}
-
-.score-divider {
-  font-size: 32px;
-  color: #9fb6cf;
-  line-height: 1;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
 }
 
 .ui-card h1 {
-  margin: 0 0 4px;
+  margin: 0 0 8px;
   font-size: 20px;
 }
 
@@ -136,6 +71,11 @@ canvas {
   margin: 0 0 10px;
   color: var(--muted);
   font-size: 13px;
+}
+
+.status {
+  font-size: 14px;
+  margin-bottom: 8px;
 }
 
 .row {
@@ -147,7 +87,7 @@ canvas {
 
 button {
   border: 1px solid var(--line);
-  background: #173252;
+  background: var(--button);
   color: var(--text);
   border-radius: 8px;
   padding: 8px 10px;
@@ -156,15 +96,9 @@ button {
 }
 
 button:hover {
-  background: #1f3f65;
+  background: var(--button-hover);
 }
 
 .hint {
   margin-top: 6px;
-}
-
-.state-line {
-  margin-top: 6px;
-  font-size: 13px;
-  color: var(--muted);
 }
