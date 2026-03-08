@@ -12,12 +12,16 @@ Minimal client-side boilerplate for projects using `Koz_Engine_Lib`.
 
 ## Runtime Order
 
-- `Koz_Engine_Lib/Core/koz-engine.global.js` loads engine modules and defines `Koz.init()`
-- `preload.js` runs `Koz.init()` and sets:
+- `Koz_Engine_Lib/Core/koz-engine.global.js` loads engine modules and auto-runs `Koz.init()` by default.
+- `preload.js` verifies runtime and only initializes if needed, then sets:
   - `window.KozRuntime`
   - `window.KozReady`
   - `window.KozInitError`
 - `game.js` consumes `window.KozRuntime`
+
+Disable auto-init for advanced setups:
+- set `window.KOZ_AUTO_INIT = false` before loading `koz-engine.global.js`
+- then call `window.Koz.init({ setGlobalRuntime: true })` manually
 
 ## Extension Points
 

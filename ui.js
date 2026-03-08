@@ -1,6 +1,4 @@
 document.addEventListener("DOMContentLoaded", () => {
-
-
   const shell = document.createElement("div");
   shell.className = "boilerplate-ui";
   shell.innerHTML = `
