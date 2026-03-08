@@ -16,14 +16,17 @@ This is a **current-state** guide, not a promise that every module is fully stan
 ### `Core/GameObject.js`
 
 When to use:
-- Only if you need the current lightweight base class and collision helpers used by the combat prototype code.
+- You need a lightweight entity base with shape metadata, tags, and collision helpers.
 
 How to use:
 - Extend `GameObject` and override `update()`, `draw()`, and `onCollision()`.
-- Use `collides(obj1, obj2)` for the existing square/circle collision cases.
+- Set geometry with `{ shape: "rect", width, height }` or `{ shape: "circle", radius }`.
+- Use `collides(obj1, obj2)` for pair checks.
+- Use `tagCollides(obj1, obj2, tagA, tagB)` for pair checks constrained by tags.
+- Use `findCollisions(objects, { tagPairs, invokeCallbacks })` to scan many objects.
 
 Current caveat:
-- This is not yet a clean engine primitive. It is tied to the older combat prototype and currently uses a different export style than most of the engine folder.
+- Broad-phase optimization is not included yet; `findCollisions` currently does an O(n^2) scan.
 
 ### `Core/gameStateManager.js`
 

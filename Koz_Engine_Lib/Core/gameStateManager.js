@@ -92,6 +92,18 @@ class GameStateManager {
           console.error(`[GameState] onChange listener failed for "${oldState}" -> "${newState}":`, err);
         }
       });
+
+      if (
+        typeof window !== "undefined" &&
+        typeof window.dispatchEvent === "function" &&
+        typeof window.CustomEvent === "function"
+      ) {
+        window.dispatchEvent(
+          new window.CustomEvent("koz:state-change", {
+            detail: { from: oldState, to: newState, state: newState },
+          })
+        );
+      }
     }
 
     /**

@@ -161,6 +161,13 @@
       },
     },
     {
+      path: "Koz_Engine_Lib/Core/GameObject.js",
+      register: ["Core", "gameObject"],
+      globals: {
+        GameObject: (api) => api.GameObject,
+      },
+    },
+    {
       path: "Koz_Engine_Lib/Core/uiScreenController.js",
       register: ["Core", "uiScreenController"],
     },
@@ -319,6 +326,19 @@
   if (!root) return;
   const Koz = (root.Koz = root.Koz || {});
 
+  if (root.gameStateManager === undefined && typeof Object.defineProperty === "function") {
+    Object.defineProperty(root, "gameStateManager", {
+      configurable: true,
+      enumerable: false,
+      get() {
+        return root.KozStateManager;
+      },
+      set(value) {
+        root.KozStateManager = value;
+      },
+    });
+  }
+
   Koz.init = function initKoz(options) {
     const opts = options || {};
     const engine = root.KozEngine || {};
@@ -365,6 +385,44 @@
       createGameStateManager() {
         const Ctor = requireConstructor("Core.gameStateManager.GameStateManager", "GameStateManager");
         return new Ctor();
+      },
+      createConfiguredGameStateManager(config) {
+        const cfg = config || {};
+        const manager = this.createGameStateManager();
+        const states = Array.isArray(cfg.states) ? cfg.states : [];
+        for (const entry of states) {
+          if (typeof entry === "string") {
+            manager.addState(entry, {});
+            continue;
+          }
+          if (entry && typeof entry.name === "string") {
+            manager.addState(entry.name, {
+              onEnter: typeof entry.onEnter === "function" ? entry.onEnter : undefined,
+              onExit: typeof entry.onExit === "function" ? entry.onExit : undefined,
+            });
+          }
+        }
+
+        if (cfg.transitions && typeof cfg.transitions === "object") {
+          manager.setTransitionRules(cfg.transitions);
+        }
+        if (typeof cfg.initialState === "string" && cfg.initialState) {
+          manager.setState(cfg.initialState);
+        }
+        return manager;
+      },
+      createGameObject(type, x, y, options) {
+        const Ctor = requireConstructor("Core.gameObject.GameObject", "GameObject");
+        return new Ctor(type, x, y, options);
+      },
+      collides(obj1, obj2) {
+        return requireFunction("Core.gameObject.collides", "collides")(obj1, obj2);
+      },
+      tagCollides(obj1, obj2, tagA, tagB) {
+        return requireFunction("Core.gameObject.tagCollides", "tagCollides")(obj1, obj2, tagA, tagB);
+      },
+      findCollisions(objects, options) {
+        return requireFunction("Core.gameObject.findCollisions", "findCollisions")(objects, options);
       },
       createWorldSpace(options) {
         return requireFunction("World.worldSpace.createWorldSpace", "createWorldSpace")(options);

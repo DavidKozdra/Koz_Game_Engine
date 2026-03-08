@@ -1,19 +1,37 @@
-/*
-
 if (window.KozReady === undefined) window.KozReady = false;
 if (window.KozInitError === undefined) window.KozInitError = null;
 
+function _resolveConstructor(candidates, name) {
+  for (const candidate of candidates) {
+    if (typeof candidate === "function") return candidate;
+  }
+  throw new Error(`${name} constructor is not available.`);
+}
+
+function _createGameStateManager() {
+  const Ctor = _resolveConstructor(
+    [
+      window.KozEngine?.Core?.gameStateManager?.GameStateManager,
+      window.GameStateManager,
+    ],
+    "GameStateManager"
+  );
+  return new Ctor();
+}
+
 function preload() {
   try {
-    if (window.KozRuntime) {
-      window.KozReady = true;
-      window.KozInitError = null;
-      return;
+    let runtime = window.KozRuntime || null;
+    if (!runtime && window.Koz && typeof window.Koz.autoInit === "function") {
+      runtime = window.Koz.autoInit();
     }
-    if (!window.Koz || typeof window.Koz.init !== "function") {
-      throw new Error("Koz.init is unavailable. Ensure koz-engine.global.js is loaded.");
+
+    if (!window.KozStateManager) {
+      window.KozStateManager = runtime && typeof runtime.createGameStateManager === "function"
+        ? runtime.createGameStateManager()
+        : _createGameStateManager();
     }
-    window.Koz.init({ setGlobalRuntime: true });
+
     window.KozReady = true;
     window.KozInitError = null;
   } catch (error) {
@@ -22,4 +40,3 @@ function preload() {
     throw error;
   }
 }
-*/

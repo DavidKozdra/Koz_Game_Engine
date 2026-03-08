@@ -8,8 +8,8 @@ It is useful today, but it is still **transitional** rather than a finished stan
 
 If you are new to the engine, read these first:
 
-1. [new-user-guide.md](/home/davidk/Documents/CODE/GITHUB/Bargain-Quest/Koz_Engine_Lib/docs/new-user-guide.md)
-2. [module-catalog.md](/home/davidk/Documents/CODE/GITHUB/Bargain-Quest/Koz_Engine_Lib/docs/module-catalog.md)
+1. [new-user-guide.md](Koz_Engine_Lib/docs/new-user-guide.md)
+2. [module-catalog.md](oz_Engine_Lib/docs/module-catalog.md)
 3. `tests/lib/*.test.js` for real usage examples
 
 ## What This Folder Is Trying To Guarantee
@@ -31,7 +31,7 @@ What remains:
 - the browser global bridge still exists as temporary host glue
 - export format is still mixed across the folder during migration
 
-Use [migration-roadmap.md](/home/davidk/Documents/CODE/GITHUB/Bargain-Quest/Koz_Engine_Lib/docs/migration-roadmap.md) as the source of truth for the final standalone target.
+Use [migration-roadmap.md](Koz_Engine_Lib/docs/migration-roadmap.md) as the source of truth for the final standalone target.
 
 ## Good First Modules
 
@@ -112,11 +112,10 @@ Removed vague buckets:
 - `progression/`
 - `browser/`
 
-See [module-catalog.md](/home/davidk/Documents/CODE/GITHUB/Bargain-Quest/Koz_Engine_Lib/docs/module-catalog.md) for when to use each engine module and what host assumptions it still has.
+See [module-catalog.md]
 
 ## What Does Not Belong Here
 
-- Bargain Quest item/event/city content
 - game-specific UI flow
 - host game globals
 - game save orchestration
