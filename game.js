@@ -42,29 +42,6 @@ let scores = { left: 0, right: 0 };
 let winnerLabel = "";
 let lastUiSyncKey = "";
 
-class PongPaddle extends window.GameObject {
-  constructor(side, x, y) {
-    super("paddle", x, y, {
-      shape: "rect",
-      width: PONG.paddleWidth,
-      height: PONG.paddleHeight,
-      tags: ["paddle", side],
-    });
-    this.side = side;
-  }
-}
-
-class PongBall extends window.GameObject {
-  constructor(x, y) {
-    super("ball", x, y, {
-      shape: "circle",
-      radius: PONG.ballRadius,
-      tags: ["ball"],
-    });
-    this.velocity = createVector(0, 0);
-  }
-}
-
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -187,13 +164,33 @@ function initializeAppRuntime() {
 }
 
 function setupGameEntities() {
-  leftPaddle = new PongPaddle("left", 30, CANVAS.height / 2 - PONG.paddleHeight / 2);
-  rightPaddle = new PongPaddle(
-    "right",
+  leftPaddle = kozRuntime.createGameObject("paddle", 30, CANVAS.height / 2 - PONG.paddleHeight / 2, {
+    shape: "rect",
+    width: PONG.paddleWidth,
+    height: PONG.paddleHeight,
+    tags: ["paddle", "left"],
+  });
+  leftPaddle.side = "left";
+
+  rightPaddle = kozRuntime.createGameObject(
+    "paddle",
     CANVAS.width - 30 - PONG.paddleWidth,
-    CANVAS.height / 2 - PONG.paddleHeight / 2
+    CANVAS.height / 2 - PONG.paddleHeight / 2,
+    {
+      shape: "rect",
+      width: PONG.paddleWidth,
+      height: PONG.paddleHeight,
+      tags: ["paddle", "right"],
+    }
   );
-  ball = new PongBall(CANVAS.width / 2, CANVAS.height / 2);
+  rightPaddle.side = "right";
+
+  ball = kozRuntime.createGameObject("ball", CANVAS.width / 2, CANVAS.height / 2, {
+    shape: "circle",
+    radius: PONG.ballRadius,
+    tags: ["ball"],
+  });
+  ball.velocity = createVector(0, 0);
   resetMatchState();
 }
 
