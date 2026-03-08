@@ -1,33 +1,25 @@
 # Koz Engine Boilerplate
 
-Minimal client-side boilerplate for projects using `Koz_Engine_Lib`.
+Simple starter boilerplate for projects using `Koz_Engine_Lib`.
 
 ## Quickstart
 
-1. Open `index.html` in a local web server.
-3. Start building in `game.js` and `ui.js`.
+1. Serve this folder with a local web server.
+2. Open `index.html` in your browser.
+3. Build your logic in `game.js` and your UI in `ui.js`.
 
-## Runtime Order
+## What Is Included
 
-- `Koz_Engine_Lib/Core/koz-engine.global.js` loads engine modules
-- `koz-init.js` defines `Koz.init()`
-- `preload.js` runs `Koz.init()` and sets:
-  - `window.KozRuntime`
-  - `window.KozReady`
-  - `window.KozInitError`
-- `game.js` consumes `window.KozRuntime`
+- p5 canvas setup (`960x540`)
+- minimal app state flow (`READY`, `RUNNING`, `PAUSED`)
+- event bridge between game and UI (`koz:command`, `koz:ui-sync`)
+- basic overlay controls for start/pause/reset
 
-## Extension Points
+## Runtime Notes
 
-- `game.js`
-  - state machine (`AppStates`)
-  - world model (`world`, `worldEditor`)
-  - render/update hooks (`draw`, input handlers)
-- `ui.js`
-  - basic state controls wired through DOM events (`koz:command`, `koz:ui-sync`)
+- `Koz_Engine_Lib/Core/koz-engine.global.js` loads the engine
+- `preload.js` is currently optional/commented; app reads `window.KozRuntime` and `window.KozReady`
+- `game.js` drives state + render loop
+- `ui.js` handles overlay controls
 
-## Notes
-
-- This repo is intentionally gameplay-agnostic.
-- Keep engine/bootstrap logic out of gameplay files.
-- UI.js is optional and the UI folder of course
+Replace placeholder loop/render code with your project logic.
