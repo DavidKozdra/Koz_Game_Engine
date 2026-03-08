@@ -187,7 +187,7 @@ class SeededStream {
        * @returns {boolean} True if replaced
        */
       return !!this._origMathRandom && Math.random !== this._origMathRandom;
-    }
+    },
 
     getState() {
       /**
