@@ -102,3 +102,36 @@ button:hover {
 .hint {
   margin-top: 6px;
 }
+
+.screen {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 20;
+  min-width: 260px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
+  display: none;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.screen h2 {
+  margin: 0 0 8px;
+}
+
+.screen p {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.menu-btn {
+  width: 100%;
+  margin-top: 8px;
+}
