@@ -1,13 +1,4 @@
 let state = null;
-let GameObjectCtor = null;
-let findCollisionsFn = null;
-
-let leftPaddle = null;
-let rightPaddle = null;
-let ball = null;
-let elapsed = 0;
-let winner = "";
-let scores = { left: 0, right: 0 };
 
 const GameStates = {
   READY: "READY",
@@ -16,7 +7,7 @@ const GameStates = {
 };
 
 const Pong = {
-  winningScore: 7,
+  winningScore: 12,
   paddleWidth: 14,
   paddleHeight: 110,
   paddleSpeed: 470,
@@ -25,6 +16,13 @@ const Pong = {
   ballSpeed: 360,
   ballMaxSpeed: 780,
 };
+
+const leftPaddle = { x: 0, y: 0, width: Pong.paddleWidth, height: Pong.paddleHeight };
+const rightPaddle = { x: 0, y: 0, width: Pong.paddleWidth, height: Pong.paddleHeight };
+const ball = { x: 0, y: 0, vx: 0, vy: 0, radius: Pong.ballRadius };
+
+let scores = { left: 0, right: 0 };
+let winner = "";
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -51,7 +49,6 @@ function resetMatch() {
   scores.left = 0;
   scores.right = 0;
   winner = "";
-  elapsed = 0;
 
   leftPaddle.x = 30;
   leftPaddle.y = height / 2 - leftPaddle.height / 2;
@@ -61,61 +58,36 @@ function resetMatch() {
   resetRound();
 }
 
-function setupEntities() {
-  leftPaddle = new GameObjectCtor("paddle", 30, height / 2 - Pong.paddleHeight / 2, {
-    shape: "rect",
-    width: Pong.paddleWidth,
-    height: Pong.paddleHeight,
-    tags: ["paddle", "left"],
-  });
-  leftPaddle.side = "left";
+function ensureStateManager() {
+  if (window.KozStateManager) return window.KozStateManager;
 
-  rightPaddle = new GameObjectCtor("paddle", width - 30 - Pong.paddleWidth, height / 2 - Pong.paddleHeight / 2, {
-    shape: "rect",
-    width: Pong.paddleWidth,
-    height: Pong.paddleHeight,
-    tags: ["paddle", "right"],
-  });
-  rightPaddle.side = "right";
+  if (typeof _createGameStateManager === "function") {
+    window.KozStateManager = _createGameStateManager();
+    return window.KozStateManager;
+  }
 
-  ball = new GameObjectCtor("ball", width / 2, height / 2, {
-    shape: "circle",
-    radius: Pong.ballRadius,
-    tags: ["ball"],
-  });
-  ball.vx = 0;
-  ball.vy = 0;
+  const Ctor = window.KozEngine?.Core?.gameStateManager?.GameStateManager || window.GameStateManager;
+  if (typeof Ctor === "function") {
+    window.KozStateManager = new Ctor();
+    return window.KozStateManager;
+  }
+
+  throw new Error("GameStateManager is not available.");
 }
 
 function setup() {
-  const canvas = createCanvas(960, 540);
+  const canvas = createCanvas(2400, 1040);
   canvas.parent(document.body);
   pixelDensity(1);
   textFont("Trebuchet MS");
 
-  state = window.KozStateManager || null;
-  if (!state) throw new Error("KozStateManager is not available. Check preload/bootstrap.");
-
-  const gameObjectApi = window.KozEngine?.Core?.gameObject || null;
-  GameObjectCtor = gameObjectApi?.GameObject || window.GameObject || null;
-  findCollisionsFn = gameObjectApi?.findCollisions || null;
-  if (!GameObjectCtor || typeof findCollisionsFn !== "function") {
-    throw new Error("GameObject API is not available.");
-  }
+  state = ensureStateManager();
 
   if (!state.states?.[GameStates.READY]) {
-    state.addState(GameStates.READY, {
-      onEnter: () => {
-        resetMatch();
-      },
-    });
+    state.addState(GameStates.READY, { onEnter: () => resetMatch() });
   }
-  if (!state.states?.[GameStates.RUNNING]) {
-    state.addState(GameStates.RUNNING, {});
-  }
-  if (!state.states?.[GameStates.PAUSED]) {
-    state.addState(GameStates.PAUSED, {});
-  }
+  if (!state.states?.[GameStates.RUNNING]) state.addState(GameStates.RUNNING, {});
+  if (!state.states?.[GameStates.PAUSED]) state.addState(GameStates.PAUSED, {});
 
   state.setTransitionRules({
     [GameStates.READY]: [GameStates.RUNNING],
@@ -123,8 +95,6 @@ function setup() {
     [GameStates.PAUSED]: [GameStates.RUNNING, GameStates.READY],
     "*": [GameStates.READY],
   });
-
-  setupEntities();
 
   if (!state.getState()) state.setState(GameStates.READY);
   else if (state.getState() === GameStates.READY) resetMatch();
@@ -150,40 +120,54 @@ function updateAi(dt) {
   rightPaddle.y = clamp(rightPaddle.y, 0, height - rightPaddle.height);
 }
 
-function bounceFromPaddle(paddle) {
+function ballHitsPaddle(paddle) {
+  const ballLeft = ball.x - ball.radius;
+  const ballRight = ball.x + ball.radius;
+  const ballTop = ball.y - ball.radius;
+  const ballBottom = ball.y + ball.radius;
+
+  const paddleLeft = paddle.x;
+  const paddleRight = paddle.x + paddle.width;
+  const paddleTop = paddle.y;
+  const paddleBottom = paddle.y + paddle.height;
+
+  return ballRight >= paddleLeft &&
+    ballLeft <= paddleRight &&
+    ballBottom >= paddleTop &&
+    ballTop <= paddleBottom;
+}
+
+function bounceFromPaddle(paddle, side) {
   const hitOffset = (ball.y - (paddle.y + paddle.height / 2)) / (paddle.height / 2);
   const bounceAngle = hitOffset * (PI / 3);
 
   let speed = Math.hypot(ball.vx, ball.vy) * 1.06;
   speed = clamp(speed, Pong.ballSpeed, Pong.ballMaxSpeed);
 
-  const dir = paddle.side === "right" ? -1 : 1;
+  const dir = side === "right" ? -1 : 1;
   ball.vx = Math.cos(bounceAngle) * speed * dir;
   ball.vy = Math.sin(bounceAngle) * speed;
-  ball.x = paddle.side === "right" ? paddle.x - ball.radius : paddle.x + paddle.width + ball.radius;
+  ball.x = side === "right"
+    ? paddle.x - ball.radius
+    : paddle.x + paddle.width + ball.radius;
 }
 
 function handlePaddleBallCollision() {
-  const collisions = findCollisionsFn([leftPaddle, rightPaddle, ball], {
-    tagPairs: [["paddle", "ball"]],
-    invokeCallbacks: false,
-  });
-
-  if (collisions.length === 0) return;
-
-  const hit = collisions[0];
-  const paddle = hit.a.hasTag("paddle") ? hit.a : hit.b;
-  if (!paddle || paddle.type !== "paddle") return;
-
-  bounceFromPaddle(paddle);
+  if (ball.vx < 0 && ballHitsPaddle(leftPaddle)) {
+    bounceFromPaddle(leftPaddle, "left");
+    return;
+  }
+  if (ball.vx > 0 && ballHitsPaddle(rightPaddle)) {
+    bounceFromPaddle(rightPaddle, "right");
+  }
 }
 
 function checkScore() {
   if (ball.x < -ball.radius) {
     scores.right += 1;
     if (scores.right >= Pong.winningScore) {
-      state.setState(GameStates.READY);
       winner = "Computer wins";
+      state.setState(GameStates.READY);
       return;
     }
     resetRound("left");
@@ -193,8 +177,8 @@ function checkScore() {
   if (ball.x > width + ball.radius) {
     scores.left += 1;
     if (scores.left >= Pong.winningScore) {
-      state.setState(GameStates.READY);
       winner = "Player wins";
+      state.setState(GameStates.READY);
       return;
     }
     resetRound("right");
@@ -202,8 +186,6 @@ function checkScore() {
 }
 
 function updateGameplay(dt) {
-  elapsed += dt;
-
   updatePlayer(dt);
   updateAi(dt);
 
@@ -243,45 +225,9 @@ function drawArena() {
   text(`Player ${scores.left} : ${scores.right} CPU`, width / 2, 16);
 }
 
-function drawReadyScreen() {
-  background("#081320");
-
-  stroke("#16314d");
-  strokeWeight(2);
-  for (let y = 0; y < height; y += 24) {
-    line(0, y, width, y);
-  }
-
-  noStroke();
-  fill("#e8f2ff");
-  textAlign(CENTER, CENTER);
-  textSize(48);
-  text("PONG", width / 2, height / 2 - 70);
-
-  textSize(18);
-  fill("#9fb6cf");
-  text("First to 7 points", width / 2, height / 2 - 24);
-  text("Space to start, P pause, R reset", width / 2, height / 2 + 6);
-
-  if (winner) {
-    fill("#d8e9ff");
-    textSize(20);
-    text(winner, width / 2, height / 2 + 46);
-  }
-}
-
-function drawPauseOverlay() {
-  fill(5, 10, 20, 150);
-  rect(0, 0, width, height);
-
-  fill("#e8f2ff");
-  textAlign(CENTER, CENTER);
-  textSize(28);
-  text("Paused", width / 2, height / 2);
-}
 
 function draw() {
-  if (!state || !leftPaddle || !rightPaddle || !ball) {
+  if (!state) {
     background("#111827");
     fill("#f9fafb");
     noStroke();
@@ -301,11 +247,9 @@ function draw() {
 
   if (state.is(GameStates.PAUSED)) {
     drawArena();
-    drawPauseOverlay();
     return;
   }
 
-  drawReadyScreen();
 }
 
 function keyPressed() {
