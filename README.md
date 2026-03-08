@@ -12,8 +12,7 @@ Minimal client-side boilerplate for projects using `Koz_Engine_Lib`.
 
 ## Runtime Order
 
-- `Koz_Engine_Lib/Core/koz-engine.global.js` loads engine modules
-- `koz-init.js` defines `Koz.init()`
+- `Koz_Engine_Lib/Core/koz-engine.global.js` loads engine modules and defines `Koz.init()`
 - `preload.js` runs `Koz.init()` and sets:
   - `window.KozRuntime`
   - `window.KozReady`
