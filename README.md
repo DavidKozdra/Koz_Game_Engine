@@ -1,25 +1,56 @@
-# Koz Engine Boilerplate
+# Koz Engine War Roguelike Showcase
 
-Simple starter boilerplate for projects using `Koz_Engine_Lib`.
+This demo turns the boilerplate into a fullscreen, responsive roguelike card game using **War** combat and a progression loop.
 
-## Quickstart
+## What It Demonstrates
 
-1. Serve this folder with a local web server.
-2. Open `index.html` in your browser.
-3. Build your logic in `game.js` and your UI in `ui.js`.
+- **Core State Flow** (`READY`, `RUNNING`, `SHOP`, `PAUSED`, `GAMEOVER`, `TOUR`)
+- **Save/Load** via `Koz_Engine_Lib/SaveLoad` (`SaveAPI` + local storage driver)
+- **World Seeded RNG** via `Koz_Engine_Lib/World/seededRng`
+- **VisualFX** via `Koz_Engine_Lib/VisualFX/particleSystem`
+- **Audio** via `Koz_Engine_Lib/Audio/musicSystem` volume management + WebAudio SFX
+- **Events** via `Koz_Engine_Lib/Events/eventEngine` event filtering/picking
+- **AI Utility** via `Koz_Engine_Lib/AI/astar` (`MinHeap`) for enemy intent decisions
+- **Minigames** via `Koz_Engine_Lib/Minigames/minigamesRuntime` route branch
+- **Notifications** via `Koz_Engine_Lib/Events/notificationManager`
 
-## What Is Included
+## Gameplay Loop
 
-- p5 canvas setup (`960x540`)
-- minimal app state flow (`READY`, `RUNNING`, `PAUSED`)
-- event bridge between game and UI (`koz:command`, `koz:ui-sync`)
-- basic overlay controls for start/pause/reset
+1. Start a standard or challenge run.
+2. Play War rounds against enemy archetypes with intent-based behavior.
+3. On victory, enter the shop and buy upgrades.
+4. Choose a route: direct battle, random event, or minigame.
+5. Push floors until defeat.
 
-## Runtime Notes
+Runs are persisted and can be loaded from the ready menu.
 
-- `Koz_Engine_Lib/Core/koz-engine.global.js` loads the engine
-- `preload.js` is currently optional/commented; app reads `window.KozRuntime` and `window.KozReady`
-- `game.js` drives state + render loop
-- `ui.js` handles overlay controls
+## Controls
 
-Replace placeholder loop/render code with your project logic.
+- `Space`: play round (or advance tour step)
+- `A`: toggle auto-play
+- `P`: pause/resume
+- `R` or `Esc`: return to ready
+
+UI includes:
+
+- Start standard/challenge run
+- Load/clear save
+- Shop purchases and route selection
+- Volume slider
+- Feature tour controls
+
+## Mobile/Desktop Notes
+
+- Canvas resizes to viewport (`windowWidth`/`windowHeight` + `windowResized`).
+- UI overlays are responsive and scale for small screens.
+- Shop layout and action rows collapse for narrow devices.
+
+## Feature Tour
+
+Use **Feature Tour** from the ready screen to walk through the major engine integrations in-game.
+
+## Files
+
+- `game.js`: game systems, engine module integrations, rendering, run save/load
+- `ui.js`: screen registration and menu interactions
+- `style.css`: responsive UI layout and transitions
