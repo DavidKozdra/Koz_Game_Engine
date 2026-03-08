@@ -319,7 +319,8 @@
   if (!root) return;
   const Koz = (root.Koz = root.Koz || {});
 
-  Koz.init = function initKoz() {
+  Koz.init = function initKoz(options) {
+    const opts = options || {};
     const engine = root.KozEngine || {};
 
     function resolveFromEngine(path) {
@@ -351,7 +352,7 @@
       throw new Error("KozEngine is not fully loaded. Ensure koz-engine.global.js is loaded before init.");
     }
 
-    return {
+    const runtime = {
       engine: engine,
       resolve: resolveFromEngine,
       call(path, ...args) {
@@ -372,5 +373,32 @@
         return requireFunction("World.worldEditor.createWorldEditor", "createWorldEditor")(options);
       },
     };
+
+    if (opts.setGlobalRuntime !== false) {
+      root.KozRuntime = runtime;
+      root.KozReady = true;
+      root.KozInitError = null;
+    }
+
+    return runtime;
   };
+
+  Koz.autoInit = function autoInit() {
+    const autoInitEnabled = root.KOZ_AUTO_INIT !== false;
+    if (!autoInitEnabled) return null;
+    if (root.KozRuntime) {
+      root.KozReady = true;
+      root.KozInitError = null;
+      return root.KozRuntime;
+    }
+    try {
+      return Koz.init({ setGlobalRuntime: true });
+    } catch (error) {
+      root.KozReady = false;
+      root.KozInitError = error;
+      throw error;
+    }
+  };
+
+  Koz.autoInit();
 })(typeof window !== "undefined" ? window : globalThis);
