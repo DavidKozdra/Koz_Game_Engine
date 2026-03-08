@@ -161,6 +161,13 @@
       },
     },
     {
+      path: "Koz_Engine_Lib/Core/GameObject.js",
+      register: ["Core", "gameObject"],
+      globals: {
+        GameObject: (api) => api.GameObject,
+      },
+    },
+    {
       path: "Koz_Engine_Lib/Core/uiScreenController.js",
       register: ["Core", "uiScreenController"],
     },
@@ -365,6 +372,19 @@
       createGameStateManager() {
         const Ctor = requireConstructor("Core.gameStateManager.GameStateManager", "GameStateManager");
         return new Ctor();
+      },
+      createGameObject(type, x, y, options) {
+        const Ctor = requireConstructor("Core.gameObject.GameObject", "GameObject");
+        return new Ctor(type, x, y, options);
+      },
+      collides(obj1, obj2) {
+        return requireFunction("Core.gameObject.collides", "collides")(obj1, obj2);
+      },
+      tagCollides(obj1, obj2, tagA, tagB) {
+        return requireFunction("Core.gameObject.tagCollides", "tagCollides")(obj1, obj2, tagA, tagB);
+      },
+      findCollisions(objects, options) {
+        return requireFunction("Core.gameObject.findCollisions", "findCollisions")(objects, options);
       },
       createWorldSpace(options) {
         return requireFunction("World.worldSpace.createWorldSpace", "createWorldSpace")(options);

@@ -33,6 +33,7 @@ const PONG = {
 
 let kozRuntime = null;
 let gameStateManager = null;
+let gameObjectApi = null;
 
 let leftPaddle = null;
 let rightPaddle = null;
@@ -41,6 +42,29 @@ let scores = { left: 0, right: 0 };
 let winnerLabel = "";
 let lastUiSyncKey = "";
 
+class PongPaddle extends window.GameObject {
+  constructor(side, x, y) {
+    super("paddle", x, y, {
+      shape: "rect",
+      width: PONG.paddleWidth,
+      height: PONG.paddleHeight,
+      tags: ["paddle", side],
+    });
+    this.side = side;
+  }
+}
+
+class PongBall extends window.GameObject {
+  constructor(x, y) {
+    super("ball", x, y, {
+      shape: "circle",
+      radius: PONG.ballRadius,
+      tags: ["ball"],
+    });
+    this.velocity = createVector(0, 0);
+  }
+}
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -48,26 +72,22 @@ function clamp(value, min, max) {
 function randomServeVector(direction) {
   const dir = direction === "left" ? -1 : 1;
   const angle = random(-PI / 4, PI / 4);
-  return {
-    vx: Math.cos(angle) * PONG.ballSpeed * dir,
-    vy: Math.sin(angle) * PONG.ballSpeed,
-  };
+  return createVector(Math.cos(angle) * PONG.ballSpeed * dir, Math.sin(angle) * PONG.ballSpeed);
 }
 
 function resetRound(direction = random() < 0.5 ? "left" : "right") {
   const vector = randomServeVector(direction);
   ball.x = CANVAS.width / 2;
   ball.y = CANVAS.height / 2;
-  ball.vx = vector.vx;
-  ball.vy = vector.vy;
+  ball.velocity.set(vector.x, vector.y);
 }
 
 function resetMatchState() {
   scores.left = 0;
   scores.right = 0;
   winnerLabel = "";
-  leftPaddle.y = CANVAS.height / 2 - PONG.paddleHeight / 2;
-  rightPaddle.y = CANVAS.height / 2 - PONG.paddleHeight / 2;
+  leftPaddle.y = CANVAS.height / 2 - leftPaddle.height / 2;
+  rightPaddle.y = CANVAS.height / 2 - rightPaddle.height / 2;
   resetRound();
   emitUiSync();
 }
@@ -149,6 +169,10 @@ function initializeAppRuntime() {
 
   kozRuntime = window.KozRuntime;
   gameStateManager = kozRuntime.createGameStateManager();
+  gameObjectApi = kozRuntime.resolve("Core.gameObject");
+  if (!gameObjectApi || typeof gameObjectApi.GameObject !== "function") {
+    throw new Error("Koz GameObject module is unavailable.");
+  }
   gameStateManager.addState(AppStates.MAIN_MENU);
   gameStateManager.addState(AppStates.GAMEPLAY);
   gameStateManager.addState(AppStates.PAUSED);
@@ -163,19 +187,13 @@ function initializeAppRuntime() {
 }
 
 function setupGameEntities() {
-  leftPaddle = {
-    x: 30,
-    y: CANVAS.height / 2 - PONG.paddleHeight / 2,
-    w: PONG.paddleWidth,
-    h: PONG.paddleHeight,
-  };
-  rightPaddle = {
-    x: CANVAS.width - 30 - PONG.paddleWidth,
-    y: CANVAS.height / 2 - PONG.paddleHeight / 2,
-    w: PONG.paddleWidth,
-    h: PONG.paddleHeight,
-  };
-  ball = { x: 0, y: 0, vx: 0, vy: 0, r: PONG.ballRadius };
+  leftPaddle = new PongPaddle("left", 30, CANVAS.height / 2 - PONG.paddleHeight / 2);
+  rightPaddle = new PongPaddle(
+    "right",
+    CANVAS.width - 30 - PONG.paddleWidth,
+    CANVAS.height / 2 - PONG.paddleHeight / 2
+  );
+  ball = new PongBall(CANVAS.width / 2, CANVAS.height / 2);
   resetMatchState();
 }
 
@@ -199,47 +217,53 @@ function updatePlayer(dt) {
   if (upPressed) move -= 1;
   if (downPressed) move += 1;
   leftPaddle.y += move * PONG.paddleSpeed * dt;
-  leftPaddle.y = clamp(leftPaddle.y, 0, CANVAS.height - leftPaddle.h);
+  leftPaddle.y = clamp(leftPaddle.y, 0, CANVAS.height - leftPaddle.height);
 }
 
 function updateAi(dt) {
-  const targetY = ball.y - rightPaddle.h / 2;
+  const targetY = ball.y - rightPaddle.height / 2;
   if (Math.abs(targetY - rightPaddle.y) < 6) return;
   const direction = targetY > rightPaddle.y ? 1 : -1;
   rightPaddle.y += direction * PONG.aiSpeed * dt;
-  rightPaddle.y = clamp(rightPaddle.y, 0, CANVAS.height - rightPaddle.h);
+  rightPaddle.y = clamp(rightPaddle.y, 0, CANVAS.height - rightPaddle.height);
 }
 
-function bounceFromPaddle(paddle, movingRight) {
-  const withinX = movingRight
-    ? ball.x + ball.r >= paddle.x && ball.x - ball.r <= paddle.x + paddle.w
-    : ball.x - ball.r <= paddle.x + paddle.w && ball.x + ball.r >= paddle.x;
-  const withinY = ball.y + ball.r >= paddle.y && ball.y - ball.r <= paddle.y + paddle.h;
-  if (!withinX || !withinY) return false;
-
-  const hitOffset = (ball.y - (paddle.y + paddle.h / 2)) / (paddle.h / 2);
+function bounceFromPaddle(paddle) {
+  const hitOffset = (ball.y - (paddle.y + paddle.height / 2)) / (paddle.height / 2);
   const bounceAngle = hitOffset * (PI / 3);
-  let nextSpeed = Math.min(Math.hypot(ball.vx, ball.vy) * 1.06, PONG.ballMaxSpeed);
+  let nextSpeed = Math.min(ball.velocity.mag() * 1.06, PONG.ballMaxSpeed);
   if (nextSpeed < PONG.ballSpeed) nextSpeed = PONG.ballSpeed;
 
-  const dir = movingRight ? -1 : 1;
-  ball.vx = Math.cos(bounceAngle) * nextSpeed * dir;
-  ball.vy = Math.sin(bounceAngle) * nextSpeed;
-  ball.x = movingRight ? paddle.x - ball.r : paddle.x + paddle.w + ball.r;
-  return true;
+  const dir = paddle.side === "right" ? -1 : 1;
+  ball.velocity.set(Math.cos(bounceAngle) * nextSpeed * dir, Math.sin(bounceAngle) * nextSpeed);
+  ball.x = paddle.side === "right" ? paddle.x - ball.radius : paddle.x + paddle.width + ball.radius;
+}
+
+function handlePaddleBallCollision() {
+  const collisions = gameObjectApi.findCollisions([leftPaddle, rightPaddle, ball], {
+    tagPairs: [["paddle", "ball"]],
+    invokeCallbacks: false,
+  });
+  if (collisions.length === 0) return;
+  const first = collisions[0];
+  const paddle = first.a.hasTag("paddle") ? first.a : first.b;
+  if (!paddle || paddle.type !== "paddle") return;
+  bounceFromPaddle(paddle);
 }
 
 function checkScore() {
-  if (ball.x < -ball.r) {
+  if (ball.x < -ball.radius) {
     scores.right += 1;
+    emitUiSync();
     if (scores.right >= PONG.winningScore) {
       winnerLabel = "Computer wins";
       gameStateManager.setState(AppStates.MAIN_MENU);
       return;
     }
     resetRound("left");
-  } else if (ball.x > CANVAS.width + ball.r) {
+  } else if (ball.x > CANVAS.width + ball.radius) {
     scores.left += 1;
+    emitUiSync();
     if (scores.left >= PONG.winningScore) {
       winnerLabel = "Player wins";
       gameStateManager.setState(AppStates.MAIN_MENU);
@@ -253,20 +277,18 @@ function updateGameplay(dt) {
   updatePlayer(dt);
   updateAi(dt);
 
-  ball.x += ball.vx * dt;
-  ball.y += ball.vy * dt;
+  ball.x += ball.velocity.x * dt;
+  ball.y += ball.velocity.y * dt;
 
-  if (ball.y - ball.r <= 0) {
-    ball.y = ball.r;
-    ball.vy *= -1;
-  } else if (ball.y + ball.r >= CANVAS.height) {
-    ball.y = CANVAS.height - ball.r;
-    ball.vy *= -1;
+  if (ball.y - ball.radius <= 0) {
+    ball.y = ball.radius;
+    ball.velocity.y *= -1;
+  } else if (ball.y + ball.radius >= CANVAS.height) {
+    ball.y = CANVAS.height - ball.radius;
+    ball.velocity.y *= -1;
   }
 
-  if (!bounceFromPaddle(rightPaddle, true)) {
-    bounceFromPaddle(leftPaddle, false);
-  }
+  handlePaddleBallCollision();
   checkScore();
 }
 
@@ -280,9 +302,9 @@ function drawArena() {
 
   noStroke();
   fill("#d8e9ff");
-  rect(leftPaddle.x, leftPaddle.y, leftPaddle.w, leftPaddle.h, 5);
-  rect(rightPaddle.x, rightPaddle.y, rightPaddle.w, rightPaddle.h, 5);
-  circle(ball.x, ball.y, ball.r * 2);
+  rect(leftPaddle.x, leftPaddle.y, leftPaddle.width, leftPaddle.height, 5);
+  rect(rightPaddle.x, rightPaddle.y, rightPaddle.width, rightPaddle.height, 5);
+  circle(ball.x, ball.y, ball.radius * 2);
 }
 
 function drawMenuBackground() {
