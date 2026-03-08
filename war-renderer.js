@@ -107,6 +107,11 @@
       }
 
       const battle = core.battle;
+      noStroke();
+      fill(16, 44, 58, 118);
+      ellipse(width * 0.63, height * 0.5, width * 0.52, height * 0.42);
+      fill(34, 88, 112, 42);
+      ellipse(width * 0.63, height * 0.5, width * 0.7, height * 0.58);
 
       const clash = battle.lastClash;
       if (!clash || !clash.playerCard || !clash.enemyCard) return;
@@ -136,6 +141,10 @@
       const py = lerp(deckY, targetY, ease);
       const ex = lerp(deckXRight, targetEnemyX, ease);
       const ey = lerp(deckY, targetY, ease);
+
+      fill(0, 0, 0, 80);
+      ellipse(px + cardW * 0.5, py + cardH + 12, cardW * 0.88, 18);
+      ellipse(ex + cardW * 0.5, ey + cardH + 12, cardW * 0.88, 18);
 
       this.drawCardFace(px, py, cardW, cardH, clash.playerCard, clash.playerPower, "You", t < 1);
       this.drawCardFace(ex, ey, cardW, cardH, clash.enemyCard, clash.enemyPower, clash.intent || "Enemy", t < 1);

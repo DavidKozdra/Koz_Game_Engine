@@ -428,12 +428,49 @@ uiManager.registerScreen("shopMenu", {
   },
   update: () => {
     const snap = window.WarGameSnapshot || {};
+    const gold = document.getElementById("shop-gold");
+    const list = document.getElementById("shop-items");
+    if (gold) gold.textContent = snap.run ? `Gold: ${snap.run.gold}` : "Gold: 0";
+
     const rb = document.getElementById("route-battle");
     const re = document.getElementById("route-event");
     const rm = document.getElementById("route-minigame");
     if (rb) rb.classList.toggle("active", snap.route === "battle");
     if (re) re.classList.toggle("active", snap.route === "event");
     if (rm) rm.classList.toggle("active", snap.route === "minigame");
+
+    if (!list) return;
+    const offers = Array.isArray(snap.shopOffers) ? snap.shopOffers : [];
+    const sig = `${snap.run ? snap.run.gold : 0}|${offers.map((offer) => `${offer.shopId}:${offer.bought ? 1 : 0}`).join(",")}`;
+    if (list.dataset.sig === sig) return;
+    list.dataset.sig = sig;
+
+    list.innerHTML = "";
+    for (const offer of offers) {
+      const item = document.createElement("article");
+      item.className = "shop-item";
+
+      const name = document.createElement("h3");
+      name.textContent = offer.name;
+
+      const desc = document.createElement("p");
+      desc.textContent = offer.desc;
+
+      const cost = document.createElement("div");
+      cost.textContent = `Cost: ${offer.cost}`;
+
+      const buyBtn = document.createElement("button");
+      buyBtn.textContent = offer.bought ? "Purchased" : "Buy";
+      const cannotAfford = snap.run && snap.run.gold < offer.cost;
+      buyBtn.disabled = !!offer.bought || !!cannotAfford;
+      buyBtn.addEventListener("click", () => window.WarGameAPI?.buyItem(offer.shopId));
+
+      item.appendChild(name);
+      item.appendChild(desc);
+      item.appendChild(cost);
+      item.appendChild(buyBtn);
+      list.appendChild(item);
+    }
   },
   hide: () => {
     const w = document.getElementById("shopMenu");
