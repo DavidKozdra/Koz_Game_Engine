@@ -27,8 +27,8 @@ Disable auto-init for advanced setups:
 
 - `game.js`
   - state machine (`AppStates`)
-  - world model (`world`, `worldEditor`)
-  - render/update hooks (`draw`, input handlers)
+  - minimal simulation loop + input hooks (`draw`, `keyPressed`)
+  - `GameObject`/collision integration examples
 - `ui.js`
   - basic state controls wired to `window.KozBoilerplateApp`
 
@@ -36,3 +36,7 @@ Disable auto-init for advanced setups:
 
 - This repo is intentionally gameplay-agnostic.
 - Keep engine/bootstrap logic out of gameplay files.
+<<<<<<< Updated upstream
+=======
+- `ui.js` is optional and can be removed if your game owns all rendering inside the canvas.
+>>>>>>> Stashed changes

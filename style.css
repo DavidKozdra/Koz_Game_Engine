@@ -1,9 +1,9 @@
 :root {
-  --bg: #0b1a2b;
-  --panel: rgba(10, 20, 35, 0.92);
-  --line: rgba(125, 211, 252, 0.35);
-  --text: #e6f2ff;
-  --muted: #9fb6cf;
+  --bg: #0b1623;
+  --panel: rgba(9, 18, 30, 0.92);
+  --line: rgba(129, 181, 244, 0.35);
+  --text: #e5eef9;
+  --muted: #9eb3cb;
 }
 
 * {
@@ -15,7 +15,7 @@ body {
   min-height: 100vh;
   position: relative;
   overflow: hidden;
-  background: linear-gradient(135deg, #091521, #12253d 60%, #0f2138);
+  background: linear-gradient(135deg, #08121d, #122437 58%, #0e1f33);
   color: var(--text);
   font-family: "Segoe UI", "Trebuchet MS", sans-serif;
 }
@@ -24,12 +24,48 @@ canvas {
   display: block;
 }
 
+<<<<<<< Updated upstream
 .boilerplate-ui {
   position: absolute;
   top: 12px;
   left: 12px;
   width: min(520px, calc(100vw - 24px));
   z-index: 10;
+=======
+.app-ui {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.app-panel {
+  position: absolute;
+  pointer-events: auto;
+}
+
+.app-panel-menu {
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.app-panel-hud {
+  top: 12px;
+  left: 12px;
+  width: min(620px, calc(100% - 24px));
+}
+
+.app-panel-pause {
+  inset: 0;
+  display: grid;
+  place-items: start center;
+  padding-top: 18px;
+>>>>>>> Stashed changes
 }
 
 .ui-card {
@@ -40,6 +76,31 @@ canvas {
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
 }
 
+<<<<<<< Updated upstream
+=======
+.ui-card-menu {
+  width: min(560px, calc(100vw - 32px));
+  text-align: center;
+}
+
+.ui-card-hud {
+  width: 100%;
+}
+
+.ui-card-pause {
+  width: min(320px, calc(100vw - 32px));
+  text-align: center;
+}
+
+.ui-card-pause h2 {
+  margin: 0 0 8px;
+}
+
+.ui-card-pause p {
+  margin: 0;
+}
+
+>>>>>>> Stashed changes
 .ui-card h1 {
   margin: 0 0 4px;
   font-size: 20px;
@@ -51,16 +112,35 @@ canvas {
   font-size: 13px;
 }
 
+.hud-line {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.hud-label {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+}
+
+.hud-value {
+  color: var(--text);
+  font-size: 13px;
+}
+
 .row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-top: 10px;
 }
 
 button {
   border: 1px solid var(--line);
-  background: #173252;
+  background: #193452;
   color: var(--text);
   border-radius: 8px;
   padding: 8px 10px;
@@ -69,7 +149,7 @@ button {
 }
 
 button:hover {
-  background: #1f3f65;
+  background: #224468;
 }
 
 .hint {
