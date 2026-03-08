@@ -1,11 +1,11 @@
 :root {
   --bg: #0f172a;
-  --panel: rgba(15, 23, 42, 0.86);
-  --line: rgba(148, 163, 184, 0.3);
+  --panel: rgba(15, 23, 42, 0.9);
+  --line: rgba(148, 163, 184, 0.36);
   --text: #e2e8f0;
   --muted: #94a3b8;
-  --button: #1e293b;
-  --button-hover: #334155;
+  --button: #243348;
+  --button-hover: #324865;
 }
 
 * {
@@ -17,7 +17,7 @@ body {
   min-height: 100vh;
   position: relative;
   overflow: hidden;
-  background: radial-gradient(circle at top, #1e293b, #0b1220 60%);
+  background: radial-gradient(circle at top, #1d3b50, #0a1118 58%);
   color: var(--text);
   font-family: "Segoe UI", "Trebuchet MS", sans-serif;
 }
@@ -26,45 +26,17 @@ canvas {
   display: block;
 }
 
-.app-ui {
-  position: fixed;
-  left: 0;
-  top: 0;
-  width: 0;
-  height: 0;
-  z-index: 10;
-  pointer-events: none;
-}
-
-.app-panel {
-  position: absolute;
-  pointer-events: auto;
-}
-
-.app-panel-menu {
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 16px;
-}
-
-.app-panel-hud {
-  top: 12px;
-  left: 12px;
-  width: min(560px, calc(100% - 24px));
-}
-
 .ui-card {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 14px;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.36);
 }
 
 .ui-card h1 {
   margin: 0 0 8px;
-  font-size: 20px;
+  font-size: 22px;
 }
 
 .ui-card p {
@@ -76,13 +48,26 @@ canvas {
 .status {
   font-size: 14px;
   margin-bottom: 8px;
+  color: #ccd9e6;
 }
 
 .row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 8px;
+  font-size: 13px;
+  color: #d3e2ee;
+}
+
+.log {
+  max-height: 130px;
+  overflow: auto;
+  margin: 6px 0 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  padding-top: 8px;
+  font-size: 12px;
+  color: #b8c8d6;
 }
 
 button {
@@ -95,12 +80,13 @@ button {
   cursor: pointer;
 }
 
-button:hover {
+button:hover:not(:disabled) {
   background: var(--button-hover);
 }
 
-.hint {
-  margin-top: 6px;
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .screen {
@@ -109,29 +95,71 @@ button:hover {
   top: 50%;
   transform: translate(-50%, -50%);
   z-index: 20;
-  min-width: 260px;
-  padding: 16px;
+  min-width: 280px;
+  max-width: min(520px, calc(100vw - 24px));
   border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
   display: none;
   text-align: center;
   opacity: 0;
   transition: opacity 180ms ease;
 }
 
-.screen h2 {
-  margin: 0 0 8px;
-}
-
-.screen p {
-  margin: 0 0 12px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
 .menu-btn {
   width: 100%;
   margin-top: 8px;
+}
+
+.screen-hud {
+  left: 12px;
+  top: 12px;
+  transform: none;
+  width: min(430px, calc(100vw - 24px));
+  max-width: none;
+  text-align: left;
+}
+
+.screen-hud .row button {
+  flex: 1;
+  min-width: 110px;
+}
+
+.screen-shop {
+  width: min(720px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+}
+
+.shop-items {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.shop-item {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 10px;
+  padding: 10px;
+  text-align: left;
+  background: rgba(13, 24, 37, 0.5);
+}
+
+.shop-item h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.shop-item p {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+
+@media (max-width: 740px) {
+  .screen {
+    min-width: 0;
+    width: calc(100vw - 20px);
+  }
+
+  .screen-hud {
+    width: calc(100vw - 20px);
+  }
 }
