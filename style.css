@@ -24,12 +24,39 @@ canvas {
   display: block;
 }
 
-.boilerplate-ui {
+.pong-ui {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.pong-panel {
   position: absolute;
+  pointer-events: auto;
+}
+
+.pong-panel-menu {
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.pong-panel-hud {
   top: 12px;
   left: 12px;
-  width: min(520px, calc(100vw - 24px));
-  z-index: 10;
+  width: min(560px, calc(100% - 24px));
+}
+
+.pong-panel-pause {
+  inset: 0;
+  display: grid;
+  place-items: start center;
+  padding-top: 18px;
 }
 
 .ui-card {
@@ -38,6 +65,66 @@ canvas {
   border-radius: 12px;
   padding: 14px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+}
+
+.ui-card-menu {
+  width: min(560px, calc(100vw - 32px));
+  text-align: center;
+}
+
+.ui-card-hud {
+  width: 100%;
+}
+
+.ui-card-pause {
+  width: min(320px, calc(100vw - 32px));
+  text-align: center;
+}
+
+.ui-card-pause h2 {
+  margin: 0 0 8px;
+}
+
+.ui-card-pause p {
+  margin: 0;
+}
+
+.menu-row {
+  justify-content: center;
+}
+
+.ui-scoreboard {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.score-side {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.score-label {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.score-value {
+  font-size: 42px;
+  font-weight: 700;
+  line-height: 1;
+  color: #e8f2ff;
+}
+
+.score-divider {
+  font-size: 32px;
+  color: #9fb6cf;
+  line-height: 1;
 }
 
 .ui-card h1 {
