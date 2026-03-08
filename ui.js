@@ -6,16 +6,16 @@ uiManager.registerScreen("readyMenu", {
     wrapper.className = "screen";
 
     const title = document.createElement("h2");
-    title.textContent = "PONG Gaming !";
+    title.textContent = "Game Template";
     wrapper.appendChild(title);
 
     const subtitle = document.createElement("p");
-    subtitle.textContent = "First to 12 points.";
+    subtitle.textContent = "Ready state screen.";
     wrapper.appendChild(subtitle);
 
     const startBtn = document.createElement("button");
     startBtn.className = "menu-btn";
-    startBtn.textContent = "Start Match";
+    startBtn.textContent = "Start";
     startBtn.addEventListener("click", () => gameStateManager.setState("RUNNING"));
     wrapper.appendChild(startBtn);
 
@@ -50,7 +50,7 @@ uiManager.registerScreen("pauseMenu", {
     wrapper.className = "screen";
 
     const title = document.createElement("h2");
-    title.textContent = "Game Paused";
+    title.textContent = "Paused";
     wrapper.appendChild(title);
 
     const resumeBtn = document.createElement("button");
@@ -61,7 +61,7 @@ uiManager.registerScreen("pauseMenu", {
 
     const restartBtn = document.createElement("button");
     restartBtn.className = "menu-btn";
-    restartBtn.textContent = "Restart Match";
+    restartBtn.textContent = "Reset";
     restartBtn.addEventListener("click", () => gameStateManager.setState("READY"));
     wrapper.appendChild(restartBtn);
 
