@@ -7,7 +7,7 @@ import { buildWorldSparseIndex, queryWorldSparseIndex } from '../lib/worldSparse
  * Renders grid, tiles, elements, and game objects.
  * Handles mouse input for painting, selection, and camera.
  */
-export default function Viewport({ project, editorState, onCellPaint, onCellFill, onSelectObject, onSelectObjects, onPlaceObject, onMoveObject, onMoveObjects, onUpdateCamera }) {
+export default function Viewport({ project, editorState, onCellPaint, onCellFill, onSelectObject, onSelectObjects, onPlaceObject, onMoveObject, onMoveObjects, onMoveWorld, onUpdateCamera }) {
   const canvasRef = useRef(null);
   const dragRef = useRef({ dragging: false, button: -1, startX: 0, startY: 0, lastX: 0, lastY: 0 });
   const imageCacheRef = useRef(new Map());
@@ -340,6 +340,8 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
       } else if (editorState.activeTool === 'place') {
         const worldPos = screenToWorld(sx, sy);
         if (onPlaceObject) onPlaceObject(Math.floor(worldPos.x), Math.floor(worldPos.y));
+      } else if (editorState.activeTool === 'worldMove') {
+        dragRef.current.worldMove = true;
       }
     }
   }
@@ -389,6 +391,8 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
         }
         if (updates.length === 1 && onMoveObject) onMoveObject(updates[0].id, updates[0].x, updates[0].y);
         else if (updates.length > 1 && onMoveObjects) onMoveObjects(updates);
+      } else if (editorState.activeTool === 'worldMove' && dragRef.current.worldMove && onMoveWorld) {
+        onMoveWorld(dx / editorState.camera.zoom, dy / editorState.camera.zoom);
       }
     }
   }
@@ -425,9 +429,11 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
     dragRef.current.dragging = false;
     dragRef.current.selectDrag = false;
     dragRef.current.selectMarquee = false;
+    dragRef.current.worldMove = false;
   }
 
   function handleWheel(e) {
+    e.preventDefault();
     const cam = editorState.camera;
     const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
     const newZoom = Math.max(0.25, Math.min(4, cam.zoom * zoomFactor));
@@ -440,6 +446,7 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
     <canvas
       ref={canvasRef}
       className="viewport-canvas"
+      style={{ cursor: editorState.activeTool === 'worldMove' ? 'grab' : undefined }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}

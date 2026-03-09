@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import Modal from './Modal.jsx';
 
-export default function Inspector({ project, editorState, onUpdateObject, onUpdateComponent }) {
+export default function Inspector({ project, editorState, onUpdateObject, onUpdateComponent, onCreatePrefabFromObject }) {
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [imageQuery, setImageQuery] = useState('');
   const selectedId = editorState.selectedObjectId;
@@ -100,6 +100,24 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
         <div className="field">
           <label>Type</label>
           <input type="text" value={obj.type || 'generic'} onChange={(e) => onUpdateObject(obj.id, { type: e.target.value })} />
+        </div>
+        <div className="field">
+          <label>Parent</label>
+          <select
+            value={obj.parentId || ''}
+            onChange={(e) => onUpdateObject(obj.id, { parentId: e.target.value || null })}
+          >
+            <option value="">None</option>
+            {sceneObjects.filter((o) => o.id !== obj.id).map((o) => (
+              <option key={o.id} value={o.id}>{o.name || o.id}</option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label>Prefab</label>
+          <button className="btn btn-sm" onClick={() => onCreatePrefabFromObject && onCreatePrefabFromObject(obj.id)}>
+            Save As Prefab
+          </button>
         </div>
       </div>
 

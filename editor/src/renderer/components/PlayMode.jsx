@@ -224,14 +224,30 @@ export function usePlayMode(project, onLog) {
       const speed = Number.isFinite(camera.speed) ? camera.speed : 8;
       const offsetX = Number.isFinite(camera.offsetX) ? camera.offsetX : 0;
       const offsetY = Number.isFinite(camera.offsetY) ? camera.offsetY : 0;
+      const canvas = canvasRef.current;
+      const viewW = canvas ? canvas.width : 0;
+      const viewH = canvas ? canvas.height : 0;
       let desiredX = null;
       let desiredY = null;
       if (camTarget) {
-        desiredX = camTarget.x + offsetX;
-        desiredY = camTarget.y + offsetY;
+        desiredX = camTarget.x + (camTarget.width || 32) * 0.5 + offsetX - viewW * 0.5;
+        desiredY = camTarget.y + (camTarget.height || 32) * 0.5 + offsetY - viewH * 0.5;
       } else if (Number.isFinite(camera.originX) && Number.isFinite(camera.originY)) {
-        desiredX = camera.originX + offsetX;
-        desiredY = camera.originY + offsetY;
+        desiredX = camera.originX + offsetX - viewW * 0.5;
+        desiredY = camera.originY + offsetY - viewH * 0.5;
+      }
+      const world = state.world || {};
+      const rows = Number.isFinite(world.rows) ? world.rows : ((world.grid && world.grid.length) || 0);
+      const cols = Number.isFinite(world.cols) ? world.cols : ((world.grid && world.grid[0] && world.grid[0].length) || 0);
+      const offsetCellX = Number.isFinite(world.offsetX) ? world.offsetX : 0;
+      const offsetCellY = Number.isFinite(world.offsetY) ? world.offsetY : 0;
+      if (desiredX !== null && desiredY !== null && cols > 0 && rows > 0) {
+        const minX = offsetCellX * CELL_SIZE;
+        const minY = offsetCellY * CELL_SIZE;
+        const maxX = (offsetCellX + cols) * CELL_SIZE - viewW;
+        const maxY = (offsetCellY + rows) * CELL_SIZE - viewH;
+        desiredX = maxX < minX ? minX - ((viewW - cols * CELL_SIZE) * 0.5) : Math.max(minX, Math.min(maxX, desiredX));
+        desiredY = maxY < minY ? minY - ((viewH - rows * CELL_SIZE) * 0.5) : Math.max(minY, Math.min(maxY, desiredY));
       }
       if (desiredX !== null && desiredY !== null) {
         state.viewX = (state.viewX || 0) + (desiredX - (state.viewX || 0)) * Math.min(dt * speed, 1);

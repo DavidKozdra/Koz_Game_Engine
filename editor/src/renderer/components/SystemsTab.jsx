@@ -5,8 +5,9 @@ function idFromName(name, fallback) {
   return (name || fallback || 'item').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || fallback || 'item';
 }
 
-export default function SystemsTab({ project, selectedObjectId, onPatchProject, onSelectObject }) {
+export default function SystemsTab({ mode = 'assets', project, selectedObjectId, onPatchProject, onSelectObject }) {
   const [cellTypeName, setCellTypeName] = useState('');
+  const [themeName, setThemeName] = useState((project && project.editorTheme) || 'slate');
   const [pluginName, setPluginName] = useState('');
 
   const objects = project.objects || [];
@@ -119,6 +120,116 @@ export default function SystemsTab({ project, selectedObjectId, onPatchProject, 
     patch({ scripting: { ...project.scripting, engines: { ...project.scripting.engines, [engineId]: enabled } } });
   }
 
+  function applyTheme(value) {
+    setThemeName(value);
+    patch({ editorTheme: value });
+  }
+
+  function clearAllProjectData() {
+    const ok = window.confirm('Delete all objects, tiles, assets, scripts, animations, and prefabs from this project?');
+    if (!ok) return;
+    patch({
+      world: { ...project.world, grid: (project.world.grid || []).map((row) => row.map(() => 'empty')), elements: [] },
+      objects: [],
+      assets: [],
+      scripts: [],
+      animations: [],
+      prefabs: [],
+    });
+    if (onSelectObject) onSelectObject(null);
+  }
+
+  if (mode === 'scenes') {
+    return (
+      <div style={{ overflow: 'auto', padding: 12, display: 'grid', gap: 12 }}>
+        <AssetsSceneBrowser
+          project={project}
+          onPatchProject={onPatchProject}
+          showScenes={true}
+          showImages={false}
+          showPrefabs={false}
+          title="Scenes"
+        />
+      </div>
+    );
+  }
+
+  if (mode === 'settings') {
+    return (
+      <div style={{ overflow: 'auto', padding: 12, display: 'grid', gap: 12 }}>
+        <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
+          <h3>Scripting</h3>
+          <div className="field">
+            <label>JavaScript</label>
+            <input type="checkbox" checked={true} disabled />
+            <label>Lua</label>
+            <input type="checkbox" checked={!!project.scripting.engines.lua} onChange={(e) => updateEngine('lua', e.target.checked)} />
+            <label>Python</label>
+            <input type="checkbox" checked={!!project.scripting.engines.python} onChange={(e) => updateEngine('python', e.target.checked)} />
+          </div>
+        </div>
+
+        <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
+          <h3>Theming</h3>
+          <div className="field">
+            <label>Theme</label>
+            <select value={themeName} onChange={(e) => applyTheme(e.target.value)}>
+              <option value="slate">Slate</option>
+              <option value="graphite">Graphite</option>
+              <option value="ocean">Ocean</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
+          <h3>Plugins</h3>
+          <div className="field">
+            <label>Plugin</label>
+            <input value={pluginName} onChange={(e) => setPluginName(e.target.value)} placeholder="plugin name" />
+            <button className="btn btn-sm" onClick={addPlugin}>Add</button>
+          </div>
+          {(project.plugins || []).map((plugin) => (
+            <div key={plugin.id} className="field">
+              <input value={plugin.name} onChange={(e) => updatePlugin(plugin.id, 'name', e.target.value)} />
+              <input value={plugin.version || ''} onChange={(e) => updatePlugin(plugin.id, 'version', e.target.value)} />
+              <label style={{ width: 50 }}>On</label>
+              <input type="checkbox" checked={plugin.enabled !== false} onChange={(e) => updatePlugin(plugin.id, 'enabled', e.target.checked)} />
+              <button className="btn btn-sm btn-danger" onClick={() => removePlugin(plugin.id)}>Delete</button>
+            </div>
+          ))}
+        </div>
+
+        <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
+          <h3>Build Targets</h3>
+          <div className="field">
+            <label>Active</label>
+            <select value={project.build.target || 'html-zip'} onChange={(e) => patch({ build: { ...project.build, target: e.target.value } })}>
+              <option value="electron-exe">Electron EXE</option>
+              <option value="pwa">PWA</option>
+              <option value="html-zip">HTML/ZIP</option>
+              <option value="tarball">Tarball</option>
+            </select>
+          </div>
+          <div className="field">
+            <label>Electron EXE</label>
+            <input type="checkbox" checked={!!project.build.targets.electronExe} onChange={(e) => updateBuildTarget('electronExe', e.target.checked)} />
+            <label>PWA</label>
+            <input type="checkbox" checked={!!project.build.targets.pwa} onChange={(e) => updateBuildTarget('pwa', e.target.checked)} />
+            <label>HTML/ZIP</label>
+            <input type="checkbox" checked={!!project.build.targets.htmlZip} onChange={(e) => updateBuildTarget('htmlZip', e.target.checked)} />
+            <label>Tarball</label>
+            <input type="checkbox" checked={!!project.build.targets.tarball} onChange={(e) => updateBuildTarget('tarball', e.target.checked)} />
+          </div>
+        </div>
+
+        <div className="panel-section" style={{ border: '1px solid var(--danger)', borderRadius: 6 }}>
+          <h3>Data</h3>
+          <button className="btn btn-sm btn-danger" onClick={clearAllProjectData}>Delete Project Data</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ overflow: 'auto', padding: 12, display: 'grid', gap: 12 }}>
       <AssetsSceneBrowser
@@ -126,7 +237,12 @@ export default function SystemsTab({ project, selectedObjectId, onPatchProject, 
         selectedObjectId={selectedObjectId}
         onSelectObject={onSelectObject}
         onPatchProject={onPatchProject}
+        showScenes={false}
+        showImages={true}
+        showPrefabs={true}
+        title="Assets"
       />
+
       <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
         <h3>Cell Types</h3>
         <div className="field">
@@ -187,13 +303,12 @@ export default function SystemsTab({ project, selectedObjectId, onPatchProject, 
       </div>
 
       <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
-        <h3>Prefabs And Classes</h3>
+        <h3>Prefabs</h3>
         <div style={{ marginBottom: 8 }}>
           <button className="btn btn-sm" onClick={addPrefabFromSelected} disabled={!selectedObject}>Save Selected As Prefab</button>
           {!selectedObject && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-muted)' }}>Select an object first</span>}
         </div>
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Prefabs</div>
+        <div>
           {(project.prefabs || []).map((prefab) => (
             <div key={prefab.id} className="field">
               <span style={{ flex: 1 }}>{prefab.name}</span>
@@ -201,81 +316,6 @@ export default function SystemsTab({ project, selectedObjectId, onPatchProject, 
             </div>
           ))}
           {(project.prefabs || []).length === 0 && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>No prefabs saved.</div>}
-        </div>
-        <div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Default Object Classes</div>
-          {(project.defaultClasses || []).map((cls) => (
-            <div key={cls.id} style={{ fontSize: 12, marginBottom: 2 }}>{cls.name} ({cls.baseType})</div>
-          ))}
-        </div>
-      </div>
-
-      <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
-        <h3>Camera</h3>
-        <div className="field">
-          <label>Target</label>
-          <select value={project.camera.targetObjectId || ''} onChange={(e) => patch({ camera: { ...project.camera, targetObjectId: e.target.value || null } })}>
-            <option value="">None</option>
-            {objects.map((obj) => <option key={obj.id} value={obj.id}>{obj.name}</option>)}
-          </select>
-        </div>
-        <div className="field">
-          <label>Speed</label>
-          <input type="number" value={project.camera.speed || 8} onChange={(e) => patch({ camera: { ...project.camera, speed: parseFloat(e.target.value) || 0 } })} />
-          <label style={{ width: 60 }}>Zoom</label>
-          <input type="number" value={project.camera.zoom || 1} onChange={(e) => patch({ camera: { ...project.camera, zoom: parseFloat(e.target.value) || 1 } })} />
-        </div>
-      </div>
-
-      <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
-        <h3>Scripting And Plugins</h3>
-        <div className="field">
-          <label>JavaScript</label>
-          <input type="checkbox" checked={true} disabled />
-          <label>Lua</label>
-          <input type="checkbox" checked={!!project.scripting.engines.lua} onChange={(e) => updateEngine('lua', e.target.checked)} />
-          <label>Python</label>
-          <input type="checkbox" checked={!!project.scripting.engines.python} onChange={(e) => updateEngine('python', e.target.checked)} />
-        </div>
-        <div className="field">
-          <label>Plugin</label>
-          <input value={pluginName} onChange={(e) => setPluginName(e.target.value)} placeholder="plugin name" />
-          <button className="btn btn-sm" onClick={addPlugin}>Add</button>
-        </div>
-        {(project.plugins || []).map((plugin) => (
-          <div key={plugin.id} className="field">
-            <input value={plugin.name} onChange={(e) => updatePlugin(plugin.id, 'name', e.target.value)} />
-            <input value={plugin.version || ''} onChange={(e) => updatePlugin(plugin.id, 'version', e.target.value)} />
-            <label style={{ width: 50 }}>On</label>
-            <input type="checkbox" checked={plugin.enabled !== false} onChange={(e) => updatePlugin(plugin.id, 'enabled', e.target.checked)} />
-            <button className="btn btn-sm btn-danger" onClick={() => removePlugin(plugin.id)}>Delete</button>
-          </div>
-        ))}
-      </div>
-
-      <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
-        <h3>Build Targets</h3>
-        <div className="field">
-          <label>Active</label>
-          <select
-            value={project.build.target || 'html-zip'}
-            onChange={(e) => patch({ build: { ...project.build, target: e.target.value } })}
-          >
-            <option value="electron-exe">Electron EXE</option>
-            <option value="pwa">PWA</option>
-            <option value="html-zip">HTML/ZIP</option>
-            <option value="tarball">Tarball</option>
-          </select>
-        </div>
-        <div className="field">
-          <label>Electron EXE</label>
-          <input type="checkbox" checked={!!project.build.targets.electronExe} onChange={(e) => updateBuildTarget('electronExe', e.target.checked)} />
-          <label>PWA</label>
-          <input type="checkbox" checked={!!project.build.targets.pwa} onChange={(e) => updateBuildTarget('pwa', e.target.checked)} />
-          <label>HTML/ZIP</label>
-          <input type="checkbox" checked={!!project.build.targets.htmlZip} onChange={(e) => updateBuildTarget('htmlZip', e.target.checked)} />
-          <label>Tarball</label>
-          <input type="checkbox" checked={!!project.build.targets.tarball} onChange={(e) => updateBuildTarget('tarball', e.target.checked)} />
         </div>
       </div>
     </div>
