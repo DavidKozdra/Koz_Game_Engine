@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 export default function Inspector({ project, editorState, onUpdateObject, onUpdateComponent }) {
   const selectedId = editorState.selectedObjectId;
@@ -16,6 +16,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
   }
 
   const components = obj.components || {};
+  const bindings = components.ScriptBindings || [];
 
   function handleNameChange(e) {
     onUpdateObject(obj.id, { name: e.target.value });
@@ -25,6 +26,48 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
     const comp = { ...(components[compName] || {}) };
     comp[field] = value;
     onUpdateComponent(obj.id, compName, comp);
+  }
+
+  // ---- Script Bindings helpers ----
+  function updateBindings(newBindings) {
+    onUpdateComponent(obj.id, 'ScriptBindings', newBindings);
+  }
+
+  function handleAddBinding() {
+    updateBindings([...bindings, { scriptId: null, active: true, properties: {} }]);
+  }
+
+  function handleRemoveBinding(index) {
+    updateBindings(bindings.filter((_, i) => i !== index));
+  }
+
+  function handleBindingField(index, field, value) {
+    const updated = bindings.map((b, i) => i === index ? { ...b, [field]: value } : b);
+    updateBindings(updated);
+  }
+
+  function handlePropertyChange(bindingIndex, key, value) {
+    const updated = bindings.map((b, i) => {
+      if (i !== bindingIndex) return b;
+      return { ...b, properties: { ...b.properties, [key]: value } };
+    });
+    updateBindings(updated);
+  }
+
+  function handleAddProperty(bindingIndex) {
+    const key = prompt('Property name:');
+    if (!key || !key.trim()) return;
+    handlePropertyChange(bindingIndex, key.trim(), '');
+  }
+
+  function handleRemoveProperty(bindingIndex, key) {
+    const updated = bindings.map((b, i) => {
+      if (i !== bindingIndex) return b;
+      const props = { ...b.properties };
+      delete props[key];
+      return { ...b, properties: props };
+    });
+    updateBindings(updated);
   }
 
   return (
@@ -114,24 +157,63 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
         </div>
       )}
 
-      {/* Script Binding */}
-      {components.ScriptBinding && (
-        <div className="panel-section">
-          <h3>Script</h3>
-          <div className="field">
-            <label>Script</label>
-            <select
-              value={components.ScriptBinding.scriptId || ''}
-              onChange={(e) => handleComponentChange('ScriptBinding', 'scriptId', e.target.value || null)}
-            >
-              <option value="">None</option>
-              {(project.scripts || []).map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      )}
+      {/* Script Bindings (multiple) */}
+      <div className="panel-section">
+        <h3 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>Scripts</span>
+          <button className="btn btn-sm" onClick={handleAddBinding} style={{ fontSize: 10, padding: '1px 6px' }}>+ Add</button>
+        </h3>
+        {bindings.length === 0 && (
+          <div style={{ color: 'var(--text-muted)', fontSize: 11, padding: '2px 0' }}>No scripts attached</div>
+        )}
+        {bindings.map((binding, idx) => {
+          const script = (project.scripts || []).find(s => s.id === binding.scriptId);
+          const props = binding.properties || {};
+          const propKeys = Object.keys(props);
+          return (
+            <div key={idx} style={{
+              background: 'var(--bg-dark)', borderRadius: 4, padding: '6px 8px', marginBottom: 6,
+              border: binding.active ? '1px solid var(--border)' : '1px solid var(--border)',
+              opacity: binding.active ? 1 : 0.5,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                <input type="checkbox" checked={binding.active}
+                  onChange={(e) => handleBindingField(idx, 'active', e.target.checked)}
+                  title="Active" style={{ cursor: 'pointer' }} />
+                <select value={binding.scriptId || ''} style={{
+                  flex: 1, padding: '2px 4px', background: 'var(--bg-input)', color: 'var(--text)',
+                  border: '1px solid var(--border)', borderRadius: 3, fontSize: 11,
+                }}
+                  onChange={(e) => handleBindingField(idx, 'scriptId', e.target.value || null)}>
+                  <option value="">-- Select Script --</option>
+                  {(project.scripts || []).map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+                <button className="btn btn-sm btn-danger" onClick={() => handleRemoveBinding(idx)}
+                  style={{ fontSize: 10, padding: '1px 5px' }}>x</button>
+              </div>
+
+              {/* Serialized properties */}
+              {script && (
+                <div style={{ marginTop: 4 }}>
+                  {propKeys.map(key => (
+                    <div key={key} className="field" style={{ marginBottom: 2 }}>
+                      <label style={{ width: 50, fontSize: 10 }}>{key}</label>
+                      <input type="text" value={props[key]} style={{ fontSize: 11 }}
+                        onChange={(e) => handlePropertyChange(idx, key, e.target.value)} />
+                      <button onClick={() => handleRemoveProperty(idx, key)}
+                        style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 11, padding: '0 2px' }}>x</button>
+                    </div>
+                  ))}
+                  <button className="btn btn-sm" onClick={() => handleAddProperty(idx)}
+                    style={{ fontSize: 10, padding: '1px 6px', marginTop: 2 }}>+ Property</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
       {/* Animator */}
       {components.Animator && (

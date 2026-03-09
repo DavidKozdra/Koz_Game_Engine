@@ -43,7 +43,7 @@ function createGameObject(name, x, y, opts = {}) {
       Transform: { x, y, rotation: 0, scaleX: 1, scaleY: 1 },
       Sprite: { assetId: null, color: opts.color || '#4ade80', width: 32, height: 32 },
       Collider: { shape: 'rect', width: 32, height: 32 },
-      ScriptBinding: { scriptId: null },
+      ScriptBindings: [],
       Animator: { clipId: null },
     },
   };
@@ -190,11 +190,94 @@ function App() {
   }, []);
 
   const handleAddScript = useCallback((name, language = 'javascript') => {
-    const templates = {
-      javascript: `function onInit(self, engine) {\n  // Called once when game starts\n}\n\nfunction onUpdate(self, engine, dt) {\n  // Called every frame\n  // Use engine.keyIsDown(keyCode) for input\n}\n`,
-      typescript: `// TypeScript support coming soon\nfunction onInit(self: any, engine: any): void {\n  // Called once when game starts\n}\n\nfunction onUpdate(self: any, engine: any, dt: number): void {\n  // Called every frame\n}\n`,
-      lua: `-- Lua support coming soon\nfunction onInit(self, engine)\n  -- Called once when game starts\nend\n\nfunction onUpdate(self, engine, dt)\n  -- Called every frame\nend\n`,
-      python: `# Python support coming soon\ndef on_init(self, engine):\n    # Called once when game starts\n    pass\n\ndef on_update(self, engine, dt):\n    # Called every frame\n    pass\n`,
+const templates = {
+      javascript: `function onInit(self, engine) {
+  // Called once when game starts
+}
+
+function onUpdate(self, engine, dt) {
+  // Called every frame
+  // Use engine.keyIsDown(keyCode) for input
+}
+`,
+      ui: `// UI Screen using KozUIManager
+// Registers a screen that shows/hides based on game state
+
+function onInit(self, engine) {
+  // Register screen with UIManager (auto-injected as global)
+  if (typeof KozUIManager !== 'undefined') {
+    KozUIManager.registerScreen('myScreen', {
+      // validStates: ['RUNNING', 'PAUSED'], // Show in these states
+      create: function() {
+        const container = document.createElement('div');
+        container.id = 'myScreen';
+        container.style.cssText = 'position:absolute;top:20px;right:20px;padding:16px;background:rgba(0,0,0,0.8);color:#fff;border-radius:8px;font-family:sans-serif;';
+        container.innerHTML = '<h3>My UI</h3><p>Game time: 0s</p><button id="myBtn">Click Me</button>';
+        
+        // Add click handler
+        const btn = container.querySelector('#myBtn');
+        if (btn) {
+          btn.onclick = function() {
+            console.log('Button clicked!');
+          };
+        }
+        
+        return container;
+      },
+      show: function() {
+        // Called when screen becomes visible
+        console.log('UI Screen shown');
+      },
+      hide: function() {
+        // Called when screen hides
+        console.log('UI Screen hidden');
+      },
+      update: function() {
+        // Called every frame while visible
+        const container = this.container;
+        if (container) {
+          const time = Math.floor(engine.elapsed || 0);
+          const p = container.querySelector('p');
+          if (p) p.textContent = 'Game time: ' + time + 's';
+        }
+      },
+      validStates: ['RUNNING']
+    });
+  }
+}
+
+function onUpdate(self, engine, dt) {
+  // Called every frame
+  // KozUIManager.updateAll() is called automatically
+}
+`,
+      typescript: `// TypeScript support coming soon
+function onInit(self: any, engine: any): void {
+  // Called once when game starts
+}
+
+function onUpdate(self: any, engine: any, dt: number): void {
+  // Called every frame
+}
+`,
+      lua: `-- Lua support coming soon
+function onInit(self, engine)
+  -- Called once when game starts
+end
+
+function onUpdate(self, engine, dt)
+  -- Called every frame
+end
+`,
+      python: `# Python support coming soon
+def on_init(self, engine):
+    # Called once when game starts
+    pass
+
+def on_update(self, engine, dt):
+    # Called every frame
+    pass
+`,
     };
     const script = {
       id: genId('script'), name, language,
@@ -407,10 +490,13 @@ width:(o.components&&o.components.Sprite&&o.components.Sprite.width)||32,
 height:(o.components&&o.components.Sprite&&o.components.Sprite.height)||32,
 color:(o.components&&o.components.Sprite&&o.components.Sprite.color)||'#4ade80',components:o.components||{}})});
 (P.scripts||[]).forEach(s=>{sc[s.id]=s});
-go.forEach(o=>{let b=o.components.ScriptBinding;if(b&&b.scriptId&&sc[b.scriptId]){try{
-let f=new Function('return (function(self,console){'+sc[b.scriptId].source+
+go.forEach(o=>{let bs=o.components.ScriptBindings||[];let lb=o.components.ScriptBinding;
+if(lb&&lb.scriptId)bs.push({scriptId:lb.scriptId,active:true,properties:{}});
+bs.forEach(b=>{if(!b.active||!b.scriptId||!sc[b.scriptId])return;try{
+let f=new Function('return (function(self,props,console){'+sc[b.scriptId].source+
 ' return{onInit:typeof onInit==="function"?onInit:null,onUpdate:typeof onUpdate==="function"?onUpdate:null}})')();
-si.push({o,h:f(o,console)})}catch(e){console.error(e)}}});ac=P.animations||[];
+let p=JSON.parse(JSON.stringify(b.properties||{}));
+si.push({o,h:f(o,p,console),p})}catch(e){console.error(e)}})});ac=P.animations||[];
 let E={gameObjects:go,elapsed:0,findObject:id=>go.find(o=>o.id===id)||null,keyIsDown:c=>keyIsDown(c)};
 si.forEach(i=>{if(i.h.onInit)try{i.h.onInit(i.o,E)}catch(e){console.error(e)}})}
 function draw(){let dt=Math.min(deltaTime/1000,.033);el+=dt;background('#0b1220');
