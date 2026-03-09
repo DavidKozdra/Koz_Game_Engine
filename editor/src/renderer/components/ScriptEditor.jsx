@@ -85,9 +85,37 @@ end
 `,
 };
 
-export default function ScriptEditor({ project, onUpdateScript, onAddScript, onDeleteScript }) {
+const EXT_BY_LANGUAGE = {
+  javascript: 'js',
+  ui: 'ui.js',
+  typescript: 'ts',
+  lua: 'lua',
+  python: 'py',
+};
+
+function getScriptFileName(script) {
+  if (!script || !script.name) return 'untitled.js';
+  const ext = EXT_BY_LANGUAGE[script.language] || 'txt';
+  if (script.name.includes('.')) return script.name;
+  return `${script.name}.${ext}`;
+}
+
+function getLineCount(source) {
+  if (!source) return 1;
+  return source.split('\n').length;
+}
+
+export default function ScriptEditor({
+  project,
+  onUpdateScript,
+  onAddScript,
+  onDeleteScript,
+  selectedId: externalSelectedId,
+  setSelectedId: externalSetSelectedId,
+  showFileList = true,
+}) {
   const scripts = project ? project.scripts || [] : [];
-  const [selectedId, setSelectedId] = useState(null);
+  const [localSelectedId, setLocalSelectedId] = useState(null);
   const [showNewModal, setShowNewModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [newLang, setNewLang] = useState('javascript');
@@ -95,6 +123,8 @@ export default function ScriptEditor({ project, onUpdateScript, onAddScript, onD
   const viewRef = useRef(null);
   const skipUpdateRef = useRef(false);
   const nameInputRef = useRef(null);
+  const selectedId = externalSelectedId !== undefined ? externalSelectedId : localSelectedId;
+  const setSelectedId = externalSetSelectedId || setLocalSelectedId;
 
   const selectedScript = scripts.find(s => s.id === selectedId) || null;
 
@@ -191,31 +221,86 @@ export default function ScriptEditor({ project, onUpdateScript, onAddScript, onD
   }, [selectedId, selectedScript, onDeleteScript]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Script tabs */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '4px 8px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-        {scripts.map(s => (
-          <button
-            key={s.id}
-            className={`btn btn-sm ${selectedId === s.id ? 'active' : ''}`}
-            onClick={() => setSelectedId(s.id)}
-            title={s.language ? `${s.name} (${s.language})` : s.name}
-          >
-            {s.name}
-          </button>
-        ))}
-        <button className="btn btn-sm" onClick={openNewModal} title="New Script">+</button>
-        {selectedId && <button className="btn btn-sm btn-danger" onClick={handleDelete} title="Delete Script" style={{ marginLeft: 'auto' }}>Delete</button>}
-      </div>
-
-      {/* Editor area */}
-      {selectedScript ? (
-        <div ref={editorRef} style={{ flex: 1, overflow: 'hidden' }} />
-      ) : (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-          {scripts.length === 0 ? 'No scripts. Click + to create one.' : 'Select a script to edit.'}
+    <div style={{ display: 'flex', height: '100%' }}>
+      {showFileList && (
+        <div style={{ width: 280, borderRight: '1px solid var(--border)', background: '#0f172a', display: 'flex', flexDirection: 'column', minWidth: 220 }}>
+          <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', fontSize: 11, color: 'var(--text-muted)', letterSpacing: 0.6, textTransform: 'uppercase', display: 'flex', alignItems: 'center' }}>
+            <span style={{ fontWeight: 600 }}>Files</span>
+            <span style={{ marginLeft: 8, color: '#64748b' }}>({scripts.length})</span>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '6px 0', fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace" }}>
+            {scripts.length === 0 && (
+              <div style={{ padding: '10px 12px', color: 'var(--text-muted)', fontSize: 12 }}>No scripts yet.</div>
+            )}
+            {scripts.map((s, idx) => {
+              const lineCount = getLineCount(s.source);
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setSelectedId(s.id)}
+                  style={{
+                    width: '100%',
+                    border: 'none',
+                    background: selectedId === s.id ? 'rgba(59,130,246,0.16)' : 'transparent',
+                    borderLeft: selectedId === s.id ? '2px solid var(--accent)' : '2px solid transparent',
+                    color: selectedId === s.id ? '#f1f5f9' : '#cbd5e1',
+                    padding: '6px 10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                  title={`${getScriptFileName(s)} (${lineCount} lines)`}
+                >
+                  <span style={{ color: '#64748b', minWidth: 26, textAlign: 'right', fontSize: 11 }}>
+                    {(idx + 1).toString().padStart(2, '0')}
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
+                    {getScriptFileName(s)}
+                  </span>
+                  <span style={{ color: '#94a3b8', fontSize: 11, whiteSpace: 'nowrap' }}>
+                    L{lineCount}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ padding: 8, borderTop: '1px solid var(--border)' }}>
+            <button className="btn btn-sm" onClick={openNewModal} style={{ width: '100%' }}>+ New Script</button>
+          </div>
         </div>
       )}
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <span style={{ fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace", color: 'var(--text-muted)', fontSize: 11 }}>
+            {selectedScript ? getScriptFileName(selectedScript) : 'No file selected'}
+          </span>
+          {selectedScript && (
+            <span style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase' }}>
+              {selectedScript.language || 'text'}
+            </span>
+          )}
+          {!showFileList && (
+            <button className="btn btn-sm" onClick={openNewModal} style={{ marginLeft: 'auto' }}>
+              + New Script
+            </button>
+          )}
+          {selectedId && (
+            <button className="btn btn-sm btn-danger" onClick={handleDelete} title="Delete Script" style={{ marginLeft: 'auto' }}>
+              Delete
+            </button>
+          )}
+        </div>
+
+        {selectedScript ? (
+          <div ref={editorRef} style={{ flex: 1, overflow: 'hidden' }} />
+        ) : (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+            {scripts.length === 0 ? 'No scripts. Click + New Script to create one.' : 'Select a script file from the list.'}
+          </div>
+        )}
+      </div>
 
       {/* New Script Modal */}
       <Modal open={showNewModal} title="New Script" onClose={() => setShowNewModal(false)}>

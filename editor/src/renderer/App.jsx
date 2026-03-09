@@ -59,13 +59,14 @@ function App() {
   const [showProjectSelector, setShowProjectSelector] = useState(true);
   const [editorState, setEditorState] = useState({
     mode: 'EDIT', activeTool: 'brush', brushValue: 1,
-    selectedObjectId: null, camera: { x: 0, y: 0, zoom: 1 }, gridVisible: true,
+    selectedObjectId: null, selectedScriptId: null, camera: { x: 0, y: 0, zoom: 1 }, gridVisible: true,
   });
-  const [bottomTab, setBottomTab] = useState('scripts');
+  const [bottomTab, setBottomTab] = useState('timeline');
   const [bottomHeight, setBottomHeight] = useState(240);
   const [logs, setLogs] = useState([]);
   const undoStackRef = useRef([]);
   const redoStackRef = useRef([]);
+  const [mainTab, setMainTab] = useState('world');
 
   // ...existing callbacks and logic...
 
@@ -106,7 +107,7 @@ function App() {
 
   const handlePlayToggle = useCallback(() => {
     if (isPlaying) { stopPlay(); updateEditor({ mode: 'EDIT' }); }
-    else { startPlay(); updateEditor({ mode: 'PLAY' }); setBottomTab('console'); }
+    else { startPlay(); updateEditor({ mode: 'PLAY' }); setMainTab('world'); setBottomTab('console'); }
   }, [isPlaying, startPlay, stopPlay, updateEditor]);
 
   // ---- World editing ----
@@ -382,7 +383,7 @@ def on_update(self, engine, dt):
   const handleNew = useCallback(() => {
     setProject(createDefaultProject());
     setShowProjectSelector(false);
-    updateEditor({ selectedObjectId: null, camera: { x: 0, y: 0, zoom: 1 } });
+    updateEditor({ selectedObjectId: null, selectedScriptId: null, camera: { x: 0, y: 0, zoom: 1 } });
     undoStackRef.current = []; redoStackRef.current = [];
   }, [updateEditor]);
 
@@ -460,94 +461,95 @@ def on_update(self, engine, dt):
           </div>
 
           <div className="editor-center">
-            <div className="editor-viewport">
-              {isPlaying ? (
-                <canvas ref={playCanvasRef} width={project.meta.resolution.width} height={project.meta.resolution.height}
-                  style={{ display: 'block', maxWidth: '100%', maxHeight: '100%', margin: '0 auto', background: '#0b1220' }} tabIndex={0} />
-              ) : (
-                <Viewport project={project} editorState={editorState}
-                  onCellPaint={handleCellPaint} onCellFill={handleCellFill} onSelectObject={handleSelectObject}
-                  onPlaceObject={(x, y) => { const obj = createGameObject('Object', x, y); setProject(prev => { pushUndo(prev); return { ...prev, objects: [...prev.objects, obj] }; }); updateEditor({ selectedObjectId: obj.id }); }}
-                  onMoveObject={handleMoveObject} onUpdateCamera={handleUpdateCamera} />
-              )}
+            <div className="main-tabs" style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: '#181c24' }}>
+              {['world', 'scripts'].map(tab => (
+                <button
+                  key={tab}
+                  className={`main-tab ${mainTab === tab ? 'active' : ''}`}
+                  style={{
+                    padding: '8px 20px',
+                    border: 'none',
+                    background: mainTab === tab ? '#23283a' : 'transparent',
+                    color: mainTab === tab ? '#fff' : '#aaa',
+                    fontWeight: mainTab === tab ? 600 : 400,
+                    cursor: 'pointer',
+                    outline: 'none',
+                    borderBottom: mainTab === tab ? '2px solid #4ade80' : '2px solid transparent',
+                    transition: 'background 0.15s, color 0.15s',
+                  }}
+                  onClick={() => setMainTab(tab)}
+                >
+                  {tab === 'world' ? 'World / Game' : `Scripts (${project && Array.isArray(project.scripts) ? project.scripts.length : 0})`}
+                </button>
+              ))}
             </div>
-            <div className="resize-handle" onMouseDown={handleResizeStart} />
-            <div className="editor-bottom" style={{ height: bottomHeight }}>
-              <div className="bottom-tabs">
-                {['scripts', 'timeline', 'console'].map(tab => (
-                  <button key={tab} className={`bottom-tab ${bottomTab === tab ? 'active' : ''}`} onClick={() => setBottomTab(tab)}>
-                    {tab === 'scripts' ? `Scripts (${project.scripts.length})` : tab === 'timeline' ? `Timeline (${project.animations.length})` : `Console (${logs.length})`}
-                  </button>
-                ))}
-              </div>
-              <div className="bottom-content">
-                {bottomTab === 'scripts' && <ScriptEditor project={project} onUpdateScript={handleUpdateScript} onAddScript={handleAddScript} onDeleteScript={handleDeleteScript} />}
-                {bottomTab === 'timeline' && <Timeline project={project} onUpdateAnimation={handleUpdateAnimation} onAddAnimation={handleAddAnimation} onDeleteAnimation={handleDeleteAnimation} onAddTrack={handleAddTrack} onAddKeyframe={handleAddKeyframe} onDeleteKeyframe={() => {}} onUpdateKeyframe={() => {}} />}
-                {bottomTab === 'console' && <ConsolePanel logs={logs} onClear={() => setLogs([])} onCommand={execute} isRunning={isPlaying} onStop={stopPlay} />}
-              </div>
-            </div>
-          </div>
 
-          <div className="editor-right">
-            <Inspector project={project} editorState={editorState} onUpdateObject={handleUpdateObject} onUpdateComponent={handleUpdateComponent} />
+            {mainTab === 'world' && (
+              <>
+                <div className="editor-viewport">
+                  {isPlaying ? (
+                    <canvas ref={playCanvasRef} width={project.meta.resolution.width} height={project.meta.resolution.height}
+                      style={{ display: 'block', maxWidth: '100%', maxHeight: '100%', margin: '0 auto', background: '#0b1220' }} tabIndex={0} />
+                  ) : (
+                    <Viewport project={project} editorState={editorState}
+                      onCellPaint={handleCellPaint} onCellFill={handleCellFill} onSelectObject={handleSelectObject}
+                      onPlaceObject={(x, y) => { const obj = createGameObject('Object', x, y); setProject(prev => { pushUndo(prev); return { ...prev, objects: [...prev.objects, obj] }; }); updateEditor({ selectedObjectId: obj.id }); }}
+                      onMoveObject={handleMoveObject} onUpdateCamera={handleUpdateCamera} />
+                  )}
+                </div>
+                <div className="resize-handle" onMouseDown={handleResizeStart} />
+                <div className="editor-bottom" style={{ height: bottomHeight }}>
+                  <div className="bottom-tabs">
+                    {['timeline', 'console'].map(tab => (
+                      <button key={tab} className={`bottom-tab ${bottomTab === tab ? 'active' : ''}`} onClick={() => setBottomTab(tab)}>
+                        {tab === 'timeline'
+                          ? `Timeline (${project && Array.isArray(project.animations) ? project.animations.length : 0})`
+                          : `Console (${logs.length})`}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ flex: 1, minHeight: 0 }}>
+                    {bottomTab === 'timeline' && (
+                      <Timeline
+                        project={project}
+                        onUpdateAnimation={handleUpdateAnimation}
+                        onAddAnimation={handleAddAnimation}
+                        onDeleteAnimation={handleDeleteAnimation}
+                        onAddTrack={handleAddTrack}
+                        onAddKeyframe={handleAddKeyframe}
+                      />
+                    )}
+                    {bottomTab === 'console' && (
+                      <ConsolePanel
+                        logs={logs}
+                        onClear={() => setLogs([])}
+                        onCommand={(cmd) => execute && execute(cmd)}
+                        isRunning={isPlaying}
+                        onStop={stopPlay}
+                      />
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+            {mainTab === 'scripts' && (
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <ScriptEditor
+                  project={project}
+                  onUpdateScript={handleUpdateScript}
+                  onAddScript={handleAddScript}
+                  onDeleteScript={handleDeleteScript}
+                  selectedId={editorState.selectedScriptId}
+                  setSelectedId={id => setEditorState(prev => ({ ...prev, selectedScriptId: id }))}
+                  showFileList={true}
+                />
+              </div>
+            )}
           </div>
-
-          <div className="editor-statusbar">
-            <span className={isPlaying ? 'status-playing' : ''}>{isPlaying ? 'PLAYING' : 'EDIT'}</span>
-            <span>Tool: {editorState.activeTool}</span>
-            <span>Zoom: {(editorState.camera.zoom * 100).toFixed(0)}%</span>
-            <span>Obj: {project.objects.length} | Scripts: {project.scripts.length} | Anims: {project.animations.length}</span>
-            <span style={{ flex: 1 }} />
-            <span style={{ opacity: 0.6 }}>F5: Play | Ctrl+S: Save | Ctrl+Z/Y: Undo/Redo</span>
-            <span style={{ marginLeft: 12, fontWeight: 600 }}>{project.meta.name}</span>
-          </div>
+          <Inspector project={project} editorState={editorState} onUpdateObject={handleUpdateObject} onUpdateComponent={handleUpdateComponent} />
         </div>
       )}
-    </>
-  );
+            </>
+          );
 }
-
-// ---- Export HTML builder ----
-function buildExportHtml(project, projectJson) {
-  const res = project.meta.resolution || { width: 960, height: 540 };
-  const title = project.meta.name || 'Koz Engine Game';
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="mobile-web-app-capable" content="yes"><title>${escapeHtml(title)}</title>
-<script src="https://cdn.jsdelivr.net/npm/p5@1.4.2/lib/p5.js"><\/script>
-<style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;background:#0f172a;overflow:hidden;display:flex;align-items:center;justify-content:center}canvas{display:block}</style>
-</head><body><script>
-const P=${projectJson},CS=24;let go=[],sc={},si=[],ac=[],el=0;
-function setup(){createCanvas(${res.width},${res.height}).parent(document.body);pixelDensity(1);textFont('Trebuchet MS');
-(P.objects||[]).forEach(o=>{let t=(o.components&&o.components.Transform)||{};
-go.push({id:o.id,name:o.name,type:o.type,x:t.x||o.x||0,y:t.y||o.y||0,
-width:(o.components&&o.components.Sprite&&o.components.Sprite.width)||32,
-height:(o.components&&o.components.Sprite&&o.components.Sprite.height)||32,
-color:(o.components&&o.components.Sprite&&o.components.Sprite.color)||'#4ade80',components:o.components||{}})});
-(P.scripts||[]).forEach(s=>{sc[s.id]=s});
-go.forEach(o=>{let bs=o.components.ScriptBindings||[];let lb=o.components.ScriptBinding;
-if(lb&&lb.scriptId)bs.push({scriptId:lb.scriptId,active:true,properties:{}});
-bs.forEach(b=>{if(!b.active||!b.scriptId||!sc[b.scriptId])return;try{
-let f=new Function('return (function(self,props,console){'+sc[b.scriptId].source+
-' return{onInit:typeof onInit==="function"?onInit:null,onUpdate:typeof onUpdate==="function"?onUpdate:null}})')();
-let p=JSON.parse(JSON.stringify(b.properties||{}));
-si.push({o,h:f(o,p,console),p})}catch(e){console.error(e)}})});ac=P.animations||[];
-let E={gameObjects:go,elapsed:0,findObject:id=>go.find(o=>o.id===id)||null,keyIsDown:c=>keyIsDown(c)};
-si.forEach(i=>{if(i.h.onInit)try{i.h.onInit(i.o,E)}catch(e){console.error(e)}})}
-function draw(){let dt=Math.min(deltaTime/1000,.033);el+=dt;background('#0b1220');
-let w=P.world;if(w&&w.grid)for(let y=0;y<w.rows;y++)for(let x=0;x<w.cols;x++){
-let c=w.grid[y]&&w.grid[y][x];if(c!=null&&c!==0){fill('hsl('+(typeof c==='number'?c*40:120)%360+',50%,35%)');noStroke();rect(x*CS,y*CS,CS,CS)}}
-ac.forEach(cl=>{if(!cl.tracks)return;let d=cl.duration||1,t=cl.loop?el%d:Math.min(el,d);
-cl.tracks.forEach(tr=>{let o=go.find(g=>g.id===tr.targetObjectId);if(!o||!tr.keyframes||!tr.keyframes.length)return;o[tr.property]=S(tr,t)})});
-let E={gameObjects:go,elapsed:el,findObject:id=>go.find(o=>o.id===id)||null,keyIsDown:c=>keyIsDown(c)};
-si.forEach(i=>{if(i.h.onUpdate)try{i.h.onUpdate(i.o,E,dt)}catch(e){console.error(e)}});
-go.forEach(o=>{fill(o.color);noStroke();rect(o.x,o.y,o.width,o.height);fill('#fff');textSize(10);textAlign(CENTER,BOTTOM);text(o.name,o.x+o.width/2,o.y-2)})}
-function S(tr,t){let k=tr.keyframes;if(!k.length)return 0;if(k.length===1)return k[0].value;
-if(t<=k[0].time)return k[0].value;if(t>=k[k.length-1].time)return k[k.length-1].value;
-for(let i=0;i<k.length-1;i++){if(t>=k[i].time&&t<=k[i+1].time){let r=k[i+1].time-k[i].time,p=r>0?(t-k[i].time)/r:0;return k[i].value+(k[i+1].value-k[i].value)*p}}return k[k.length-1].value}
-<\/script></body></html>`;
-}
-function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 export default App;
