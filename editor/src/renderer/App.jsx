@@ -634,6 +634,8 @@ function App() {
   const handleCreatePrefabFromObject = useCallback((objId) => {
     const source = (projectView && projectView.objects || []).find((o) => o.id === objId);
     if (!source) return;
+    // Don't create duplicate if already linked to a prefab
+    if (source.prefabId) return;
     const prefabId = `prefab_${Date.now().toString(36)}`;
     const nextPrefab = {
       id: prefabId,
@@ -642,30 +644,19 @@ function App() {
       object: JSON.parse(JSON.stringify(source)),
     };
     setProject((prev) => {
-      const nextObjects = ((prev.scenes && prev.scenes[prev.activeScene || 'main'] && prev.scenes[prev.activeScene || 'main'].objects) || [])
-        .map((o) => o.id === objId ? { ...o, prefabId } : o);
-      const sceneKey = prev.activeScene || 'main';
-      return {
-        ...prev,
-        prefabs: [...((prev && prev.prefabs) || []), nextPrefab],
-        scenes: {
-          ...prev.scenes,
-          [sceneKey]: {
-            ...prev.scenes[sceneKey],
-            objects: nextObjects,
-          },
-        },
-      };
+      const updated = mutateActiveScene(prev, ({ world, objects }) => ({
+        world,
+        objects: objects.map((o) => o.id === objId ? { ...o, prefabId } : o),
+      }));
+      return { ...updated, prefabs: [...((updated.prefabs) || []), nextPrefab] };
     });
-  }, [projectView]);
+  }, [projectView, mutateActiveScene]);
 
   const handleUnlinkPrefab = useCallback((objId) => {
-    mutateActiveScene((scene) => ({
-      ...scene,
-      objects: (scene.objects || []).map((o) =>
-        o.id === objId ? { ...o, prefabId: undefined } : o
-      ),
-    }));
+    setProject((prev) => mutateActiveScene(prev, ({ world, objects }) => ({
+      world,
+      objects: objects.map((o) => o.id === objId ? { ...o, prefabId: undefined } : o),
+    })));
   }, [mutateActiveScene]);
 
   // ---- Scripts ----
