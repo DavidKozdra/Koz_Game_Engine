@@ -28,13 +28,84 @@ function createDefaultProject(opts = {}) {
   return ensureProjectShape({
     schemaVersion: 1,
     meta: { name: opts.name || 'Untitled Project', version: '1.0.0', resolution: { width: 960, height: 540 }, engineVersion: '0.1.0' },
-    world: { cols, rows, defaultCell: dc, grid, elements: [], meta: {} },
+    world: { cols, rows, offsetX: 0, offsetY: 0, defaultCell: dc, grid, elements: [], meta: {} },
     objects: [],
     animations: [],
     scripts: [],
     assets: [],
     build: { profile: 'web-prod', pwa: false },
   });
+}
+
+function worldOffsets(world) {
+  return {
+    x: Number.isFinite(world && world.offsetX) ? world.offsetX : 0,
+    y: Number.isFinite(world && world.offsetY) ? world.offsetY : 0,
+  };
+}
+
+function worldFillValue(world) {
+  return world && world.defaultCell !== undefined ? world.defaultCell : 'empty';
+}
+
+function normalizeWorldGrid(world) {
+  if (!world) return;
+  if (!Array.isArray(world.grid)) world.grid = [];
+  if (!Number.isFinite(world.cols)) world.cols = (world.grid[0] && world.grid[0].length) || 0;
+  if (!Number.isFinite(world.rows)) world.rows = world.grid.length;
+  if (!Number.isFinite(world.offsetX)) world.offsetX = 0;
+  if (!Number.isFinite(world.offsetY)) world.offsetY = 0;
+}
+
+function ensureWorldContains(world, cellX, cellY) {
+  normalizeWorldGrid(world);
+  const fill = worldFillValue(world);
+  const width = Math.max(0, world.cols);
+  const height = Math.max(0, world.rows);
+  if (height === 0 || width === 0) {
+    world.offsetX = cellX;
+    world.offsetY = cellY;
+    world.cols = 1;
+    world.rows = 1;
+    world.grid = [[fill]];
+    return { lx: 0, ly: 0 };
+  }
+
+  if (cellX < world.offsetX) {
+    const add = world.offsetX - cellX;
+    world.grid = world.grid.map((row) => [...Array(add).fill(fill), ...row]);
+    world.cols += add;
+    world.offsetX = cellX;
+  } else if (cellX >= world.offsetX + world.cols) {
+    const add = cellX - (world.offsetX + world.cols) + 1;
+    world.grid = world.grid.map((row) => [...row, ...Array(add).fill(fill)]);
+    world.cols += add;
+  }
+
+  if (cellY < world.offsetY) {
+    const add = world.offsetY - cellY;
+    const rowTemplate = Array(world.cols).fill(fill);
+    const topRows = Array.from({ length: add }, () => rowTemplate.slice());
+    world.grid = [...topRows, ...world.grid];
+    world.rows += add;
+    world.offsetY = cellY;
+  } else if (cellY >= world.offsetY + world.rows) {
+    const add = cellY - (world.offsetY + world.rows) + 1;
+    const rowTemplate = Array(world.cols).fill(fill);
+    for (let i = 0; i < add; i += 1) world.grid.push(rowTemplate.slice());
+    world.rows += add;
+  }
+
+  return { lx: cellX - world.offsetX, ly: cellY - world.offsetY };
+}
+
+function getWorldCell(world, cellX, cellY) {
+  normalizeWorldGrid(world);
+  const { x: ox, y: oy } = worldOffsets(world);
+  const lx = cellX - ox;
+  const ly = cellY - oy;
+  if (lx < 0 || ly < 0 || lx >= world.cols || ly >= world.rows) return worldFillValue(world);
+  return (world.grid[ly] && world.grid[ly][lx]) !== undefined ? world.grid[ly][lx] : worldFillValue(world);
 }
 
 let _idCounter = 0;
@@ -218,11 +289,8 @@ function App() {
     setProject(prev => {
       pushUndo(prev);
       return mutateActiveScene(prev, ({ world, objects }) => {
-        if (cy >= 0 && cy < world.rows && cx >= 0 && cx < world.cols) {
-          world.grid = [...world.grid];
-          world.grid[cy] = [...world.grid[cy]];
-          world.grid[cy][cx] = value || 'empty';
-        }
+        const { lx, ly } = ensureWorldContains(world, cx, cy);
+        world.grid[ly][lx] = value || 'empty';
         return { world, objects };
       });
     });
@@ -232,24 +300,58 @@ function App() {
     setProject(prev => {
       pushUndo(prev);
       return mutateActiveScene(prev, ({ world, objects }) => {
+        normalizeWorldGrid(world);
         world.grid = world.grid.map((r) => [...r]);
-        const grid = world.grid;
-        const { cols, rows } = world;
-        if (startY < 0 || startY >= rows || startX < 0 || startX >= cols) return { world, objects };
-      const old = normalizeCellTypeId(grid[startY][startX]);
+        const { x: ox, y: oy } = worldOffsets(world);
+        const minX = ox;
+        const minY = oy;
+        const maxX = ox + world.cols - 1;
+        const maxY = oy + world.rows - 1;
+        if (startX < minX || startX > maxX || startY < minY || startY > maxY) {
+          const { lx, ly } = ensureWorldContains(world, startX, startY);
+          world.grid[ly][lx] = value;
+          return { world, objects };
+        }
+      const old = normalizeCellTypeId(getWorldCell(world, startX, startY));
         if (old === value) return { world, objects };
       const stack = [[startX, startY]];
       const visited = new Set();
       while (stack.length > 0) {
         const [x, y] = stack.pop();
         const key = x + ',' + y;
-        if (visited.has(key) || x < 0 || x >= cols || y < 0 || y >= rows) continue;
-        if (normalizeCellTypeId(grid[y][x]) !== old) continue;
+        if (visited.has(key) || x < minX || x > maxX || y < minY || y > maxY) continue;
+        if (normalizeCellTypeId(getWorldCell(world, x, y)) !== old) continue;
         visited.add(key);
-        grid[y][x] = value;
+        const lx = x - world.offsetX;
+        const ly = y - world.offsetY;
+        world.grid[ly][lx] = value;
         stack.push([x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]);
       }
         return { world, objects };
+      });
+    });
+  }, [pushUndo, mutateActiveScene]);
+
+  const handleResizeWorld = useCallback((nextCols, nextRows) => {
+    setProject((prev) => {
+      pushUndo(prev);
+      return mutateActiveScene(prev, ({ world, objects }) => {
+        const cols = Math.max(1, parseInt(String(nextCols), 10) || 1);
+        const rows = Math.max(1, parseInt(String(nextRows), 10) || 1);
+        const fillValue = world.defaultCell !== undefined ? world.defaultCell : 'empty';
+        const sourceOffsetX = Number.isFinite(world.offsetX) ? world.offsetX : 0;
+        const sourceOffsetY = Number.isFinite(world.offsetY) ? world.offsetY : 0;
+        const source = Array.isArray(world.grid) ? world.grid : [];
+        const grid = [];
+        for (let y = 0; y < rows; y += 1) {
+          const srcRow = Array.isArray(source[y]) ? source[y] : [];
+          const row = [];
+          for (let x = 0; x < cols; x += 1) {
+            row.push(srcRow[x] !== undefined ? srcRow[x] : fillValue);
+          }
+          grid.push(row);
+        }
+        return { world: { ...world, cols, rows, offsetX: sourceOffsetX, offsetY: sourceOffsetY, grid }, objects };
       });
     });
   }, [pushUndo, mutateActiveScene]);
@@ -677,7 +779,13 @@ def on_update(self, engine, dt):
             undoCount={undoStackRef.current.length} redoCount={redoStackRef.current.length} />
 
           <div className="editor-left">
-            <WorldTools project={projectView} editorState={editorState} onUpdateCamera={handleUpdateCamera} onToggleGrid={handleToggleGrid} />
+            <WorldTools
+              project={projectView}
+              editorState={editorState}
+              onUpdateCamera={handleUpdateCamera}
+              onToggleGrid={handleToggleGrid}
+              onResizeWorld={handleResizeWorld}
+            />
             <ObjectList project={projectView} editorState={editorState} onSelectObject={handleSelectObject} onAddObject={handleAddObject} onRemoveObject={handleRemoveObject} />
           </div>
 

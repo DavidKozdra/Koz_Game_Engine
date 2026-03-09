@@ -55,8 +55,14 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
     ctx.scale(zoom, zoom);
 
     const world = project.world;
-    const cols = world.cols;
-    const rows = world.rows;
+    const cols = Number.isFinite(world.cols) ? world.cols : ((world.grid && world.grid[0] && world.grid[0].length) || 0);
+    const rows = Number.isFinite(world.rows) ? world.rows : ((world.grid && world.grid.length) || 0);
+    const offsetX = Number.isFinite(world.offsetX) ? world.offsetX : 0;
+    const offsetY = Number.isFinite(world.offsetY) ? world.offsetY : 0;
+    const viewMinX = Math.floor(cam.x / cellSize) - 1;
+    const viewMinY = Math.floor(cam.y / cellSize) - 1;
+    const viewMaxX = Math.ceil((cam.x + canvas.width / zoom) / cellSize) + 1;
+    const viewMaxY = Math.ceil((cam.y + canvas.height / zoom) / cellSize) + 1;
 
     const cellLayers = ((project.layers && project.layers.cells) || [])
       .slice()
@@ -65,25 +71,48 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
 
     const baseLayerId = cellLayers[0] ? cellLayers[0].id : null;
 
-    for (const layer of cellLayers) {
-      for (let y = 0; y < rows; y++) {
-        for (let x = 0; x < cols; x++) {
-          const cell = world.grid[y] && world.grid[y][x];
+    ctx.fillStyle = '#111827';
+    ctx.fillRect(
+      viewMinX * cellSize,
+      viewMinY * cellSize,
+      (viewMaxX - viewMinX + 1) * cellSize,
+      (viewMaxY - viewMinY + 1) * cellSize,
+    );
+
+    const worldMinX = offsetX;
+    const worldMinY = offsetY;
+    const worldMaxX = offsetX + cols - 1;
+    const worldMaxY = offsetY + rows - 1;
+    const drawMinX = Math.max(viewMinX, worldMinX);
+    const drawMinY = Math.max(viewMinY, worldMinY);
+    const drawMaxX = Math.min(viewMaxX, worldMaxX);
+    const drawMaxY = Math.min(viewMaxY, worldMaxY);
+
+    if (drawMinX <= drawMaxX && drawMinY <= drawMaxY) {
+      const cellsByLayer = new Map();
+      for (let y = drawMinY; y <= drawMaxY; y += 1) {
+        const ly = y - offsetY;
+        const row = world.grid[ly] || [];
+        for (let x = drawMinX; x <= drawMaxX; x += 1) {
+          const lx = x - offsetX;
+          const cell = row[lx];
+          if (normalizeCellTypeId(cell) === 'empty') continue;
           const type = getCellType(project, cell);
           const layerId = type.layerId || baseLayerId;
-          if (layerId !== layer.id) continue;
-          const px = x * cellSize;
-          const py = y * cellSize;
-          if (normalizeCellTypeId(cell) === 'empty') {
-            if (layer === cellLayers[0]) {
-              ctx.fillStyle = '#111827';
-              ctx.fillRect(px, py, cellSize, cellSize);
-            }
-            continue;
-          }
-          ctx.fillStyle = type.color || '#334155';
+          if (!cellsByLayer.has(layerId)) cellsByLayer.set(layerId, []);
+          cellsByLayer.get(layerId).push({ x, y, type });
+        }
+      }
+
+      for (const layer of cellLayers) {
+        const entries = cellsByLayer.get(layer.id);
+        if (!entries || entries.length === 0) continue;
+        for (const entry of entries) {
+          const px = entry.x * cellSize;
+          const py = entry.y * cellSize;
+          ctx.fillStyle = entry.type.color || '#334155';
           ctx.fillRect(px, py, cellSize, cellSize);
-          if (type.collision) {
+          if (entry.type.collision) {
             ctx.strokeStyle = 'rgba(239,68,68,0.4)';
             ctx.lineWidth = 1;
             ctx.strokeRect(px + 1, py + 1, cellSize - 2, cellSize - 2);
@@ -96,16 +125,16 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
     if (editorState.gridVisible) {
       ctx.strokeStyle = 'rgba(71, 85, 105, 0.4)';
       ctx.lineWidth = 0.5;
-      for (let x = 0; x <= cols; x++) {
+      for (let x = viewMinX; x <= viewMaxX + 1; x += 1) {
         ctx.beginPath();
-        ctx.moveTo(x * cellSize, 0);
-        ctx.lineTo(x * cellSize, rows * cellSize);
+        ctx.moveTo(x * cellSize, viewMinY * cellSize);
+        ctx.lineTo(x * cellSize, (viewMaxY + 1) * cellSize);
         ctx.stroke();
       }
-      for (let y = 0; y <= rows; y++) {
+      for (let y = viewMinY; y <= viewMaxY + 1; y += 1) {
         ctx.beginPath();
-        ctx.moveTo(0, y * cellSize);
-        ctx.lineTo(cols * cellSize, y * cellSize);
+        ctx.moveTo(viewMinX * cellSize, y * cellSize);
+        ctx.lineTo((viewMaxX + 1) * cellSize, y * cellSize);
         ctx.stroke();
       }
     }
@@ -191,11 +220,6 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
         ctx.fillText(obj.name || obj.id, ox + w / 2, oy - 4);
       }
     }
-
-    // World bounds outline
-    ctx.strokeStyle = '#3b82f6';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(0, 0, cols * cellSize, rows * cellSize);
 
     ctx.restore();
 
