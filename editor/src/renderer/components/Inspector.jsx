@@ -1,6 +1,9 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
+import Modal from './Modal.jsx';
 
 export default function Inspector({ project, editorState, onUpdateObject, onUpdateComponent }) {
+  const [showImagePicker, setShowImagePicker] = useState(false);
+  const [imageQuery, setImageQuery] = useState('');
   const selectedId = editorState.selectedObjectId;
   const obj = selectedId && project ? project.objects.find(o => o.id === selectedId) : null;
 
@@ -17,6 +20,18 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
 
   const components = obj.components || {};
   const bindings = components.ScriptBindings || [];
+  const imageAssets = (project.assets || []).filter((a) => a && a.kind === 'image' && a.mime === 'image/png');
+  const imageAssetById = new Map(imageAssets.map((a) => [a.id, a]));
+  const selectedImageAsset = components.Sprite && components.Sprite.assetId ? imageAssetById.get(components.Sprite.assetId) : null;
+  const filteredImages = useMemo(() => {
+    const q = imageQuery.trim().toLowerCase();
+    if (!q) return imageAssets;
+    return imageAssets.filter((asset) => {
+      const id = String(asset.id || '').toLowerCase();
+      const name = String(asset.name || '').toLowerCase();
+      return id.includes(q) || name.includes(q);
+    });
+  }, [imageAssets, imageQuery]);
 
   function handleNameChange(e) {
     onUpdateObject(obj.id, { name: e.target.value });
@@ -84,7 +99,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
         </div>
         <div className="field">
           <label>Type</label>
-          <span style={{ fontSize: 11 }}>{obj.type}</span>
+          <input type="text" value={obj.type || 'generic'} onChange={(e) => onUpdateObject(obj.id, { type: e.target.value })} />
         </div>
       </div>
 
@@ -114,6 +129,29 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
       {components.Sprite && (
         <div className="panel-section">
           <h3>Sprite</h3>
+          {components.Sprite.assetId && !imageAssetById.has(components.Sprite.assetId) && (
+            <div style={{ color: '#fca5a5', fontSize: 11, marginBottom: 6 }}>
+              Missing PNG asset reference: {components.Sprite.assetId}
+            </div>
+          )}
+          <div className="field">
+            <label>Image</label>
+            <div style={{ display: 'flex', flex: 1, gap: 6, alignItems: 'center' }}>
+              <button className="btn btn-sm" onClick={() => setShowImagePicker(true)}>Select Image</button>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {selectedImageAsset ? selectedImageAsset.name : (components.Sprite.assetId || 'None')}
+              </span>
+              {components.Sprite.assetId && (
+                <button
+                  className="btn btn-sm btn-danger"
+                  onClick={() => handleComponentChange('Sprite', 'assetId', null)}
+                  title="Clear Image"
+                >
+                  x
+                </button>
+              )}
+            </div>
+          </div>
           <div className="field">
             <label>Color</label>
             <input type="color" value={components.Sprite.color || '#4ade80'}
@@ -129,8 +167,81 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             <input type="number" value={components.Sprite.height || 32}
               onChange={(e) => handleComponentChange('Sprite', 'height', parseInt(e.target.value, 10) || 32)} />
           </div>
+          <div className="field">
+            <label>Frames</label>
+            <input
+              type="text"
+              value={Array.isArray(components.Sprite.frameAssetIds) ? components.Sprite.frameAssetIds.join(',') : ''}
+              onChange={(e) => handleComponentChange('Sprite', 'frameAssetIds', e.target.value.split(',').map((v) => v.trim()).filter(Boolean))}
+              placeholder="asset_id_1,asset_id_2"
+            />
+          </div>
+          <div className="field">
+            <label>FPS</label>
+            <input
+              type="number"
+              value={components.Sprite.fps || 8}
+              onChange={(e) => handleComponentChange('Sprite', 'fps', Math.max(1, parseInt(e.target.value, 10) || 8))}
+            />
+          </div>
         </div>
       )}
+      <Modal open={showImagePicker} title="Select Sprite Image" onClose={() => setShowImagePicker(false)} maxWidth={920} minWidth={620}>
+        <div style={{ display: 'grid', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="text"
+              value={imageQuery}
+              onChange={(e) => setImageQuery(e.target.value)}
+              placeholder={`Search ${imageAssets.length} PNG images...`}
+              style={{ flex: 1, padding: '9px 12px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6 }}
+            />
+            <button className="btn btn-sm" onClick={() => setImageQuery('')} disabled={!imageQuery}>Clear</button>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            {filteredImages.length} result{filteredImages.length === 1 ? '' : 's'}
+          </div>
+          <div style={{ maxHeight: '56vh', overflow: 'auto', border: '1px solid var(--border)', borderRadius: 6, padding: 10, background: '#0b1220' }}>
+            {filteredImages.length === 0 && (
+              <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>No images match.</div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
+              {filteredImages.map((asset) => {
+                const preview = asset.previewUrl || asset.url || asset.src || null;
+                const active = components.Sprite && components.Sprite.assetId === asset.id;
+                return (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    onClick={() => {
+                      handleComponentChange('Sprite', 'assetId', asset.id);
+                      setShowImagePicker(false);
+                    }}
+                    style={{
+                      border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
+                      borderRadius: 6,
+                      background: active ? 'rgba(59,130,246,0.12)' : '#111827',
+                      color: 'var(--text)',
+                      padding: 8,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <div style={{ height: 90, background: '#1f2937', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 7 }}>
+                      {preview ? (
+                        <img src={preview} alt={asset.name || asset.id} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>No Preview</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{asset.name || asset.id}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </Modal>
 
       {/* Collider */}
       {components.Collider && (
@@ -153,6 +264,73 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             <label>Height</label>
             <input type="number" value={components.Collider.height || 32}
               onChange={(e) => handleComponentChange('Collider', 'height', parseInt(e.target.value, 10) || 32)} />
+          </div>
+        </div>
+      )}
+
+      {/* Collision */}
+      {components.Collision && (
+        <div className="panel-section">
+          <h3>Collision</h3>
+          <div className="field">
+            <label>Enabled</label>
+            <input type="checkbox" checked={components.Collision.enabled !== false}
+              onChange={(e) => handleComponentChange('Collision', 'enabled', e.target.checked)} />
+          </div>
+          <div className="field">
+            <label>Trigger</label>
+            <input type="checkbox" checked={!!components.Collision.isTrigger}
+              onChange={(e) => handleComponentChange('Collision', 'isTrigger', e.target.checked)} />
+          </div>
+        </div>
+      )}
+
+      {/* RigidBody */}
+      {components.RigidBody && (
+        <div className="panel-section">
+          <h3>RigidBody</h3>
+          <div className="field">
+            <label>Enabled</label>
+            <input type="checkbox" checked={!!components.RigidBody.enabled}
+              onChange={(e) => handleComponentChange('RigidBody', 'enabled', e.target.checked)} />
+          </div>
+          <div className="field">
+            <label>Weight</label>
+            <input type="number" value={components.RigidBody.weight || 0}
+              onChange={(e) => handleComponentChange('RigidBody', 'weight', parseFloat(e.target.value) || 0)} />
+          </div>
+          <div className="field">
+            <label>Friction</label>
+            <input type="number" value={components.RigidBody.friction || 0}
+              onChange={(e) => handleComponentChange('RigidBody', 'friction', parseFloat(e.target.value) || 0)} />
+          </div>
+        </div>
+      )}
+
+      {/* Render */}
+      {components.Render && (
+        <div className="panel-section">
+          <h3>Render</h3>
+          <div className="field">
+            <label>Layer</label>
+            <select
+              value={components.Render.layerId || 'obj-main'}
+              onChange={(e) => handleComponentChange('Render', 'layerId', e.target.value)}
+            >
+              {(project.layers?.objects || []).map((layer) => (
+                <option key={layer.id} value={layer.id}>{layer.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label>Visible</label>
+            <input type="checkbox" checked={components.Render.visible !== false}
+              onChange={(e) => handleComponentChange('Render', 'visible', e.target.checked)} />
+          </div>
+          <div className="field">
+            <label>Z Index</label>
+            <input type="number" value={components.Render.zIndex || 0}
+              onChange={(e) => handleComponentChange('Render', 'zIndex', parseInt(e.target.value, 10) || 0)} />
           </div>
         </div>
       )}

@@ -8,7 +8,8 @@ const TOOLS = [
   { id: 'place', label: 'Place', key: 'P' },
 ];
 
-export default function Toolbar({ editorState, isPlaying, onToolChange, onBrushChange, onUndo, onRedo, onNewProject, onSaveProject, onLoadProject, onExport, onPlayToggle, undoCount, redoCount }) {
+export default function Toolbar({ project, editorState, isPlaying, onToolChange, onBrushChange, onUndo, onRedo, onNewProject, onSaveProject, onLoadProject, onExport, onPlayToggle, undoCount, redoCount }) {
+  const cellTypes = (project && project.cellTypes) || [];
   return (
     <div className="editor-toolbar">
       <div className="toolbar-group">
@@ -33,11 +34,11 @@ export default function Toolbar({ editorState, isPlaying, onToolChange, onBrushC
       <div className="toolbar-group">
         <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Cell:</label>
         <select value={editorState.brushValue}
-          onChange={(e) => onBrushChange(parseInt(e.target.value, 10))}
+          onChange={(e) => onBrushChange(e.target.value)}
           disabled={isPlaying}
           style={{ padding: '2px 4px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3, fontSize: 11 }}>
-          {[0, 1, 2, 3, 4, 5, 6, 7, 8].map(v => (
-            <option key={v} value={v}>Type {v}</option>
+          {cellTypes.map(t => (
+            <option key={t.id} value={t.id}>{t.name}</option>
           ))}
         </select>
       </div>

@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useCallback } from 'react';
+import { getCellType, normalizeCellTypeId, getBrushValue } from '../state/projectModel.js';
 
 /**
  * 2D Canvas viewport for world editing.
@@ -8,6 +9,7 @@ import React, { useRef, useEffect, useCallback } from 'react';
 export default function Viewport({ project, editorState, onCellPaint, onCellFill, onSelectObject, onPlaceObject, onMoveObject, onUpdateCamera }) {
   const canvasRef = useRef(null);
   const dragRef = useRef({ dragging: false, button: -1, startX: 0, startY: 0, lastX: 0, lastY: 0 });
+  const imageCacheRef = useRef(new Map());
 
   const cellSize = 24;
 
@@ -56,21 +58,36 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
     const cols = world.cols;
     const rows = world.rows;
 
-    // Draw cells
-    for (let y = 0; y < rows; y++) {
-      for (let x = 0; x < cols; x++) {
-        const cell = world.grid[y] && world.grid[y][x];
-        const px = x * cellSize;
-        const py = y * cellSize;
+    const cellLayers = ((project.layers && project.layers.cells) || [])
+      .slice()
+      .filter((layer) => layer.visible !== false)
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
 
-        if (cell !== null && cell !== undefined && cell !== 0) {
-          // Color based on cell value
-          const hue = (typeof cell === 'number' ? cell * 40 : 120) % 360;
-          ctx.fillStyle = `hsl(${hue}, 50%, 35%)`;
+    const baseLayerId = cellLayers[0] ? cellLayers[0].id : null;
+
+    for (const layer of cellLayers) {
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const cell = world.grid[y] && world.grid[y][x];
+          const type = getCellType(project, cell);
+          const layerId = type.layerId || baseLayerId;
+          if (layerId !== layer.id) continue;
+          const px = x * cellSize;
+          const py = y * cellSize;
+          if (normalizeCellTypeId(cell) === 'empty') {
+            if (layer === cellLayers[0]) {
+              ctx.fillStyle = '#111827';
+              ctx.fillRect(px, py, cellSize, cellSize);
+            }
+            continue;
+          }
+          ctx.fillStyle = type.color || '#334155';
           ctx.fillRect(px, py, cellSize, cellSize);
-        } else {
-          ctx.fillStyle = '#111827';
-          ctx.fillRect(px, py, cellSize, cellSize);
+          if (type.collision) {
+            ctx.strokeStyle = 'rgba(239,68,68,0.4)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(px + 1, py + 1, cellSize - 2, cellSize - 2);
+          }
         }
       }
     }
@@ -107,16 +124,58 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
 
     // Draw game objects
     if (project.objects) {
-      for (const obj of project.objects) {
+      const assetById = new Map((project.assets || []).map((a) => [a.id, a]));
+      const objectLayers = ((project.layers && project.layers.objects) || [])
+        .filter((layer) => layer.visible !== false)
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+      const objects = project.objects.slice().sort((a, b) => {
+        const ar = (a.components && a.components.Render) || {};
+        const br = (b.components && b.components.Render) || {};
+        const ao = objectLayers.find((l) => l.id === ar.layerId);
+        const bo = objectLayers.find((l) => l.id === br.layerId);
+        const layerDelta = ((ao && ao.order) || 0) - ((bo && bo.order) || 0);
+        if (layerDelta !== 0) return layerDelta;
+        return (ar.zIndex || 0) - (br.zIndex || 0);
+      });
+      for (const obj of objects) {
         const sprite = (obj.components && obj.components.Sprite) || {};
         const transform = (obj.components && obj.components.Transform) || {};
+        const render = (obj.components && obj.components.Render) || {};
+        if (render.visible === false) continue;
         const ox = (transform.x || obj.x || 0);
         const oy = (transform.y || obj.y || 0);
         const w = sprite.width || 32;
         const h = sprite.height || 32;
-
-        ctx.fillStyle = sprite.color || '#4ade80';
-        ctx.fillRect(ox, oy, w, h);
+        let drawn = false;
+        const frameIds = Array.isArray(sprite.frameAssetIds) ? sprite.frameAssetIds : [];
+        const frameId = frameIds.length > 0
+          ? frameIds[Math.floor((performance.now() / 1000) * (sprite.fps || 8)) % frameIds.length]
+          : sprite.assetId;
+        const asset = frameId ? assetById.get(frameId) : null;
+        const sourceAsset = asset && asset.sourceAssetId ? assetById.get(asset.sourceAssetId) : null;
+        const src = (sourceAsset && (sourceAsset.previewUrl || sourceAsset.url || sourceAsset.src))
+          || (asset && (asset.previewUrl || asset.url || asset.src));
+        if (src) {
+          if (!imageCacheRef.current.has(src)) {
+            const img = new Image();
+            img.src = src;
+            imageCacheRef.current.set(src, img);
+          }
+          const img = imageCacheRef.current.get(src);
+          if (img && img.complete && img.naturalWidth > 0) {
+            const rect = asset && asset.frameRect;
+            if (rect && Number.isFinite(rect.x) && Number.isFinite(rect.y) && Number.isFinite(rect.w) && Number.isFinite(rect.h)) {
+              ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, ox, oy, w, h);
+            } else {
+              ctx.drawImage(img, ox, oy, w, h);
+            }
+            drawn = true;
+          }
+        }
+        if (!drawn) {
+          ctx.fillStyle = sprite.color || '#4ade80';
+          ctx.fillRect(ox, oy, w, h);
+        }
 
         // Selection highlight
         if (editorState.selectedObjectId === obj.id) {
@@ -179,11 +238,11 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
       const cell = screenToCell(sx, sy);
 
       if (editorState.activeTool === 'brush') {
-        if (onCellPaint) onCellPaint(cell.cx, cell.cy, editorState.brushValue);
+        if (onCellPaint) onCellPaint(cell.cx, cell.cy, getBrushValue(editorState));
       } else if (editorState.activeTool === 'fill') {
-        if (onCellFill) onCellFill(cell.cx, cell.cy, editorState.brushValue);
+        if (onCellFill) onCellFill(cell.cx, cell.cy, getBrushValue(editorState));
       } else if (editorState.activeTool === 'erase') {
-        if (onCellPaint) onCellPaint(cell.cx, cell.cy, null);
+        if (onCellPaint) onCellPaint(cell.cx, cell.cy, 'empty');
       } else if (editorState.activeTool === 'select') {
         // Check if clicking on a game object
         const worldPos = screenToWorld(sx, sy);
@@ -241,9 +300,9 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
     if (dragRef.current.button === 0) {
       const cell = screenToCell(sx, sy);
       if (editorState.activeTool === 'brush') {
-        if (onCellPaint) onCellPaint(cell.cx, cell.cy, editorState.brushValue);
+        if (onCellPaint) onCellPaint(cell.cx, cell.cy, getBrushValue(editorState));
       } else if (editorState.activeTool === 'erase') {
-        if (onCellPaint) onCellPaint(cell.cx, cell.cy, null);
+        if (onCellPaint) onCellPaint(cell.cx, cell.cy, 'empty');
       } else if (editorState.activeTool === 'select' && editorState.selectedObjectId) {
         // Drag to move selected object
         const worldPos = screenToWorld(sx, sy);
