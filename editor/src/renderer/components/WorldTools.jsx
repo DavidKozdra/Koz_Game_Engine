@@ -1,9 +1,23 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
-export default function WorldTools({ project, editorState, onUpdateCamera, onToggleGrid }) {
+export default function WorldTools({ project, editorState, onUpdateCamera, onToggleGrid, onResizeWorld }) {
   if (!project) return null;
 
   const world = project.world;
+  const [colsInput, setColsInput] = useState(String(world.cols || 30));
+  const [rowsInput, setRowsInput] = useState(String(world.rows || 20));
+
+  useEffect(() => {
+    setColsInput(String(world.cols || 30));
+    setRowsInput(String(world.rows || 20));
+  }, [world.cols, world.rows]);
+
+  function handleResize() {
+    if (!onResizeWorld) return;
+    const cols = Math.max(1, parseInt(colsInput, 10) || 1);
+    const rows = Math.max(1, parseInt(rowsInput, 10) || 1);
+    onResizeWorld(cols, rows);
+  }
 
   return (
     <div className="panel-section">
@@ -35,6 +49,26 @@ export default function WorldTools({ project, editorState, onUpdateCamera, onTog
         <button className={`btn btn-sm ${editorState.gridVisible ? 'active' : ''}`} onClick={onToggleGrid}>
           Grid
         </button>
+      </div>
+      <div className="field" style={{ marginTop: 8 }}>
+        <label>Resize</label>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <input
+            type="number"
+            min={1}
+            value={colsInput}
+            onChange={(e) => setColsInput(e.target.value)}
+            style={{ width: 64 }}
+          />
+          <input
+            type="number"
+            min={1}
+            value={rowsInput}
+            onChange={(e) => setRowsInput(e.target.value)}
+            style={{ width: 64 }}
+          />
+          <button className="btn btn-sm" onClick={handleResize}>Apply</button>
+        </div>
       </div>
     </div>
   );

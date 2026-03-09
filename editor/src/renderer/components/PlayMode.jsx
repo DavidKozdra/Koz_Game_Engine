@@ -203,6 +203,7 @@ export function usePlayMode(project, onLog) {
           catch (e) { onLog({ type: 'error', message: `onUpdate error: ${e.message}`, time: new Date().toLocaleTimeString() }); }
         }
       });
+      resolveCellCollisions(state);
 
       // Render
       const camera = state.cameraConfig || {};
@@ -236,18 +237,51 @@ export function usePlayMode(project, onLog) {
     const world = state.world;
     if (world && world.grid) {
       const proj = state.projectSnapshot || {};
+      const rows = Number.isFinite(world.rows) ? world.rows : world.grid.length;
+      const cols = Number.isFinite(world.cols) ? world.cols : ((world.grid[0] && world.grid[0].length) || 0);
+      const offsetX = Number.isFinite(world.offsetX) ? world.offsetX : 0;
+      const offsetY = Number.isFinite(world.offsetY) ? world.offsetY : 0;
+      const viewX = Number.isFinite(state.viewX) ? state.viewX : 0;
+      const viewY = Number.isFinite(state.viewY) ? state.viewY : 0;
+      const viewMinX = Math.floor(viewX / CELL_SIZE) - 1;
+      const viewMinY = Math.floor(viewY / CELL_SIZE) - 1;
+      const viewMaxX = Math.ceil((viewX + w) / CELL_SIZE) + 1;
+      const viewMaxY = Math.ceil((viewY + h) / CELL_SIZE) + 1;
+      const worldMinX = offsetX;
+      const worldMinY = offsetY;
+      const worldMaxX = offsetX + cols - 1;
+      const worldMaxY = offsetY + rows - 1;
+      const drawMinX = Math.max(viewMinX, worldMinX);
+      const drawMinY = Math.max(viewMinY, worldMinY);
+      const drawMaxX = Math.min(viewMaxX, worldMaxX);
+      const drawMaxY = Math.min(viewMaxY, worldMaxY);
       const cellLayers = ((proj.layers && proj.layers.cells) || [])
         .filter((layer) => layer.visible !== false)
         .sort((a, b) => (a.order || 0) - (b.order || 0));
-      for (const layer of cellLayers) {
-        for (let y = 0; y < world.rows; y++) {
-          for (let x = 0; x < world.cols; x++) {
-            const cell = world.grid[y] && world.grid[y][x];
+
+      if (drawMinX <= drawMaxX && drawMinY <= drawMaxY) {
+        const baseLayerId = cellLayers[0] ? cellLayers[0].id : null;
+        const cellsByLayer = new Map();
+        for (let y = drawMinY; y <= drawMaxY; y += 1) {
+          const ly = y - offsetY;
+          const row = world.grid[ly] || [];
+          for (let x = drawMinX; x <= drawMaxX; x += 1) {
+            const lx = x - offsetX;
+            const cell = row[lx];
             if (normalizeCellTypeId(cell) === 'empty') continue;
             const type = getCellType(proj, cell);
-            if ((type.layerId || cellLayers[0].id) !== layer.id) continue;
-            ctx.fillStyle = type.color || '#334155';
-            ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+            const layerId = type.layerId || baseLayerId;
+            if (!cellsByLayer.has(layerId)) cellsByLayer.set(layerId, []);
+            cellsByLayer.get(layerId).push({ x, y, type });
+          }
+        }
+
+        for (const layer of cellLayers) {
+          const entries = cellsByLayer.get(layer.id);
+          if (!entries || entries.length === 0) continue;
+          for (const entry of entries) {
+            ctx.fillStyle = entry.type.color || '#334155';
+            ctx.fillRect(entry.x * CELL_SIZE, entry.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
           }
         }
       }
@@ -344,4 +378,108 @@ function sampleTrack(track, time) {
     }
   }
   return kfs[kfs.length - 1].value;
+}
+
+function resolveCellCollisions(state) {
+  const world = state && state.world;
+  if (!world || !Array.isArray(world.grid)) return;
+  const rows = Number.isFinite(world.rows) ? world.rows : world.grid.length;
+  const cols = Number.isFinite(world.cols) ? world.cols : ((world.grid[0] && world.grid[0].length) || 0);
+  const offsetX = Number.isFinite(world.offsetX) ? world.offsetX : 0;
+  const offsetY = Number.isFinite(world.offsetY) ? world.offsetY : 0;
+  if (rows <= 0 || cols <= 0) return;
+
+  const project = state.projectSnapshot || {};
+  const objects = Array.isArray(state.gameObjects) ? state.gameObjects : [];
+
+  for (const obj of objects) {
+    const collision = (obj.components && obj.components.Collision) || {};
+    if (collision.enabled === false || collision.isTrigger) continue;
+
+    let iterations = 0;
+    while (iterations < 4) {
+      iterations += 1;
+      const rect = getColliderRect(obj);
+      if (rect.w <= 0 || rect.h <= 0) break;
+
+      const worldMinX = offsetX;
+      const worldMinY = offsetY;
+      const worldMaxX = offsetX + cols - 1;
+      const worldMaxY = offsetY + rows - 1;
+
+      const minX = Math.max(worldMinX, Math.floor(rect.x / CELL_SIZE));
+      const minY = Math.max(worldMinY, Math.floor(rect.y / CELL_SIZE));
+      const maxX = Math.min(worldMaxX, Math.floor((rect.x + rect.w - 1) / CELL_SIZE));
+      const maxY = Math.min(worldMaxY, Math.floor((rect.y + rect.h - 1) / CELL_SIZE));
+      if (minX > maxX || minY > maxY) break;
+
+      let resolved = false;
+      for (let y = minY; y <= maxY && !resolved; y += 1) {
+        for (let x = minX; x <= maxX && !resolved; x += 1) {
+          const ly = y - offsetY;
+          const lx = x - offsetX;
+          const cell = world.grid[ly] && world.grid[ly][lx];
+          if (!isCollidableCell(project, cell)) continue;
+          const tile = { x: x * CELL_SIZE, y: y * CELL_SIZE, w: CELL_SIZE, h: CELL_SIZE };
+          const overlap = getOverlap(rect, tile);
+          if (!overlap) continue;
+
+          if (Math.abs(overlap.dx) <= Math.abs(overlap.dy)) {
+            obj.x += overlap.dx;
+            if (typeof obj.vx === 'number' && ((overlap.dx < 0 && obj.vx > 0) || (overlap.dx > 0 && obj.vx < 0))) {
+              obj.vx = 0;
+            }
+          } else {
+            obj.y += overlap.dy;
+            if (typeof obj.vy === 'number' && ((overlap.dy < 0 && obj.vy > 0) || (overlap.dy > 0 && obj.vy < 0))) {
+              obj.vy = 0;
+            }
+            if (overlap.dy < 0 && typeof obj.grounded === 'boolean') {
+              obj.grounded = true;
+            }
+          }
+          resolved = true;
+        }
+      }
+      if (!resolved) break;
+    }
+  }
+}
+
+function getColliderRect(obj) {
+  const collider = (obj && obj.components && obj.components.Collider) || {};
+  const w = Number.isFinite(collider.width) ? collider.width : (Number.isFinite(obj.width) ? obj.width : 0);
+  const h = Number.isFinite(collider.height) ? collider.height : (Number.isFinite(obj.height) ? obj.height : 0);
+  const ox = Number.isFinite(collider.offsetX) ? collider.offsetX : (Number.isFinite(collider.x) ? collider.x : 0);
+  const oy = Number.isFinite(collider.offsetY) ? collider.offsetY : (Number.isFinite(collider.y) ? collider.y : 0);
+  return {
+    x: (Number.isFinite(obj.x) ? obj.x : 0) + ox,
+    y: (Number.isFinite(obj.y) ? obj.y : 0) + oy,
+    w,
+    h,
+  };
+}
+
+function isCollidableCell(project, cell) {
+  if (normalizeCellTypeId(cell) === 'empty') return false;
+  const type = getCellType(project, cell);
+  return !!(type && type.collision);
+}
+
+function getOverlap(a, b) {
+  const overlapLeft = (a.x + a.w) - b.x;
+  const overlapRight = (b.x + b.w) - a.x;
+  const overlapTop = (a.y + a.h) - b.y;
+  const overlapBottom = (b.y + b.h) - a.y;
+  if (overlapLeft <= 0 || overlapRight <= 0 || overlapTop <= 0 || overlapBottom <= 0) return null;
+
+  const ax = a.x + a.w / 2;
+  const ay = a.y + a.h / 2;
+  const bx = b.x + b.w / 2;
+  const by = b.y + b.h / 2;
+
+  return {
+    dx: ax < bx ? -overlapLeft : overlapRight,
+    dy: ay < by ? -overlapTop : overlapBottom,
+  };
 }
