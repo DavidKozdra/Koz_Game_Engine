@@ -169,6 +169,7 @@ function instantiateFromPrefab(prefab, projectView, x, y) {
   const obj = JSON.parse(JSON.stringify(source));
   obj.id = genId('obj');
   obj.name = (prefab && prefab.name) || obj.name || 'Object';
+  obj.prefabId = prefab.id;
   obj.parentId = null;
   obj.x = x;
   obj.y = y;
@@ -293,6 +294,13 @@ function App() {
     desktopPlatform: 'auto',
     desktopFormat: 'portable',
   });
+  const [toast, setToast] = useState(null);
+  const toastTimer = useRef(null);
+  const showToast = useCallback((message, duration = 2000) => {
+    clearTimeout(toastTimer.current);
+    setToast(message);
+    toastTimer.current = setTimeout(() => setToast(null), duration);
+  }, []);
   const undoStackRef = useRef([]);
   const redoStackRef = useRef([]);
   const [mainTab, setMainTab] = useState('world');
@@ -626,14 +634,39 @@ function App() {
   const handleCreatePrefabFromObject = useCallback((objId) => {
     const source = (projectView && projectView.objects || []).find((o) => o.id === objId);
     if (!source) return;
+    const prefabId = `prefab_${Date.now().toString(36)}`;
     const nextPrefab = {
-      id: `prefab_${Date.now().toString(36)}`,
+      id: prefabId,
       name: `${source.name || source.type || 'Object'} Prefab`,
       sourceObjectId: source.id,
       object: JSON.parse(JSON.stringify(source)),
     };
-    setProject((prev) => ({ ...prev, prefabs: [...((prev && prev.prefabs) || []), nextPrefab] }));
+    setProject((prev) => {
+      const nextObjects = ((prev.scenes && prev.scenes[prev.activeScene || 'main'] && prev.scenes[prev.activeScene || 'main'].objects) || [])
+        .map((o) => o.id === objId ? { ...o, prefabId } : o);
+      const sceneKey = prev.activeScene || 'main';
+      return {
+        ...prev,
+        prefabs: [...((prev && prev.prefabs) || []), nextPrefab],
+        scenes: {
+          ...prev.scenes,
+          [sceneKey]: {
+            ...prev.scenes[sceneKey],
+            objects: nextObjects,
+          },
+        },
+      };
+    });
   }, [projectView]);
+
+  const handleUnlinkPrefab = useCallback((objId) => {
+    mutateActiveScene((scene) => ({
+      ...scene,
+      objects: (scene.objects || []).map((o) =>
+        o.id === objId ? { ...o, prefabId: undefined } : o
+      ),
+    }));
+  }, [mutateActiveScene]);
 
   // ---- Scripts ----
   const handleUpdateScript = useCallback((id, patch) => {
@@ -879,6 +912,7 @@ def on_update(self, engine, dt):
           name: result.name || (normalized.meta && normalized.meta.name) || null,
         });
         refreshProjects();
+        showToast('Project saved');
       });
       return;
     }
@@ -886,7 +920,8 @@ def on_update(self, engine, dt):
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = (normalized.meta.name || 'project') + '.json'; a.click();
     URL.revokeObjectURL(url);
-  }, [project, projectFile.projectPath, newProjectName, refreshProjects]);
+    showToast('Project saved');
+  }, [project, projectFile.projectPath, newProjectName, refreshProjects, showToast]);
 
   const handleSaveAs = useCallback(() => {
     if (!project) return;
@@ -1359,6 +1394,7 @@ def on_update(self, engine, dt):
               onUpdateObject={handleUpdateObject}
               onUpdateComponent={handleUpdateComponent}
               onCreatePrefabFromObject={handleCreatePrefabFromObject}
+              onUnlinkPrefab={handleUnlinkPrefab}
             />
           </div>
         </div>
@@ -1436,6 +1472,16 @@ def on_update(self, engine, dt):
           </div>
         </div>
       </Modal>
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          background: '#22c55e', color: '#0b1220', padding: '8px 20px', borderRadius: 6,
+          fontSize: 13, fontWeight: 600, zIndex: 9999, pointerEvents: 'none',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+        }}>
+          {toast}
+        </div>
+      )}
             </>
           );
 }

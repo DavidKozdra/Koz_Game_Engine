@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import Modal from './Modal.jsx';
 
-export default function Inspector({ project, editorState, onUpdateObject, onUpdateComponent, onCreatePrefabFromObject }) {
+export default function Inspector({ project, editorState, onUpdateObject, onUpdateComponent, onCreatePrefabFromObject, onUnlinkPrefab }) {
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [imageQuery, setImageQuery] = useState('');
   const selectedId = editorState.selectedObjectId;
@@ -12,6 +12,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
   const sceneObjects = (project && project.objects) || [];
   const imageAssetById = new Map(imageAssets.map((a) => [a.id, a]));
   const selectedImageAsset = components.Sprite && components.Sprite.assetId ? imageAssetById.get(components.Sprite.assetId) : null;
+  const linkedPrefab = obj && obj.prefabId ? (project.prefabs || []).find((p) => p.id === obj.prefabId) : null;
   const filteredImages = useMemo(() => {
     const q = imageQuery.trim().toLowerCase();
     if (!q) return imageAssets;
@@ -87,6 +88,27 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
 
   return (
     <div>
+      {/* Prefab status bar — always on top */}
+      {linkedPrefab ? (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px',
+          background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.35)',
+          borderRadius: 6, marginBottom: 6, fontSize: 11,
+        }}>
+          <span style={{ color: 'var(--accent)', fontWeight: 600 }}>Prefab:</span>
+          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{linkedPrefab.name}</span>
+          <button className="btn btn-sm" onClick={() => onUnlinkPrefab && onUnlinkPrefab(obj.id)}
+            style={{ fontSize: 10, padding: '1px 6px' }} title="Unlink this object from its prefab">Unlink</button>
+        </div>
+      ) : (
+        <div style={{ marginBottom: 6 }}>
+          <button className="btn btn-sm" style={{ width: '100%' }}
+            onClick={() => onCreatePrefabFromObject && onCreatePrefabFromObject(obj.id)}>
+            Save As Prefab
+          </button>
+        </div>
+      )}
+
       <div className="panel-section">
         <h3>Inspector</h3>
         <div className="field">
@@ -112,12 +134,6 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
               <option key={o.id} value={o.id}>{o.name || o.id}</option>
             ))}
           </select>
-        </div>
-        <div className="field">
-          <label>Prefab</label>
-          <button className="btn btn-sm" onClick={() => onCreatePrefabFromObject && onCreatePrefabFromObject(obj.id)}>
-            Save As Prefab
-          </button>
         </div>
       </div>
 
