@@ -113,7 +113,22 @@ function genId(prefix) { _idCounter++; return prefix + '_' + Date.now().toString
 
 function createGameObject(name, x, y, opts = {}) {
   const type = opts.type || 'generic';
-  return {
+  if (type === 'camera') {
+    return {
+      id: genId('obj'),
+      name: name || 'Camera',
+      type,
+      x,
+      y,
+      components: {
+        Transform: { x, y, rotation: 0, scaleX: 1, scaleY: 1 },
+        Camera: { enabled: true, targetObjectId: null, speed: 8, offsetX: 0, offsetY: 0 },
+        Render: { layerId: opts.layerId || 'obj-main', visible: false, zIndex: 0 },
+        ScriptBindings: [],
+      },
+    };
+  }
+  const next = {
     id: genId('obj'), name: name || 'Object', type, x, y,
     components: {
       Transform: { x, y, rotation: 0, scaleX: 1, scaleY: 1 },
@@ -126,6 +141,52 @@ function createGameObject(name, x, y, opts = {}) {
       Animator: { clipId: null, autoplay: type === 'animator' },
     },
   };
+  return next;
+}
+
+function instantiateFromPrefab(prefab, projectView, x, y) {
+  const sourceById = (projectView && projectView.objects || []).find((o) => o.id === prefab.sourceObjectId) || null;
+  const source = prefab && prefab.object ? prefab.object : sourceById;
+  if (!source) return createGameObject(prefab && prefab.name ? prefab.name : 'Object', x, y);
+
+  const obj = JSON.parse(JSON.stringify(source));
+  obj.id = genId('obj');
+  obj.name = (prefab && prefab.name) || obj.name || 'Object';
+  obj.x = x;
+  obj.y = y;
+  obj.components = obj.components || {};
+  const t = obj.components.Transform || {};
+  obj.components.Transform = {
+    ...t,
+    x,
+    y,
+    rotation: Number.isFinite(t.rotation) ? t.rotation : 0,
+    scaleX: Number.isFinite(t.scaleX) ? t.scaleX : 1,
+    scaleY: Number.isFinite(t.scaleY) ? t.scaleY : 1,
+  };
+
+  if (obj.type === 'camera' || obj.components.Camera) {
+    obj.type = 'camera';
+    obj.components.Camera = {
+      enabled: (obj.components.Camera && obj.components.Camera.enabled) !== false,
+      targetObjectId: (obj.components.Camera && obj.components.Camera.targetObjectId) || null,
+      speed: (obj.components.Camera && Number.isFinite(obj.components.Camera.speed)) ? obj.components.Camera.speed : 8,
+      offsetX: (obj.components.Camera && Number.isFinite(obj.components.Camera.offsetX)) ? obj.components.Camera.offsetX : 0,
+      offsetY: (obj.components.Camera && Number.isFinite(obj.components.Camera.offsetY)) ? obj.components.Camera.offsetY : 0,
+    };
+    obj.components.Render = {
+      layerId: (obj.components.Render && obj.components.Render.layerId) || 'obj-main',
+      visible: false,
+      zIndex: (obj.components.Render && Number.isFinite(obj.components.Render.zIndex)) ? obj.components.Render.zIndex : 0,
+    };
+    delete obj.components.Sprite;
+    delete obj.components.Collider;
+    delete obj.components.Collision;
+    delete obj.components.RigidBody;
+    delete obj.components.Animator;
+  }
+
+  return obj;
 }
 
 function buildExportHtml(project, projectJson, target) {
@@ -181,7 +242,7 @@ function App() {
   const [showProjectSelector, setShowProjectSelector] = useState(true);
   const [editorState, setEditorState] = useState({
     mode: 'EDIT', activeTool: 'brush', brushValue: 'solid',
-    selectedObjectId: null, selectedScriptId: null, camera: { x: 0, y: 0, zoom: 1 }, gridVisible: true,
+    selectedObjectId: null, selectedObjectIds: [], selectedScriptId: null, camera: { x: 0, y: 0, zoom: 1 }, gridVisible: true,
   });
   const [bottomTab, setBottomTab] = useState('timeline');
   const [bottomHeight, setBottomHeight] = useState(240);
@@ -357,27 +418,88 @@ function App() {
   }, [pushUndo, mutateActiveScene]);
 
   // ---- Object management ----
-  const handleAddObject = useCallback(() => {
+  const handleAddObject = useCallback((template) => {
     const cam = editorState.camera;
-    const cls = (projectView?.defaultClasses || [])[0];
-    const obj = createGameObject('Object', Math.floor(cam.x + 100), Math.floor(cam.y + 100), { type: (cls && cls.baseType) || 'generic' });
+    const x = Math.floor(cam.x + 100);
+    const y = Math.floor(cam.y + 100);
+    let obj;
+
+    if (template && template.kind === 'prefab' && template.prefab) {
+      obj = instantiateFromPrefab(template.prefab, projectView, x, y);
+    } else if (template && template.kind === 'class') {
+      const baseType = template.baseType || 'generic';
+      const name = template.name || (baseType === 'camera' ? 'Camera' : 'Object');
+      obj = createGameObject(name, x, y, { type: baseType });
+    } else {
+      const cls = (projectView?.defaultClasses || [])[0];
+      obj = createGameObject('Object', x, y, { type: (cls && cls.baseType) || 'generic' });
+    }
+
+    if (obj.type === 'camera') {
+      const player = (projectView && projectView.objects || []).find((o) => o.type === 'player');
+      if (player && obj.components && obj.components.Camera && !obj.components.Camera.targetObjectId) {
+        obj.components.Camera.targetObjectId = player.id;
+      }
+    }
+
     setProject(prev => {
       pushUndo(prev);
       return mutateActiveScene(prev, ({ world, objects }) => ({ world, objects: [...objects, obj] }));
     });
-    updateEditor({ selectedObjectId: obj.id });
+    updateEditor({ selectedObjectId: obj.id, selectedObjectIds: [obj.id] });
   }, [editorState.camera, updateEditor, pushUndo, projectView, mutateActiveScene]);
+
+  const handleAddCameraObject = useCallback(() => {
+    handleAddObject({ kind: 'class', baseType: 'camera', name: 'Camera' });
+  }, [handleAddObject]);
 
   const handleRemoveObject = useCallback((id) => {
     setProject(prev => {
       pushUndo(prev);
       return mutateActiveScene(prev, ({ world, objects }) => ({ world, objects: objects.filter((o) => o.id !== id) }));
     });
-    setEditorState(prev => prev.selectedObjectId === id ? { ...prev, selectedObjectId: null } : prev);
+    setEditorState((prev) => {
+      const ids = (prev.selectedObjectIds || []).filter((sid) => sid !== id);
+      const nextPrimary = prev.selectedObjectId === id ? (ids[ids.length - 1] || null) : prev.selectedObjectId;
+      return { ...prev, selectedObjectIds: ids, selectedObjectId: nextPrimary };
+    });
   }, [pushUndo, mutateActiveScene]);
 
-  const handleSelectObject = useCallback((id) => {
-    updateEditor({ selectedObjectId: id, activeTool: id ? 'select' : editorState.activeTool });
+  const handleSelectObject = useCallback((id, opts = {}) => {
+    setEditorState((prev) => {
+      const prevIds = Array.isArray(prev.selectedObjectIds) ? prev.selectedObjectIds : (prev.selectedObjectId ? [prev.selectedObjectId] : []);
+      let ids = prevIds.slice();
+      let primary = prev.selectedObjectId;
+
+      if (Array.isArray(opts.ids)) {
+        if (opts.add) {
+          const set = new Set(ids);
+          for (const sid of opts.ids) set.add(sid);
+          ids = [...set];
+          primary = opts.ids[opts.ids.length - 1] || primary;
+        } else {
+          ids = opts.ids.slice();
+          primary = ids[ids.length - 1] || null;
+        }
+      } else if (opts.toggle && id) {
+        if (ids.includes(id)) ids = ids.filter((sid) => sid !== id);
+        else ids.push(id);
+        primary = ids.includes(id) ? id : (ids[ids.length - 1] || null);
+      } else if (id) {
+        ids = [id];
+        primary = id;
+      } else {
+        ids = [];
+        primary = null;
+      }
+
+      return {
+        ...prev,
+        selectedObjectId: primary,
+        selectedObjectIds: ids,
+        activeTool: primary ? 'select' : prev.activeTool,
+      };
+    });
   }, [updateEditor, editorState.activeTool]);
 
   const handleUpdateObject = useCallback((id, patch) => {
@@ -405,6 +527,24 @@ function App() {
       objects: objects.map(o => {
         if (o.id !== id) return o;
         return { ...o, x, y, components: { ...o.components, Transform: { ...o.components.Transform, x, y } } };
+      }),
+    })));
+  }, [mutateActiveScene]);
+
+  const handleMoveObjects = useCallback((updates) => {
+    if (!Array.isArray(updates) || updates.length === 0) return;
+    const map = new Map(updates.map((u) => [u.id, u]));
+    setProject((prev) => mutateActiveScene(prev, ({ world, objects }) => ({
+      world,
+      objects: objects.map((o) => {
+        const u = map.get(o.id);
+        if (!u) return o;
+        return {
+          ...o,
+          x: u.x,
+          y: u.y,
+          components: { ...o.components, Transform: { ...(o.components && o.components.Transform), x: u.x, y: u.y } },
+        };
       }),
     })));
   }, [mutateActiveScene]);
@@ -558,6 +698,51 @@ def on_update(self, engine, dt):
   // ---- Camera ----
   const handleUpdateCamera = useCallback((cam) => updateEditor({ camera: cam }), [updateEditor]);
   const handleToggleGrid = useCallback(() => updateEditor({ gridVisible: !editorState.gridVisible }), [updateEditor, editorState.gridVisible]);
+  const handleFrameScene = useCallback(() => {
+    if (!projectView || !projectView.world) return;
+    const world = projectView.world;
+    const ox = Number.isFinite(world.offsetX) ? world.offsetX : 0;
+    const oy = Number.isFinite(world.offsetY) ? world.offsetY : 0;
+    const cols = Number.isFinite(world.cols) ? world.cols : ((world.grid && world.grid[0] && world.grid[0].length) || 1);
+    const rows = Number.isFinite(world.rows) ? world.rows : ((world.grid && world.grid.length) || 1);
+    const minX = ox * 24;
+    const minY = oy * 24;
+    const maxX = (ox + cols) * 24;
+    const maxY = (oy + rows) * 24;
+    let sceneMinX = minX;
+    let sceneMinY = minY;
+    let sceneMaxX = maxX;
+    let sceneMaxY = maxY;
+    for (const obj of (projectView.objects || [])) {
+      const t = (obj.components && obj.components.Transform) || {};
+      const s = (obj.components && obj.components.Sprite) || {};
+      const x = Number.isFinite(t.x) ? t.x : (Number.isFinite(obj.x) ? obj.x : 0);
+      const y = Number.isFinite(t.y) ? t.y : (Number.isFinite(obj.y) ? obj.y : 0);
+      const w = Number.isFinite(s.width) ? s.width : 32;
+      const h = Number.isFinite(s.height) ? s.height : 32;
+      sceneMinX = Math.min(sceneMinX, x);
+      sceneMinY = Math.min(sceneMinY, y);
+      sceneMaxX = Math.max(sceneMaxX, x + w);
+      sceneMaxY = Math.max(sceneMaxY, y + h);
+    }
+    updateEditor({
+      camera: {
+        ...editorState.camera,
+        x: sceneMinX - 48,
+        y: sceneMinY - 48,
+        zoom: editorState.camera.zoom || 1,
+      },
+    });
+  }, [projectView, updateEditor, editorState.camera]);
+
+  useEffect(() => {
+    if (!projectView || !projectView.world) return;
+    const ox = Number.isFinite(projectView.world.offsetX) ? projectView.world.offsetX : 0;
+    const oy = Number.isFinite(projectView.world.offsetY) ? projectView.world.offsetY : 0;
+    if ((ox !== 0 || oy !== 0) && editorState.camera.x === 0 && editorState.camera.y === 0) {
+      handleFrameScene();
+    }
+  }, [projectView, editorState.camera.x, editorState.camera.y, handleFrameScene]);
 
 
   // ---- File ops ----
@@ -601,7 +786,7 @@ def on_update(self, engine, dt):
   const handleNew = useCallback(() => {
     setProject(createDefaultProject());
     setShowProjectSelector(false);
-    updateEditor({ selectedObjectId: null, selectedScriptId: null, camera: { x: 0, y: 0, zoom: 1 }, brushValue: 'solid' });
+    updateEditor({ selectedObjectId: null, selectedObjectIds: [], selectedScriptId: null, camera: { x: 0, y: 0, zoom: 1 }, brushValue: 'solid' });
     undoStackRef.current = []; redoStackRef.current = [];
   }, [updateEditor]);
 
@@ -720,12 +905,24 @@ def on_update(self, engine, dt):
         if (e.key === 'f') updateEditor({ activeTool: 'fill' });
         if (e.key === 'e') updateEditor({ activeTool: 'erase' });
         if (e.key === 'v') updateEditor({ activeTool: 'select' });
-        if (e.key === 'Delete' && editorState.selectedObjectId) handleRemoveObject(editorState.selectedObjectId);
+        if (e.key === 'Delete') {
+          const ids = Array.isArray(editorState.selectedObjectIds) && editorState.selectedObjectIds.length > 0
+            ? editorState.selectedObjectIds
+            : (editorState.selectedObjectId ? [editorState.selectedObjectId] : []);
+          if (ids.length === 1) handleRemoveObject(ids[0]);
+          if (ids.length > 1) {
+            setProject((prev) => {
+              pushUndo(prev);
+              return mutateActiveScene(prev, ({ world, objects }) => ({ world, objects: objects.filter((o) => !ids.includes(o.id)) }));
+            });
+            updateEditor({ selectedObjectId: null, selectedObjectIds: [] });
+          }
+        }
       }
     }
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [handleUndo, handleRedo, handleSave, handlePlayToggle, updateEditor, editorState.selectedObjectId, handleRemoveObject, isPlaying]);
+  }, [handleUndo, handleRedo, handleSave, handlePlayToggle, updateEditor, editorState.selectedObjectId, editorState.selectedObjectIds, handleRemoveObject, isPlaying, pushUndo, mutateActiveScene]);
 
   useEffect(() => {
     if (!window.api || typeof window.api.onMenuEvent !== 'function') return;
@@ -785,8 +982,16 @@ def on_update(self, engine, dt):
               onUpdateCamera={handleUpdateCamera}
               onToggleGrid={handleToggleGrid}
               onResizeWorld={handleResizeWorld}
+              onResetView={handleFrameScene}
             />
-            <ObjectList project={projectView} editorState={editorState} onSelectObject={handleSelectObject} onAddObject={handleAddObject} onRemoveObject={handleRemoveObject} />
+            <ObjectList
+              project={projectView}
+              editorState={editorState}
+              onSelectObject={handleSelectObject}
+              onAddObject={handleAddObject}
+              onAddCameraObject={handleAddCameraObject}
+              onRemoveObject={handleRemoveObject}
+            />
           </div>
 
           <div className="editor-center">
@@ -827,14 +1032,18 @@ def on_update(self, engine, dt):
                     <Viewport project={projectView} editorState={editorState}
                       onCellPaint={handleCellPaint} onCellFill={handleCellFill} onSelectObject={handleSelectObject}
                       onPlaceObject={(x, y) => {
-                        const obj = createGameObject('Object', x, y);
+                        const cls = (projectView?.defaultClasses || [])[0];
+                        const obj = createGameObject('Object', x, y, { type: (cls && cls.baseType) || 'generic' });
                         setProject(prev => {
                           pushUndo(prev);
                           return mutateActiveScene(prev, ({ world, objects }) => ({ world, objects: [...objects, obj] }));
                         });
-                        updateEditor({ selectedObjectId: obj.id });
+                        updateEditor({ selectedObjectId: obj.id, selectedObjectIds: [obj.id] });
                       }}
-                      onMoveObject={handleMoveObject} onUpdateCamera={handleUpdateCamera} />
+                      onMoveObject={handleMoveObject}
+                      onMoveObjects={handleMoveObjects}
+                      onSelectObjects={(ids, add) => handleSelectObject(null, { ids, add })}
+                      onUpdateCamera={handleUpdateCamera} />
                   )}
                 </div>
                 <div className="resize-handle" onMouseDown={handleResizeStart} />

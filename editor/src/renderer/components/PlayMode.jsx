@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { getCellType, normalizeCellTypeId } from '../state/projectModel.js';
+import { buildWorldSparseIndex, queryWorldSparseIndex } from '../lib/worldSparseIndex.js';
 
 /**
  * In-editor play mode.
@@ -32,9 +33,11 @@ export function usePlayMode(project, onLog) {
     // Load objects
     (snapshot.objects || []).forEach(obj => {
       const t = (obj.components && obj.components.Transform) || {};
+      const tx = Number.isFinite(t.x) ? t.x : (Number.isFinite(obj.x) ? obj.x : 0);
+      const ty = Number.isFinite(t.y) ? t.y : (Number.isFinite(obj.y) ? obj.y : 0);
       gameObjects.push({
         id: obj.id, name: obj.name, type: obj.type,
-        x: t.x || obj.x || 0, y: t.y || obj.y || 0,
+        x: tx, y: ty,
         width: (obj.components && obj.components.Sprite && obj.components.Sprite.width) || 32,
         height: (obj.components && obj.components.Sprite && obj.components.Sprite.height) || 32,
         color: (obj.components && obj.components.Sprite && obj.components.Sprite.color) || '#4ade80',
@@ -111,6 +114,7 @@ export function usePlayMode(project, onLog) {
       cameraConfig: snapshot.camera || {},
       viewX: 0,
       viewY: 0,
+      worldSparse: null,
     };
 
     // Engine API for scripts
@@ -131,6 +135,15 @@ export function usePlayMode(project, onLog) {
     });
 
     onLog({ type: 'info', message: 'Play mode started', time: new Date().toLocaleTimeString() });
+
+    const baseCellLayer = (((snapshot.layers || {}).cells || [])
+      .filter((layer) => layer.visible !== false)
+      .sort((a, b) => (a.order || 0) - (b.order || 0))[0] || { id: null }).id;
+    state.worldSparse = buildWorldSparseIndex(state.world, (cell) => {
+      if (normalizeCellTypeId(cell) === 'empty') return null;
+      const type = getCellType(snapshot, cell);
+      return { type, layerId: type.layerId || baseCellLayer };
+    });
 
     stateRef.current = state;
     startLoop();
@@ -206,12 +219,23 @@ export function usePlayMode(project, onLog) {
       resolveCellCollisions(state);
 
       // Render
-      const camera = state.cameraConfig || {};
+      const camera = resolvePlayCamera(state);
       const camTarget = camera.targetObjectId ? state.gameObjects.find((o) => o.id === camera.targetObjectId) : null;
+      const speed = Number.isFinite(camera.speed) ? camera.speed : 8;
+      const offsetX = Number.isFinite(camera.offsetX) ? camera.offsetX : 0;
+      const offsetY = Number.isFinite(camera.offsetY) ? camera.offsetY : 0;
+      let desiredX = null;
+      let desiredY = null;
       if (camTarget) {
-        const speed = Number.isFinite(camera.speed) ? camera.speed : 8;
-        state.viewX = (state.viewX || 0) + (camTarget.x - (state.viewX || 0)) * Math.min(dt * speed, 1);
-        state.viewY = (state.viewY || 0) + (camTarget.y - (state.viewY || 0)) * Math.min(dt * speed, 1);
+        desiredX = camTarget.x + offsetX;
+        desiredY = camTarget.y + offsetY;
+      } else if (Number.isFinite(camera.originX) && Number.isFinite(camera.originY)) {
+        desiredX = camera.originX + offsetX;
+        desiredY = camera.originY + offsetY;
+      }
+      if (desiredX !== null && desiredY !== null) {
+        state.viewX = (state.viewX || 0) + (desiredX - (state.viewX || 0)) * Math.min(dt * speed, 1);
+        state.viewY = (state.viewY || 0) + (desiredY - (state.viewY || 0)) * Math.min(dt * speed, 1);
       }
       renderFrame(state);
       rafRef.current = requestAnimationFrame(tick);
@@ -260,20 +284,11 @@ export function usePlayMode(project, onLog) {
         .sort((a, b) => (a.order || 0) - (b.order || 0));
 
       if (drawMinX <= drawMaxX && drawMinY <= drawMaxY) {
-        const baseLayerId = cellLayers[0] ? cellLayers[0].id : null;
+        const visibleCells = queryWorldSparseIndex(state.worldSparse, drawMinX, drawMinY, drawMaxX, drawMaxY);
         const cellsByLayer = new Map();
-        for (let y = drawMinY; y <= drawMaxY; y += 1) {
-          const ly = y - offsetY;
-          const row = world.grid[ly] || [];
-          for (let x = drawMinX; x <= drawMaxX; x += 1) {
-            const lx = x - offsetX;
-            const cell = row[lx];
-            if (normalizeCellTypeId(cell) === 'empty') continue;
-            const type = getCellType(proj, cell);
-            const layerId = type.layerId || baseLayerId;
-            if (!cellsByLayer.has(layerId)) cellsByLayer.set(layerId, []);
-            cellsByLayer.get(layerId).push({ x, y, type });
-          }
+        for (const entry of visibleCells) {
+          if (!cellsByLayer.has(entry.layerId)) cellsByLayer.set(entry.layerId, []);
+          cellsByLayer.get(entry.layerId).push(entry);
         }
 
         for (const layer of cellLayers) {
@@ -481,5 +496,30 @@ function getOverlap(a, b) {
   return {
     dx: ax < bx ? -overlapLeft : overlapRight,
     dy: ay < by ? -overlapTop : overlapBottom,
+  };
+}
+
+function resolvePlayCamera(state) {
+  const fallback = state.cameraConfig || {};
+  const objects = Array.isArray(state.gameObjects) ? state.gameObjects : [];
+  const cameraObject = objects.find((o) => {
+    const c = o && o.components && o.components.Camera;
+    return c && c.enabled !== false;
+  });
+  if (!cameraObject) return { ...fallback, offsetX: 0, offsetY: 0 };
+
+  const cameraComp = cameraObject.components.Camera || {};
+  let targetObjectId = cameraComp.targetObjectId || fallback.targetObjectId || null;
+  if (!targetObjectId) {
+    const player = objects.find((o) => o.type === 'player');
+    targetObjectId = player ? player.id : null;
+  }
+
+  return {
+    ...fallback,
+    ...cameraComp,
+    originX: Number.isFinite(cameraObject.x) ? cameraObject.x : 0,
+    originY: Number.isFinite(cameraObject.y) ? cameraObject.y : 0,
+    targetObjectId,
   };
 }

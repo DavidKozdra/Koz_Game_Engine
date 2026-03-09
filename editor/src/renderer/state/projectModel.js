@@ -42,6 +42,7 @@ const DEFAULT_CLASSES = [
   { id: 'generic', name: 'Generic Object', baseType: 'generic' },
   { id: 'sprite', name: 'Sprite Object', baseType: 'sprite' },
   { id: 'animator', name: 'Animator Object', baseType: 'animator' },
+  { id: 'camera', name: 'Camera Object', baseType: 'camera' },
 ];
 
 const DEFAULT_BUILD = {
@@ -67,12 +68,23 @@ function clone(v) {
   return JSON.parse(JSON.stringify(v));
 }
 
+function normalizeWorld(world) {
+  const next = clone(world || { cols: 30, rows: 20, defaultCell: null, grid: [], elements: [], meta: {} });
+  if (!Array.isArray(next.grid)) next.grid = [];
+  if (!Number.isFinite(next.cols)) next.cols = (next.grid[0] && next.grid[0].length) || 0;
+  if (!Number.isFinite(next.rows)) next.rows = next.grid.length;
+  if (!Number.isFinite(next.offsetX)) next.offsetX = 0;
+  if (!Number.isFinite(next.offsetY)) next.offsetY = 0;
+  next.grid = next.grid.map((row) => (Array.isArray(row) ? row.slice() : []));
+  return next;
+}
+
 function defaultSceneFromProject(projectLike) {
   const base = projectLike || {};
   return {
     id: 'scene_main',
     name: 'Main Scene',
-    world: clone(base.world || { cols: 30, rows: 20, defaultCell: null, grid: [], elements: [], meta: {} }),
+    world: normalizeWorld(base.world || { cols: 30, rows: 20, offsetX: 0, offsetY: 0, defaultCell: null, grid: [], elements: [], meta: {} }),
     objects: clone(base.objects || []),
   };
 }
@@ -90,13 +102,13 @@ function ensureProjectShape(project) {
   next.scenes = next.scenes.map((scene, idx) => ({
     id: scene.id || `scene_${idx}`,
     name: scene.name || `Scene ${idx + 1}`,
-    world: clone(scene.world || next.world),
+    world: normalizeWorld(scene.world || next.world),
     objects: clone(scene.objects || next.objects || []),
   }));
   if (!next.activeSceneId) next.activeSceneId = next.scenes[0].id;
   const activeScene = next.scenes.find((s) => s.id === next.activeSceneId) || next.scenes[0];
   if (activeScene) {
-    next.world = clone(activeScene.world || next.world);
+    next.world = normalizeWorld(activeScene.world || next.world);
     next.objects = clone(activeScene.objects || next.objects || []);
   }
   if (!Array.isArray(next.sceneFolders)) next.sceneFolders = ['Root'];
@@ -113,13 +125,40 @@ function ensureProjectShape(project) {
   if (!next.scripting.engines) next.scripting.engines = { javascript: true, lua: false, python: false };
   next.scripting.engines = { javascript: true, lua: false, python: false, ...next.scripting.engines };
 
-  if (next.world && Array.isArray(next.world.grid)) {
-    next.world.grid = next.world.grid.map((row) => (Array.isArray(row) ? row.slice() : []));
-  }
+  next.world = normalizeWorld(next.world);
 
   if (Array.isArray(next.objects)) {
     next.objects = next.objects.map((obj) => {
       const components = obj.components || {};
+      if (obj.type === 'camera' || components.Camera) {
+        const t = components.Transform || { x: obj.x || 0, y: obj.y || 0, rotation: 0, scaleX: 1, scaleY: 1 };
+        return {
+          ...obj,
+          editorFolder: obj.editorFolder || 'Root',
+          components: {
+            Transform: {
+              x: Number.isFinite(t.x) ? t.x : (obj.x || 0),
+              y: Number.isFinite(t.y) ? t.y : (obj.y || 0),
+              rotation: Number.isFinite(t.rotation) ? t.rotation : 0,
+              scaleX: Number.isFinite(t.scaleX) ? t.scaleX : 1,
+              scaleY: Number.isFinite(t.scaleY) ? t.scaleY : 1,
+            },
+            Camera: {
+              enabled: (components.Camera && components.Camera.enabled) !== false,
+              targetObjectId: (components.Camera && components.Camera.targetObjectId) || null,
+              speed: (components.Camera && Number.isFinite(components.Camera.speed)) ? components.Camera.speed : 8,
+              offsetX: (components.Camera && Number.isFinite(components.Camera.offsetX)) ? components.Camera.offsetX : 0,
+              offsetY: (components.Camera && Number.isFinite(components.Camera.offsetY)) ? components.Camera.offsetY : 0,
+            },
+            Render: {
+              layerId: (components.Render && components.Render.layerId) || obj.layerId || 'obj-main',
+              visible: false,
+              zIndex: (components.Render && Number.isFinite(components.Render.zIndex)) ? components.Render.zIndex : 0,
+            },
+            ScriptBindings: Array.isArray(components.ScriptBindings) ? components.ScriptBindings : [],
+          },
+        };
+      }
       return {
         ...obj,
         editorFolder: obj.editorFolder || 'Root',

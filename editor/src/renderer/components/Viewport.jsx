@@ -1,15 +1,17 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { getCellType, normalizeCellTypeId, getBrushValue } from '../state/projectModel.js';
+import { buildWorldSparseIndex, queryWorldSparseIndex } from '../lib/worldSparseIndex.js';
 
 /**
  * 2D Canvas viewport for world editing.
  * Renders grid, tiles, elements, and game objects.
  * Handles mouse input for painting, selection, and camera.
  */
-export default function Viewport({ project, editorState, onCellPaint, onCellFill, onSelectObject, onPlaceObject, onMoveObject, onUpdateCamera }) {
+export default function Viewport({ project, editorState, onCellPaint, onCellFill, onSelectObject, onSelectObjects, onPlaceObject, onMoveObject, onMoveObjects, onUpdateCamera }) {
   const canvasRef = useRef(null);
   const dragRef = useRef({ dragging: false, button: -1, startX: 0, startY: 0, lastX: 0, lastY: 0 });
   const imageCacheRef = useRef(new Map());
+  const sparseRef = useRef({ world: null, cellTypes: null, index: null });
 
   const cellSize = 24;
 
@@ -89,19 +91,26 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
     const drawMaxY = Math.min(viewMaxY, worldMaxY);
 
     if (drawMinX <= drawMaxX && drawMinY <= drawMaxY) {
+      if (sparseRef.current.world !== world || sparseRef.current.cellTypes !== project.cellTypes) {
+        sparseRef.current = {
+          world,
+          cellTypes: project.cellTypes,
+          index: buildWorldSparseIndex(world, (cell) => {
+            if (normalizeCellTypeId(cell) === 'empty') return null;
+            const type = getCellType(project, cell);
+            return {
+              type,
+              layerId: type.layerId || baseLayerId,
+            };
+          }),
+        };
+      }
+
+      const visibleCells = queryWorldSparseIndex(sparseRef.current.index, drawMinX, drawMinY, drawMaxX, drawMaxY);
       const cellsByLayer = new Map();
-      for (let y = drawMinY; y <= drawMaxY; y += 1) {
-        const ly = y - offsetY;
-        const row = world.grid[ly] || [];
-        for (let x = drawMinX; x <= drawMaxX; x += 1) {
-          const lx = x - offsetX;
-          const cell = row[lx];
-          if (normalizeCellTypeId(cell) === 'empty') continue;
-          const type = getCellType(project, cell);
-          const layerId = type.layerId || baseLayerId;
-          if (!cellsByLayer.has(layerId)) cellsByLayer.set(layerId, []);
-          cellsByLayer.get(layerId).push({ x, y, type });
-        }
+      for (const entry of visibleCells) {
+        if (!cellsByLayer.has(entry.layerId)) cellsByLayer.set(entry.layerId, []);
+        cellsByLayer.get(entry.layerId).push(entry);
       }
 
       for (const layer of cellLayers) {
@@ -171,8 +180,8 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
         const transform = (obj.components && obj.components.Transform) || {};
         const render = (obj.components && obj.components.Render) || {};
         if (render.visible === false) continue;
-        const ox = (transform.x || obj.x || 0);
-        const oy = (transform.y || obj.y || 0);
+        const ox = Number.isFinite(transform.x) ? transform.x : (Number.isFinite(obj.x) ? obj.x : 0);
+        const oy = Number.isFinite(transform.y) ? transform.y : (Number.isFinite(obj.y) ? obj.y : 0);
         const w = sprite.width || 32;
         const h = sprite.height || 32;
         let drawn = false;
@@ -207,7 +216,8 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
         }
 
         // Selection highlight
-        if (editorState.selectedObjectId === obj.id) {
+        const isSelected = (editorState.selectedObjectIds || []).includes(obj.id) || editorState.selectedObjectId === obj.id;
+        if (isSelected) {
           ctx.strokeStyle = '#3b82f6';
           ctx.lineWidth = 2;
           ctx.strokeRect(ox - 1, oy - 1, w + 2, h + 2);
@@ -231,6 +241,21 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
       const screenPos = worldToScreen(cell.cx * cellSize, cell.cy * cellSize);
       ctx.fillRect(screenPos.x, screenPos.y, cellSize * zoom, cellSize * zoom);
     }
+    if (dragRef.current.selectMarquee && dragRef.current.startX !== undefined) {
+      const sx = dragRef.current.startX;
+      const sy = dragRef.current.startY;
+      const ex = dragRef.current.lastX;
+      const ey = dragRef.current.lastY;
+      const rx = Math.min(sx, ex);
+      const ry = Math.min(sy, ey);
+      const rw = Math.abs(ex - sx);
+      const rh = Math.abs(ey - sy);
+      ctx.strokeStyle = 'rgba(59,130,246,0.9)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(rx, ry, rw, rh);
+      ctx.fillStyle = 'rgba(59,130,246,0.12)';
+      ctx.fillRect(rx, ry, rw, rh);
+    }
   }, [project, editorState, worldToScreen, screenToCell]);
 
   // Resize observer
@@ -251,7 +276,10 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
 
-    dragRef.current = { dragging: true, button: e.button, startX: sx, startY: sy, lastX: sx, lastY: sy, lastScreenX: sx, lastScreenY: sy };
+    dragRef.current = {
+      dragging: true, button: e.button, startX: sx, startY: sy, lastX: sx, lastY: sy, lastScreenX: sx, lastScreenY: sy,
+      selectDrag: false, selectMarquee: false, selectShift: !!e.shiftKey, selectStartWorld: null, selectStartPositions: null,
+    };
 
     if (e.button === 1 || (e.button === 0 && e.altKey)) {
       // Middle click or alt+click = pan
@@ -275,8 +303,8 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
           for (const obj of project.objects) {
             const t = (obj.components && obj.components.Transform) || {};
             const s = (obj.components && obj.components.Sprite) || {};
-            const ox = t.x || obj.x || 0;
-            const oy = t.y || obj.y || 0;
+            const ox = Number.isFinite(t.x) ? t.x : (Number.isFinite(obj.x) ? obj.x : 0);
+            const oy = Number.isFinite(t.y) ? t.y : (Number.isFinite(obj.y) ? obj.y : 0);
             const w = s.width || 32;
             const h = s.height || 32;
             if (worldPos.x >= ox && worldPos.x <= ox + w && worldPos.y >= oy && worldPos.y <= oy + h) {
@@ -284,7 +312,31 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
             }
           }
         }
-        if (onSelectObject) onSelectObject(found ? found.id : null);
+        if (found) {
+          const current = Array.isArray(editorState.selectedObjectIds) ? editorState.selectedObjectIds : [];
+          if (onSelectObject) onSelectObject(found.id, e.shiftKey ? { toggle: true } : undefined);
+          const willBeSelected = e.shiftKey ? !current.includes(found.id) : true;
+          if (willBeSelected) {
+            const selectedIds = e.shiftKey
+              ? (current.includes(found.id) ? current.filter((id) => id !== found.id) : [...current, found.id])
+              : [found.id];
+            const startPositions = new Map();
+            for (const obj of (project.objects || [])) {
+              if (!selectedIds.includes(obj.id)) continue;
+              const t = (obj.components && obj.components.Transform) || {};
+              const ox = Number.isFinite(t.x) ? t.x : (Number.isFinite(obj.x) ? obj.x : 0);
+              const oy = Number.isFinite(t.y) ? t.y : (Number.isFinite(obj.y) ? obj.y : 0);
+              startPositions.set(obj.id, { x: ox, y: oy });
+            }
+            dragRef.current.selectDrag = true;
+            dragRef.current.selectStartWorld = worldPos;
+            dragRef.current.selectStartPositions = startPositions;
+          }
+        } else {
+          if (!e.shiftKey && onSelectObject) onSelectObject(null);
+          dragRef.current.selectMarquee = true;
+          dragRef.current.selectShift = !!e.shiftKey;
+        }
       } else if (editorState.activeTool === 'place') {
         const worldPos = screenToWorld(sx, sy);
         if (onPlaceObject) onPlaceObject(Math.floor(worldPos.x), Math.floor(worldPos.y));
@@ -327,16 +379,52 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
         if (onCellPaint) onCellPaint(cell.cx, cell.cy, getBrushValue(editorState));
       } else if (editorState.activeTool === 'erase') {
         if (onCellPaint) onCellPaint(cell.cx, cell.cy, 'empty');
-      } else if (editorState.activeTool === 'select' && editorState.selectedObjectId) {
-        // Drag to move selected object
+      } else if (editorState.activeTool === 'select' && dragRef.current.selectDrag && dragRef.current.selectStartWorld && dragRef.current.selectStartPositions) {
         const worldPos = screenToWorld(sx, sy);
-        if (onMoveObject) onMoveObject(editorState.selectedObjectId, Math.floor(worldPos.x), Math.floor(worldPos.y));
+        const dxw = Math.floor(worldPos.x - dragRef.current.selectStartWorld.x);
+        const dyw = Math.floor(worldPos.y - dragRef.current.selectStartWorld.y);
+        const updates = [];
+        for (const [id, pos] of dragRef.current.selectStartPositions.entries()) {
+          updates.push({ id, x: pos.x + dxw, y: pos.y + dyw });
+        }
+        if (updates.length === 1 && onMoveObject) onMoveObject(updates[0].id, updates[0].x, updates[0].y);
+        else if (updates.length > 1 && onMoveObjects) onMoveObjects(updates);
       }
     }
   }
 
   function handleMouseUp() {
+    if (dragRef.current.selectMarquee && project && project.objects && onSelectObjects) {
+      const sx = dragRef.current.startX;
+      const sy = dragRef.current.startY;
+      const ex = dragRef.current.lastX;
+      const ey = dragRef.current.lastY;
+      const minSx = Math.min(sx, ex);
+      const minSy = Math.min(sy, ey);
+      const maxSx = Math.max(sx, ex);
+      const maxSy = Math.max(sy, ey);
+      const a = screenToWorld(minSx, minSy);
+      const b = screenToWorld(maxSx, maxSy);
+      const minWx = Math.min(a.x, b.x);
+      const minWy = Math.min(a.y, b.y);
+      const maxWx = Math.max(a.x, b.x);
+      const maxWy = Math.max(a.y, b.y);
+      const ids = [];
+      for (const obj of project.objects) {
+        const t = (obj.components && obj.components.Transform) || {};
+        const s = (obj.components && obj.components.Sprite) || {};
+        const ox = Number.isFinite(t.x) ? t.x : (Number.isFinite(obj.x) ? obj.x : 0);
+        const oy = Number.isFinite(t.y) ? t.y : (Number.isFinite(obj.y) ? obj.y : 0);
+        const w = Number.isFinite(s.width) ? s.width : 32;
+        const h = Number.isFinite(s.height) ? s.height : 32;
+        const overlap = ox <= maxWx && ox + w >= minWx && oy <= maxWy && oy + h >= minWy;
+        if (overlap) ids.push(obj.id);
+      }
+      onSelectObjects(ids, dragRef.current.selectShift);
+    }
     dragRef.current.dragging = false;
+    dragRef.current.selectDrag = false;
+    dragRef.current.selectMarquee = false;
   }
 
   function handleWheel(e) {

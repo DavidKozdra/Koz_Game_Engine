@@ -40,7 +40,7 @@ export default function AssetsSceneBrowser({ project, onPatchProject }) {
     const name = newSceneName.trim();
     if (!name) return;
     const id = `scene_${Date.now().toString(36)}`;
-    const baseWorld = project.world || { cols: 30, rows: 20, defaultCell: 'empty', grid: [], elements: [], meta: {} };
+    const baseWorld = project.world || { cols: 30, rows: 20, offsetX: 0, offsetY: 0, defaultCell: 'empty', grid: [], elements: [], meta: {} };
     const world = JSON.parse(JSON.stringify(baseWorld));
     if (Array.isArray(world.grid)) {
       world.grid = world.grid.map((row) => (Array.isArray(row) ? row.map(() => world.defaultCell || 'empty') : []));
