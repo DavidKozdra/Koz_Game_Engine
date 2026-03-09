@@ -5,16 +5,18 @@ const TOOLS = [
   { id: 'fill', label: 'Fill', key: 'F' },
   { id: 'erase', label: 'Erase', key: 'E' },
   { id: 'select', label: 'Select', key: 'V' },
+  { id: 'worldMove', label: 'World', key: 'G' },
   { id: 'place', label: 'Place', key: 'P' },
 ];
 
-export default function Toolbar({ project, editorState, isPlaying, onToolChange, onBrushChange, onUndo, onRedo, onNewProject, onSaveProject, onLoadProject, onExport, onPlayToggle, undoCount, redoCount }) {
+export default function Toolbar({ project, editorState, isPlaying, onToolChange, onBrushChange, onUndo, onRedo, onNewProject, onSaveProject, onSaveAsProject, onLoadProject, onExport, onPlayToggle, undoCount, redoCount }) {
   const cellTypes = (project && project.cellTypes) || [];
   return (
     <div className="editor-toolbar">
       <div className="toolbar-group">
         <button className="btn btn-sm" onClick={onNewProject} title="New Project">New</button>
         <button className="btn btn-sm" onClick={onSaveProject} title="Save (Ctrl+S)">Save</button>
+        <button className="btn btn-sm" onClick={onSaveAsProject} title="Save As (Ctrl+Shift+S)">Save As</button>
         <button className="btn btn-sm" onClick={onLoadProject} title="Load Project">Load</button>
       </div>
 

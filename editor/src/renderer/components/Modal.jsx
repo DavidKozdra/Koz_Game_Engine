@@ -24,7 +24,10 @@ export default function Modal({ open, title, onClose, children, maxWidth = 460, 
         width: `min(${resolvedMaxWidth}, 92vw)`,
         minWidth: `min(${resolvedMinWidth}, 92vw)`,
         maxWidth: '92vw',
+        maxHeight: '90vh',
         padding: 0, boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+        resize: 'both',
+        overflow: 'auto',
       }}>
         <div style={{
           padding: '12px 16px', borderBottom: '1px solid var(--border)',
@@ -35,7 +38,7 @@ export default function Modal({ open, title, onClose, children, maxWidth = 460, 
             background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16, lineHeight: 1,
           }}>&times;</button>
         </div>
-        <div style={{ padding: '16px' }}>
+        <div style={{ padding: '16px', overflow: 'auto' }}>
           {children}
         </div>
       </div>

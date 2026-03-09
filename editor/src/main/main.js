@@ -19,6 +19,93 @@ function checkViteRunning() {
 
 const { Menu, shell, ipcMain, dialog } = require('electron');
 
+function sanitizeProjectName(name) {
+  const value = String(name || 'Untitled Project').trim();
+  const cleaned = value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, '').replace(/\s+/g, ' ');
+  return cleaned || 'Untitled Project';
+}
+
+function projectSlug(name) {
+  return sanitizeProjectName(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'project';
+}
+
+function getProjectsRoot() {
+  const root = path.join(app.getPath('documents'), 'KozProjects');
+  if (!fs.existsSync(root)) fs.mkdirSync(root, { recursive: true });
+  return root;
+}
+
+function resolveProjectJsonPath(projectPath) {
+  if (!projectPath) return null;
+  const stat = fs.existsSync(projectPath) ? fs.statSync(projectPath) : null;
+  if (stat && stat.isDirectory()) return path.join(projectPath, 'project.json');
+  return projectPath.toLowerCase().endsWith('.json') ? projectPath : null;
+}
+
+async function listProjects() {
+  const root = getProjectsRoot();
+  const entries = await fs.promises.readdir(root, { withFileTypes: true });
+  const projects = [];
+  for (const entry of entries) {
+    let folderPath = root;
+    let jsonPath = null;
+    if (entry.isDirectory()) {
+      folderPath = path.join(root, entry.name);
+      const nested = path.join(folderPath, 'project.json');
+      if (!fs.existsSync(nested)) continue;
+      jsonPath = nested;
+    } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.json')) {
+      jsonPath = path.join(root, entry.name);
+    } else {
+      continue;
+    }
+    const stat = await fs.promises.stat(jsonPath);
+    let metaName = entry.name.replace(/\.json$/i, '');
+    try {
+      const raw = await fs.promises.readFile(jsonPath, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.meta && parsed.meta.name) metaName = String(parsed.meta.name);
+    } catch (_e) {
+      // ignore parse errors in listing, keep file visible
+    }
+    projects.push({
+      id: jsonPath,
+      name: metaName,
+      folderPath,
+      projectPath: jsonPath,
+      updatedAt: stat.mtimeMs,
+    });
+  }
+  projects.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  return { ok: true, root, projects };
+}
+
+async function writeProjectFile(payload, explicitPath = null) {
+  const projectJson = String(payload && payload.projectJson ? payload.projectJson : '{}');
+  const desiredName = sanitizeProjectName((payload && payload.name) || 'Untitled Project');
+  const root = getProjectsRoot();
+  const existing = explicitPath || (payload && payload.projectPath) || null;
+  if (existing) {
+    const jsonPath = resolveProjectJsonPath(existing);
+    if (!jsonPath) return { ok: false, error: 'Invalid project path' };
+    await fs.promises.mkdir(path.dirname(jsonPath), { recursive: true });
+    await fs.promises.writeFile(jsonPath, projectJson, 'utf8');
+    return { ok: true, projectPath: jsonPath, folderPath: path.dirname(jsonPath), name: desiredName };
+  }
+
+  const baseSlug = projectSlug(desiredName);
+  let candidate = path.join(root, baseSlug);
+  let i = 2;
+  while (fs.existsSync(candidate)) {
+    candidate = path.join(root, `${baseSlug}-${i}`);
+    i += 1;
+  }
+  await fs.promises.mkdir(candidate, { recursive: true });
+  const jsonPath = path.join(candidate, 'project.json');
+  await fs.promises.writeFile(jsonPath, projectJson, 'utf8');
+  return { ok: true, projectPath: jsonPath, folderPath: candidate, name: desiredName };
+}
+
 function runCommand(cmd, args, cwd) {
   return new Promise((resolve, reject) => {
     execFile(cmd, args, { cwd }, (error, stdout, stderr) => {
@@ -173,6 +260,70 @@ ipcMain.handle('export:build', async (event, payload) => {
   }
 });
 
+ipcMain.handle('projects:list', async () => {
+  try {
+    return await listProjects();
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+});
+
+ipcMain.handle('projects:openDialog', async () => {
+  const pick = await dialog.showOpenDialog({
+    title: 'Open Project',
+    properties: ['openFile'],
+    filters: [{ name: 'Koz Project', extensions: ['json'] }],
+  });
+  if (pick.canceled || !pick.filePaths || pick.filePaths.length === 0) return { ok: false, canceled: true };
+  const projectPath = pick.filePaths[0];
+  try {
+    const content = await fs.promises.readFile(projectPath, 'utf8');
+    return { ok: true, projectPath, folderPath: path.dirname(projectPath), content };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+});
+
+ipcMain.handle('projects:load', async (_event, payload) => {
+  const projectPath = payload && payload.projectPath ? String(payload.projectPath) : '';
+  if (!projectPath) return { ok: false, error: 'Missing projectPath' };
+  const jsonPath = resolveProjectJsonPath(projectPath);
+  if (!jsonPath) return { ok: false, error: 'Invalid project path' };
+  try {
+    const content = await fs.promises.readFile(jsonPath, 'utf8');
+    return { ok: true, projectPath: jsonPath, folderPath: path.dirname(jsonPath), content };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+});
+
+ipcMain.handle('projects:save', async (_event, payload) => {
+  try {
+    return await writeProjectFile(payload || {}, null);
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+});
+
+ipcMain.handle('projects:saveAs', async (_event, payload) => {
+  const name = sanitizeProjectName((payload && payload.name) || 'Untitled Project');
+  const pick = await dialog.showOpenDialog({
+    title: 'Choose Save Folder',
+    properties: ['openDirectory', 'createDirectory'],
+    defaultPath: getProjectsRoot(),
+  });
+  if (pick.canceled || !pick.filePaths || pick.filePaths.length === 0) return { ok: false, canceled: true };
+  const baseFolder = pick.filePaths[0];
+  const projectFolder = path.join(baseFolder, projectSlug(name));
+  await fs.promises.mkdir(projectFolder, { recursive: true });
+  const explicitPath = path.join(projectFolder, 'project.json');
+  try {
+    return await writeProjectFile(payload || {}, explicitPath);
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+});
+
 async function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
@@ -203,6 +354,7 @@ async function createWindow() {
       label: 'File',
       submenu: [
         { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => { win.webContents.send('menu-save'); } },
+        { label: 'Save As', accelerator: 'CmdOrCtrl+Shift+S', click: () => { win.webContents.send('menu-save-as'); } },
         { label: 'Load', accelerator: 'CmdOrCtrl+O', click: () => { win.webContents.send('menu-load'); } },
         { label: 'Export', accelerator: 'CmdOrCtrl+E', click: () => { win.webContents.send('menu-export'); } },
         { type: 'separator' },

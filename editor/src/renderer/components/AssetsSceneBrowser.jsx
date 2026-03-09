@@ -12,7 +12,7 @@ function imageSrc(asset) {
   return asset.previewUrl || asset.url || asset.src || null;
 }
 
-export default function AssetsSceneBrowser({ project, onPatchProject }) {
+export default function AssetsSceneBrowser({ project, onPatchProject, showScenes = true, showImages = true, showPrefabs = true, title = 'Assets' }) {
   const [expanded, setExpanded] = useState({ scenes: true, images: true, prefabs: true });
   const [newSceneName, setNewSceneName] = useState('');
   const [newImageName, setNewImageName] = useState('');
@@ -171,12 +171,14 @@ export default function AssetsSceneBrowser({ project, onPatchProject }) {
 
   return (
     <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
-      <h3>Assets</h3>
+      <h3>{title}</h3>
       <div style={{ border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden', background: '#0b1220' }}>
-        <button type="button" className="btn btn-sm" style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent' }} onClick={() => toggle('scenes')}>
+        {showScenes && (
+          <button type="button" className="btn btn-sm" style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent' }} onClick={() => toggle('scenes')}>
           {expanded.scenes ? 'v' : '>'} [DIR] Scenes ({scenes.length})
-        </button>
-        {expanded.scenes && (
+          </button>
+        )}
+        {showScenes && expanded.scenes && (
           <div style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
               <input value={newSceneName} onChange={(e) => setNewSceneName(e.target.value)} placeholder="New scene name" style={{ flex: 1, padding: '3px 6px', background: '#111827', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3 }} />
@@ -198,10 +200,12 @@ export default function AssetsSceneBrowser({ project, onPatchProject }) {
           </div>
         )}
 
-        <button type="button" className="btn btn-sm" style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent' }} onClick={() => toggle('images')}>
+        {showImages && (
+          <button type="button" className="btn btn-sm" style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent' }} onClick={() => toggle('images')}>
           {expanded.images ? 'v' : '>'} [DIR] Images ({images.length})
-        </button>
-        {expanded.images && (
+          </button>
+        )}
+        {showImages && expanded.images && (
           <div style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto', gap: 6, marginBottom: 8 }}>
               <input value={newImageName} onChange={(e) => setNewImageName(e.target.value)} placeholder="Image name" style={{ padding: '3px 6px', background: '#111827', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3 }} />
@@ -246,10 +250,12 @@ export default function AssetsSceneBrowser({ project, onPatchProject }) {
           </div>
         )}
 
-        <button type="button" className="btn btn-sm" style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', background: 'transparent' }} onClick={() => toggle('prefabs')}>
+        {showPrefabs && (
+          <button type="button" className="btn btn-sm" style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', background: 'transparent' }} onClick={() => toggle('prefabs')}>
           {expanded.prefabs ? 'v' : '>'} [DIR] Prefabs ({prefabs.length})
-        </button>
-        {expanded.prefabs && (
+          </button>
+        )}
+        {showPrefabs && expanded.prefabs && (
           <div style={{ padding: 8 }}>
             <div style={{ display: 'grid', gap: 4 }}>
               {prefabs.length === 0 && <div style={{ color: '#94a3b8', fontSize: 11 }}>No prefabs yet.</div>}

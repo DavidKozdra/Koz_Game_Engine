@@ -118,6 +118,7 @@ function createGameObject(name, x, y, opts = {}) {
       id: genId('obj'),
       name: name || 'Camera',
       type,
+      parentId: null,
       x,
       y,
       components: {
@@ -130,6 +131,7 @@ function createGameObject(name, x, y, opts = {}) {
   }
   const next = {
     id: genId('obj'), name: name || 'Object', type, x, y,
+    parentId: null,
     components: {
       Transform: { x, y, rotation: 0, scaleX: 1, scaleY: 1 },
       Sprite: { assetId: null, color: opts.color || '#4ade80', width: 32, height: 32 },
@@ -152,6 +154,7 @@ function instantiateFromPrefab(prefab, projectView, x, y) {
   const obj = JSON.parse(JSON.stringify(source));
   obj.id = genId('obj');
   obj.name = (prefab && prefab.name) || obj.name || 'Object';
+  obj.parentId = null;
   obj.x = x;
   obj.y = y;
   obj.components = obj.components || {};
@@ -240,6 +243,10 @@ function App() {
   // All hooks must be called unconditionally and in the same order
   const [project, setProject] = useState(null);
   const [showProjectSelector, setShowProjectSelector] = useState(true);
+  const [projectFile, setProjectFile] = useState({ projectPath: null, folderPath: null, name: null });
+  const [availableProjects, setAvailableProjects] = useState([]);
+  const [projectsRoot, setProjectsRoot] = useState(null);
+  const [newProjectName, setNewProjectName] = useState('Untitled Project');
   const [editorState, setEditorState] = useState({
     mode: 'EDIT', activeTool: 'brush', brushValue: 'solid',
     selectedObjectId: null, selectedObjectIds: [], selectedScriptId: null, camera: { x: 0, y: 0, zoom: 1 }, gridVisible: true,
@@ -282,6 +289,16 @@ function App() {
 
   const updateEditor = useCallback((patch) => {
     setEditorState(prev => ({ ...prev, ...patch }));
+  }, []);
+
+  const refreshProjects = useCallback(() => {
+    const api = window.api;
+    if (!api || typeof api.listProjects !== 'function') return;
+    api.listProjects().then((result) => {
+      if (!result || !result.ok) return;
+      setProjectsRoot(result.root || null);
+      setAvailableProjects(Array.isArray(result.projects) ? result.projects : []);
+    });
   }, []);
 
   const mutateActiveScene = useCallback((prevProject, mutateFn) => {
@@ -456,7 +473,12 @@ function App() {
   const handleRemoveObject = useCallback((id) => {
     setProject(prev => {
       pushUndo(prev);
-      return mutateActiveScene(prev, ({ world, objects }) => ({ world, objects: objects.filter((o) => o.id !== id) }));
+      return mutateActiveScene(prev, ({ world, objects }) => ({
+        world,
+        objects: objects
+          .filter((o) => o.id !== id)
+          .map((o) => (o.parentId === id ? { ...o, parentId: null } : o)),
+      }));
     });
     setEditorState((prev) => {
       const ids = (prev.selectedObjectIds || []).filter((sid) => sid !== id);
@@ -548,6 +570,46 @@ function App() {
       }),
     })));
   }, [mutateActiveScene]);
+
+  const handleMoveWorld = useCallback((dx, dy) => {
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
+    setProject((prev) => mutateActiveScene(prev, ({ world, objects }) => {
+      const cellDx = Math.round(dx / 24);
+      const cellDy = Math.round(dy / 24);
+      if (cellDx === 0 && cellDy === 0) return { world, objects };
+      const nextObjects = objects.map((obj) => {
+        const t = (obj.components && obj.components.Transform) || {};
+        const x = (Number.isFinite(t.x) ? t.x : (Number.isFinite(obj.x) ? obj.x : 0)) + (cellDx * 24);
+        const y = (Number.isFinite(t.y) ? t.y : (Number.isFinite(obj.y) ? obj.y : 0)) + (cellDy * 24);
+        return {
+          ...obj,
+          x,
+          y,
+          components: { ...obj.components, Transform: { ...t, x, y } },
+        };
+      });
+      return {
+        world: {
+          ...world,
+          offsetX: (Number.isFinite(world.offsetX) ? world.offsetX : 0) + cellDx,
+          offsetY: (Number.isFinite(world.offsetY) ? world.offsetY : 0) + cellDy,
+        },
+        objects: nextObjects,
+      };
+    }));
+  }, [mutateActiveScene]);
+
+  const handleCreatePrefabFromObject = useCallback((objId) => {
+    const source = (projectView && projectView.objects || []).find((o) => o.id === objId);
+    if (!source) return;
+    const nextPrefab = {
+      id: `prefab_${Date.now().toString(36)}`,
+      name: `${source.name || source.type || 'Object'} Prefab`,
+      sourceObjectId: source.id,
+      object: JSON.parse(JSON.stringify(source)),
+    };
+    setProject((prev) => ({ ...prev, prefabs: [...((prev && prev.prefabs) || []), nextPrefab] }));
+  }, [projectView]);
 
   // ---- Scripts ----
   const handleUpdateScript = useCallback((id, patch) => {
@@ -744,51 +806,133 @@ def on_update(self, engine, dt):
     }
   }, [projectView, editorState.camera.x, editorState.camera.y, handleFrameScene]);
 
+  useEffect(() => {
+    refreshProjects();
+  }, [refreshProjects]);
+
 
   // ---- File ops ----
-  const handleSave = useCallback(() => {
-    if (!project) return;
-    const json = JSON.stringify(ensureProjectShape(project), null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = (project.meta.name || 'project') + '.json'; a.click();
-    URL.revokeObjectURL(url);
-  }, [project]);
-
-  // Project selector modal logic
-  const handleProjectFile = (file) => {
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const data = JSON.parse(ev.target.result);
-        if (data.schemaVersion === 1) {
-          setProject(ensureProjectShape(data));
-          setShowProjectSelector(false);
-        } else {
-          alert('Unknown schema version');
-        }
-      } catch (err) {
-        alert('Invalid project file: ' + err.message);
+  const openProjectFromContent = useCallback((content, fileInfo = {}) => {
+    try {
+      const data = JSON.parse(content);
+      if (data.schemaVersion !== 1) {
+        alert('Unknown schema version');
+        return;
       }
-    };
-    reader.readAsText(file);
-  };
-
-  const handleLoad = useCallback(() => {
-    const input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
-    input.onchange = (e) => {
-      const file = e.target.files[0]; if (!file) return;
-      handleProjectFile(file);
-    };
-    input.click();
+      const next = ensureProjectShape(data);
+      setProject(next);
+      setProjectFile({
+        projectPath: fileInfo.projectPath || null,
+        folderPath: fileInfo.folderPath || null,
+        name: (next.meta && next.meta.name) || fileInfo.name || null,
+      });
+      setShowProjectSelector(false);
+      undoStackRef.current = [];
+      redoStackRef.current = [];
+    } catch (err) {
+      alert('Invalid project file: ' + err.message);
+    }
   }, []);
 
+  const handleSave = useCallback(() => {
+    if (!project) return;
+    const normalized = ensureProjectShape(project);
+    const json = JSON.stringify(normalized, null, 2);
+    const api = window.api;
+    if (api && typeof api.saveProject === 'function') {
+      api.saveProject({
+        projectPath: projectFile.projectPath,
+        name: normalized.meta && normalized.meta.name ? normalized.meta.name : newProjectName,
+        projectJson: json,
+      }).then((result) => {
+        if (!result || !result.ok) {
+          if (!(result && result.canceled)) alert(`Save failed: ${(result && result.error) || 'Unknown error'}`);
+          return;
+        }
+        setProjectFile({
+          projectPath: result.projectPath || null,
+          folderPath: result.folderPath || null,
+          name: result.name || (normalized.meta && normalized.meta.name) || null,
+        });
+        refreshProjects();
+      });
+      return;
+    }
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = (normalized.meta.name || 'project') + '.json'; a.click();
+    URL.revokeObjectURL(url);
+  }, [project, projectFile.projectPath, newProjectName, refreshProjects]);
+
+  const handleSaveAs = useCallback(() => {
+    if (!project) return;
+    const normalized = ensureProjectShape(project);
+    const json = JSON.stringify(normalized, null, 2);
+    const api = window.api;
+    if (api && typeof api.saveProjectAs === 'function') {
+      api.saveProjectAs({
+        name: normalized.meta && normalized.meta.name ? normalized.meta.name : newProjectName,
+        projectJson: json,
+      }).then((result) => {
+        if (!result || !result.ok) {
+          if (!(result && result.canceled)) alert(`Save As failed: ${(result && result.error) || 'Unknown error'}`);
+          return;
+        }
+        setProjectFile({
+          projectPath: result.projectPath || null,
+          folderPath: result.folderPath || null,
+          name: result.name || (normalized.meta && normalized.meta.name) || null,
+        });
+        refreshProjects();
+      });
+      return;
+    }
+    handleSave();
+  }, [project, newProjectName, handleSave, refreshProjects]);
+
+  const handleLoad = useCallback(() => {
+    refreshProjects();
+    setShowProjectSelector(true);
+  }, [refreshProjects]);
+
+  const handleLoadProjectFromList = useCallback((item) => {
+    const api = window.api;
+    if (!item) return;
+    if (api && typeof api.loadProject === 'function') {
+      api.loadProject(item.projectPath).then((result) => {
+        if (!result || !result.ok) return;
+        openProjectFromContent(result.content, { projectPath: result.projectPath, folderPath: result.folderPath, name: item.name });
+      });
+      return;
+    }
+  }, [openProjectFromContent]);
+
   const handleNew = useCallback(() => {
-    setProject(createDefaultProject());
+    const name = (newProjectName || 'Untitled Project').trim() || 'Untitled Project';
+    const nextProject = createDefaultProject({ name });
+    setProject(nextProject);
     setShowProjectSelector(false);
+    setProjectFile({ projectPath: null, folderPath: null, name });
     updateEditor({ selectedObjectId: null, selectedObjectIds: [], selectedScriptId: null, camera: { x: 0, y: 0, zoom: 1 }, brushValue: 'solid' });
-    undoStackRef.current = []; redoStackRef.current = [];
-  }, [updateEditor]);
+    undoStackRef.current = [];
+    redoStackRef.current = [];
+    const api = window.api;
+    if (api && typeof api.saveProject === 'function') {
+      api.saveProject({
+        projectPath: null,
+        name,
+        projectJson: JSON.stringify(nextProject, null, 2),
+      }).then((result) => {
+        if (!result || !result.ok) return;
+        setProjectFile({
+          projectPath: result.projectPath || null,
+          folderPath: result.folderPath || null,
+          name: result.name || name,
+        });
+        refreshProjects();
+      });
+    }
+  }, [updateEditor, newProjectName, refreshProjects]);
 
   const handlePatchProject = useCallback((patch) => {
     setProject(prev => {
@@ -898,6 +1042,7 @@ def on_update(self, engine, dt):
       if (e.target.closest('.cm-editor')) return;
       if (e.ctrlKey && e.key === 'z') { e.preventDefault(); handleUndo(); }
       if (e.ctrlKey && e.key === 'y') { e.preventDefault(); handleRedo(); }
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's') { e.preventDefault(); handleSaveAs(); }
       if (e.ctrlKey && e.key === 's') { e.preventDefault(); handleSave(); }
       if (e.key === 'F5') { e.preventDefault(); handlePlayToggle(); }
       if (!isPlaying) {
@@ -905,6 +1050,17 @@ def on_update(self, engine, dt):
         if (e.key === 'f') updateEditor({ activeTool: 'fill' });
         if (e.key === 'e') updateEditor({ activeTool: 'erase' });
         if (e.key === 'v') updateEditor({ activeTool: 'select' });
+        if (e.key === 'g') updateEditor({ activeTool: 'worldMove' });
+        const camStep = e.shiftKey ? 48 : 24;
+        const isPan = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'a', 'd', 'w', 's'].includes(e.key);
+        if (isPan && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          const cam = editorState.camera;
+          if (e.key === 'ArrowLeft' || e.key === 'a') updateEditor({ camera: { ...cam, x: cam.x - camStep } });
+          if (e.key === 'ArrowRight' || e.key === 'd') updateEditor({ camera: { ...cam, x: cam.x + camStep } });
+          if (e.key === 'ArrowUp' || e.key === 'w') updateEditor({ camera: { ...cam, y: cam.y - camStep } });
+          if (e.key === 'ArrowDown' || e.key === 's') updateEditor({ camera: { ...cam, y: cam.y + camStep } });
+        }
         if (e.key === 'Delete') {
           const ids = Array.isArray(editorState.selectedObjectIds) && editorState.selectedObjectIds.length > 0
             ? editorState.selectedObjectIds
@@ -913,7 +1069,12 @@ def on_update(self, engine, dt):
           if (ids.length > 1) {
             setProject((prev) => {
               pushUndo(prev);
-              return mutateActiveScene(prev, ({ world, objects }) => ({ world, objects: objects.filter((o) => !ids.includes(o.id)) }));
+              return mutateActiveScene(prev, ({ world, objects }) => ({
+                world,
+                objects: objects
+                  .filter((o) => !ids.includes(o.id))
+                  .map((o) => (ids.includes(o.parentId) ? { ...o, parentId: null } : o)),
+              }));
             });
             updateEditor({ selectedObjectId: null, selectedObjectIds: [] });
           }
@@ -922,17 +1083,18 @@ def on_update(self, engine, dt):
     }
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [handleUndo, handleRedo, handleSave, handlePlayToggle, updateEditor, editorState.selectedObjectId, editorState.selectedObjectIds, handleRemoveObject, isPlaying, pushUndo, mutateActiveScene]);
+  }, [handleUndo, handleRedo, handleSave, handleSaveAs, handlePlayToggle, updateEditor, editorState.camera, editorState.selectedObjectId, editorState.selectedObjectIds, handleRemoveObject, isPlaying, pushUndo, mutateActiveScene]);
 
   useEffect(() => {
     if (!window.api || typeof window.api.onMenuEvent !== 'function') return;
     const unbind = window.api.onMenuEvent((eventName) => {
       if (eventName === 'menu-save') handleSave();
+      if (eventName === 'menu-save-as') handleSaveAs();
       if (eventName === 'menu-load') handleLoad();
       if (eventName === 'menu-export') openExportModal();
     });
     return () => { if (typeof unbind === 'function') unbind(); };
-  }, [handleSave, handleLoad, openExportModal]);
+  }, [handleSave, handleSaveAs, handleLoad, openExportModal]);
 
   useEffect(() => {
     if (!window.api || typeof window.api.onExportProgress !== 'function') return;
@@ -949,17 +1111,50 @@ def on_update(self, engine, dt):
     setExportConfig((prev) => ({ ...prev, desktopFormat: desktopFormats[0] || 'portable' }));
   }, [exportConfig.target, exportConfig.desktopFormat, desktopFormats]);
 
+  useEffect(() => {
+    const theme = (project && project.editorTheme) || 'slate';
+    document.documentElement.setAttribute('data-editor-theme', theme);
+  }, [project]);
+
   // Render project selector modal if no project loaded
   return (
     <>
       {(showProjectSelector || !project) && (
-        <Modal open={true} title={null} onClose={() => {}}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24, minWidth: 320 }}>
+        <Modal open={true} title={null} onClose={() => { if (project) setShowProjectSelector(false); }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, minWidth: 360, maxHeight: '72vh' }}>
             <KozLogo size={80} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
+              <input
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                placeholder="Project name"
+                style={{ width: '100%', padding: '8px 10px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4 }}
+              />
               <button className="btn btn-lg" style={{ width: '100%' }} onClick={handleNew}>New Project</button>
               <button className="btn btn-lg" style={{ width: '100%' }} onClick={handleLoad}>Load Project</button>
-              <div style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center', marginTop: 8 }}>Select a project file (.json) or start a new one.</div>
+              {!!project && (
+                <button className="btn btn-lg" style={{ width: '100%' }} onClick={() => setShowProjectSelector(false)}>Cancel</button>
+              )}
+              <div style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center', marginTop: 4 }}>
+                Save uses {projectsRoot || 'the current projects folder'} and does not open the file system.
+              </div>
+              <div style={{ border: '1px solid var(--border)', borderRadius: 6, background: '#0b1220', maxHeight: '32vh', overflow: 'auto' }}>
+                {(availableProjects || []).length === 0 && (
+                  <div style={{ color: 'var(--text-muted)', fontSize: 12, padding: 10 }}>No projects found yet.</div>
+                )}
+                {(availableProjects || []).map((item) => (
+                  <button
+                    key={item.projectPath}
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => handleLoadProjectFromList(item)}
+                    style={{ width: '100%', justifyContent: 'space-between', border: 'none', borderBottom: '1px solid var(--border)', borderRadius: 0, background: 'transparent' }}
+                  >
+                    <span style={{ textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>{new Date(item.updatedAt).toLocaleDateString()}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </Modal>
@@ -971,7 +1166,7 @@ def on_update(self, engine, dt):
             onToolChange={(tool) => updateEditor({ activeTool: tool })}
             onBrushChange={(val) => updateEditor({ brushValue: getBrushValue({ brushValue: val }) })}
             onUndo={handleUndo} onRedo={handleRedo}
-            onNewProject={handleNew} onSaveProject={handleSave} onLoadProject={handleLoad}
+            onNewProject={handleNew} onSaveProject={handleSave} onSaveAsProject={handleSaveAs} onLoadProject={handleLoad}
             onExport={openExportModal} onPlayToggle={handlePlayToggle}
             undoCount={undoStackRef.current.length} redoCount={redoStackRef.current.length} />
 
@@ -996,7 +1191,7 @@ def on_update(self, engine, dt):
 
           <div className="editor-center">
             <div className="main-tabs" style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: '#181c24' }}>
-              {['world', 'scripts', 'assets'].map(tab => (
+              {['world', 'scripts', 'assets', 'scenes', 'settings'].map(tab => (
                 <button
                   key={tab}
                   className={`main-tab ${mainTab === tab ? 'active' : ''}`}
@@ -1017,7 +1212,11 @@ def on_update(self, engine, dt):
                     ? 'World / Game'
                     : tab === 'scripts'
                       ? `Scripts (${projectView && Array.isArray(projectView.scripts) ? projectView.scripts.length : 0})`
-                      : 'Assets'}
+                      : tab === 'assets'
+                        ? 'Assets'
+                        : tab === 'scenes'
+                          ? `Scenes (${project && Array.isArray(project.scenes) ? project.scenes.length : 0})`
+                          : 'Settings'}
                 </button>
               ))}
             </div>
@@ -1042,6 +1241,7 @@ def on_update(self, engine, dt):
                       }}
                       onMoveObject={handleMoveObject}
                       onMoveObjects={handleMoveObjects}
+                      onMoveWorld={handleMoveWorld}
                       onSelectObjects={(ids, add) => handleSelectObject(null, { ids, add })}
                       onUpdateCamera={handleUpdateCamera} />
                   )}
@@ -1097,6 +1297,29 @@ def on_update(self, engine, dt):
             {mainTab === 'assets' && (
               <div style={{ flex: 1, minHeight: 0 }}>
                 <SystemsTab
+                  mode="assets"
+                  project={project}
+                  selectedObjectId={editorState.selectedObjectId}
+                  onPatchProject={handlePatchProject}
+                  onSelectObject={handleSelectObject}
+                />
+              </div>
+            )}
+            {mainTab === 'scenes' && (
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <SystemsTab
+                  mode="scenes"
+                  project={project}
+                  selectedObjectId={editorState.selectedObjectId}
+                  onPatchProject={handlePatchProject}
+                  onSelectObject={handleSelectObject}
+                />
+              </div>
+            )}
+            {mainTab === 'settings' && (
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <SystemsTab
+                  mode="settings"
                   project={project}
                   selectedObjectId={editorState.selectedObjectId}
                   onPatchProject={handlePatchProject}
@@ -1105,7 +1328,15 @@ def on_update(self, engine, dt):
               </div>
             )}
           </div>
-          <Inspector project={projectView} editorState={editorState} onUpdateObject={handleUpdateObject} onUpdateComponent={handleUpdateComponent} />
+          <div className="editor-right">
+            <Inspector
+              project={projectView}
+              editorState={editorState}
+              onUpdateObject={handleUpdateObject}
+              onUpdateComponent={handleUpdateComponent}
+              onCreatePrefabFromObject={handleCreatePrefabFromObject}
+            />
+          </div>
         </div>
       )}
       <Modal open={showExportModal} title="Export Project" onClose={() => setShowExportModal(false)}>
