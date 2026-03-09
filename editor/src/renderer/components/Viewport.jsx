@@ -316,7 +316,6 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
   }
 
   function handleWheel(e) {
-    e.preventDefault();
     const cam = editorState.camera;
     const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
     const newZoom = Math.max(0.25, Math.min(4, cam.zoom * zoomFactor));
