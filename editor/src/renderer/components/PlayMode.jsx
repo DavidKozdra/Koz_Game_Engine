@@ -112,6 +112,28 @@ export function usePlayMode(project, onLog) {
     onLog({ type: 'info', message: 'Play mode stopped', time: new Date().toLocaleTimeString() });
   }, [onLog]);
 
+  const execute = useCallback((code) => {
+    const state = stateRef.current;
+    if (!state || !state.running) {
+      onLog({ type: 'error', message: 'Cannot execute: game not running', time: new Date().toLocaleTimeString() });
+      return;
+    }
+    try {
+      const gameObjects = state.gameObjects;
+      const elapsed = state.elapsed;
+      const findObject = (id) => gameObjects.find(o => o.id === id) || null;
+      const cmdConsole = {
+        log: (...args) => onLog({ type: 'log', message: args.map(String).join(' '), time: new Date().toLocaleTimeString() }),
+        warn: (...args) => onLog({ type: 'warn', message: args.map(String).join(' '), time: new Date().toLocaleTimeString() }),
+        error: (...args) => onLog({ type: 'error', message: args.map(String).join(' '), time: new Date().toLocaleTimeString() }),
+      };
+      const fn = new Function('gameObjects', 'elapsed', 'findObject', 'console', code);
+      fn(gameObjects, elapsed, findObject, cmdConsole);
+    } catch (e) {
+      onLog({ type: 'error', message: `Command error: ${e.message}`, time: new Date().toLocaleTimeString() });
+    }
+  }, [onLog]);
+
   function startLoop() {
     let lastTime = performance.now();
 
@@ -214,7 +236,7 @@ export function usePlayMode(project, onLog) {
     };
   }, []);
 
-  return { canvasRef, isPlaying, start, stop };
+  return { canvasRef, isPlaying, start, stop, execute };
 }
 
 function sampleTrack(track, time) {

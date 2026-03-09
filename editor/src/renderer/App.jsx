@@ -8,6 +8,8 @@ import ScriptEditor from './components/ScriptEditor.jsx';
 import Timeline from './components/Timeline.jsx';
 import ConsolePanel from './components/Console.jsx';
 import { usePlayMode } from './components/PlayMode.jsx';
+import KozLogo from './components/KozLogo.jsx';
+import Modal from './components/Modal.jsx';
 import './editor.css';
 
 // ---- Project helpers ----
@@ -52,7 +54,9 @@ function createGameObject(name, x, y, opts = {}) {
 const MAX_UNDO = 100;
 
 function App() {
-  const [project, setProject] = useState(() => createDefaultProject());
+  // All hooks must be called unconditionally and in the same order
+  const [project, setProject] = useState(null);
+  const [showProjectSelector, setShowProjectSelector] = useState(true);
   const [editorState, setEditorState] = useState({
     mode: 'EDIT', activeTool: 'brush', brushValue: 1,
     selectedObjectId: null, camera: { x: 0, y: 0, zoom: 1 }, gridVisible: true,
@@ -62,6 +66,8 @@ function App() {
   const [logs, setLogs] = useState([]);
   const undoStackRef = useRef([]);
   const redoStackRef = useRef([]);
+
+  // ...existing callbacks and logic...
 
   const updateEditor = useCallback((patch) => {
     setEditorState(prev => ({ ...prev, ...patch }));
@@ -96,7 +102,7 @@ function App() {
   }, []);
 
   // ---- Play mode ----
-  const { canvasRef: playCanvasRef, isPlaying, start: startPlay, stop: stopPlay } = usePlayMode(project, addLog);
+  const { canvasRef: playCanvasRef, isPlaying, start: startPlay, stop: stopPlay, execute } = usePlayMode(project, addLog);
 
   const handlePlayToggle = useCallback(() => {
     if (isPlaying) { stopPlay(); updateEditor({ mode: 'EDIT' }); }
@@ -334,8 +340,10 @@ def on_update(self, engine, dt):
   const handleUpdateCamera = useCallback((cam) => updateEditor({ camera: cam }), [updateEditor]);
   const handleToggleGrid = useCallback(() => updateEditor({ gridVisible: !editorState.gridVisible }), [updateEditor, editorState.gridVisible]);
 
+
   // ---- File ops ----
   const handleSave = useCallback(() => {
+    if (!project) return;
     const json = JSON.stringify(project, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -343,26 +351,37 @@ def on_update(self, engine, dt):
     URL.revokeObjectURL(url);
   }, [project]);
 
+  // Project selector modal logic
+  const handleProjectFile = (file) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (data.schemaVersion === 1) {
+          setProject(data);
+          setShowProjectSelector(false);
+        } else {
+          alert('Unknown schema version');
+        }
+      } catch (err) {
+        alert('Invalid project file: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const handleLoad = useCallback(() => {
     const input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
     input.onchange = (e) => {
       const file = e.target.files[0]; if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        try {
-          const data = JSON.parse(ev.target.result);
-          if (data.schemaVersion === 1) { pushUndo(project); setProject(data); addLog({ type: 'info', message: `Loaded: ${data.meta?.name || file.name}`, time: new Date().toLocaleTimeString() }); }
-          else { alert('Unknown schema version'); }
-        } catch (err) { alert('Invalid project file: ' + err.message); }
-      };
-      reader.readAsText(file);
+      handleProjectFile(file);
     };
     input.click();
-  }, [project, pushUndo, addLog]);
+  }, []);
 
   const handleNew = useCallback(() => {
-    if (!confirm('Create new project? Unsaved changes will be lost.')) return;
     setProject(createDefaultProject());
+    setShowProjectSelector(false);
     updateEditor({ selectedObjectId: null, camera: { x: 0, y: 0, zoom: 1 } });
     undoStackRef.current = []; redoStackRef.current = [];
   }, [updateEditor]);
@@ -409,64 +428,82 @@ def on_update(self, engine, dt):
     return () => window.removeEventListener('keydown', handleKey);
   }, [handleUndo, handleRedo, handleSave, handlePlayToggle, updateEditor, editorState.selectedObjectId, handleRemoveObject, isPlaying]);
 
+  // Render project selector modal if no project loaded
   return (
-    <div className="editor-layout">
-      <Toolbar editorState={editorState} isPlaying={isPlaying}
-        onToolChange={(tool) => updateEditor({ activeTool: tool })}
-        onBrushChange={(val) => updateEditor({ brushValue: val })}
-        onUndo={handleUndo} onRedo={handleRedo}
-        onNewProject={handleNew} onSaveProject={handleSave} onLoadProject={handleLoad}
-        onExport={handleExport} onPlayToggle={handlePlayToggle}
-        undoCount={undoStackRef.current.length} redoCount={redoStackRef.current.length} />
-
-      <div className="editor-left">
-        <WorldTools project={project} editorState={editorState} onUpdateCamera={handleUpdateCamera} onToggleGrid={handleToggleGrid} />
-        <ObjectList project={project} editorState={editorState} onSelectObject={handleSelectObject} onAddObject={handleAddObject} onRemoveObject={handleRemoveObject} />
-      </div>
-
-      <div className="editor-center">
-        <div className="editor-viewport">
-          {isPlaying ? (
-            <canvas ref={playCanvasRef} width={project.meta.resolution.width} height={project.meta.resolution.height}
-              style={{ display: 'block', maxWidth: '100%', maxHeight: '100%', margin: '0 auto', background: '#0b1220' }} tabIndex={0} />
-          ) : (
-            <Viewport project={project} editorState={editorState}
-              onCellPaint={handleCellPaint} onCellFill={handleCellFill} onSelectObject={handleSelectObject}
-              onPlaceObject={(x, y) => { const obj = createGameObject('Object', x, y); setProject(prev => { pushUndo(prev); return { ...prev, objects: [...prev.objects, obj] }; }); updateEditor({ selectedObjectId: obj.id }); }}
-              onMoveObject={handleMoveObject} onUpdateCamera={handleUpdateCamera} />
-          )}
-        </div>
-        <div className="resize-handle" onMouseDown={handleResizeStart} />
-        <div className="editor-bottom" style={{ height: bottomHeight }}>
-          <div className="bottom-tabs">
-            {['scripts', 'timeline', 'console'].map(tab => (
-              <button key={tab} className={`bottom-tab ${bottomTab === tab ? 'active' : ''}`} onClick={() => setBottomTab(tab)}>
-                {tab === 'scripts' ? `Scripts (${project.scripts.length})` : tab === 'timeline' ? `Timeline (${project.animations.length})` : `Console (${logs.length})`}
-              </button>
-            ))}
+    <>
+      {(showProjectSelector || !project) && (
+        <Modal open={true} title={null} onClose={() => {}}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24, minWidth: 320 }}>
+            <KozLogo size={80} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
+              <button className="btn btn-lg" style={{ width: '100%' }} onClick={handleNew}>New Project</button>
+              <button className="btn btn-lg" style={{ width: '100%' }} onClick={handleLoad}>Load Project</button>
+              <div style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center', marginTop: 8 }}>Select a project file (.json) or start a new one.</div>
+            </div>
           </div>
-          <div className="bottom-content">
-            {bottomTab === 'scripts' && <ScriptEditor project={project} onUpdateScript={handleUpdateScript} onAddScript={handleAddScript} onDeleteScript={handleDeleteScript} />}
-            {bottomTab === 'timeline' && <Timeline project={project} onUpdateAnimation={handleUpdateAnimation} onAddAnimation={handleAddAnimation} onDeleteAnimation={handleDeleteAnimation} onAddTrack={handleAddTrack} onAddKeyframe={handleAddKeyframe} onDeleteKeyframe={() => {}} onUpdateKeyframe={() => {}} />}
-            {bottomTab === 'console' && <ConsolePanel logs={logs} onClear={() => setLogs([])} />}
+        </Modal>
+      )}
+      {!(showProjectSelector || !project) && (
+        // ...existing code for the editor layout...
+        <div className="editor-layout">
+          <Toolbar editorState={editorState} isPlaying={isPlaying}
+            onToolChange={(tool) => updateEditor({ activeTool: tool })}
+            onBrushChange={(val) => updateEditor({ brushValue: val })}
+            onUndo={handleUndo} onRedo={handleRedo}
+            onNewProject={handleNew} onSaveProject={handleSave} onLoadProject={handleLoad}
+            onExport={handleExport} onPlayToggle={handlePlayToggle}
+            undoCount={undoStackRef.current.length} redoCount={redoStackRef.current.length} />
+
+          <div className="editor-left">
+            <WorldTools project={project} editorState={editorState} onUpdateCamera={handleUpdateCamera} onToggleGrid={handleToggleGrid} />
+            <ObjectList project={project} editorState={editorState} onSelectObject={handleSelectObject} onAddObject={handleAddObject} onRemoveObject={handleRemoveObject} />
+          </div>
+
+          <div className="editor-center">
+            <div className="editor-viewport">
+              {isPlaying ? (
+                <canvas ref={playCanvasRef} width={project.meta.resolution.width} height={project.meta.resolution.height}
+                  style={{ display: 'block', maxWidth: '100%', maxHeight: '100%', margin: '0 auto', background: '#0b1220' }} tabIndex={0} />
+              ) : (
+                <Viewport project={project} editorState={editorState}
+                  onCellPaint={handleCellPaint} onCellFill={handleCellFill} onSelectObject={handleSelectObject}
+                  onPlaceObject={(x, y) => { const obj = createGameObject('Object', x, y); setProject(prev => { pushUndo(prev); return { ...prev, objects: [...prev.objects, obj] }; }); updateEditor({ selectedObjectId: obj.id }); }}
+                  onMoveObject={handleMoveObject} onUpdateCamera={handleUpdateCamera} />
+              )}
+            </div>
+            <div className="resize-handle" onMouseDown={handleResizeStart} />
+            <div className="editor-bottom" style={{ height: bottomHeight }}>
+              <div className="bottom-tabs">
+                {['scripts', 'timeline', 'console'].map(tab => (
+                  <button key={tab} className={`bottom-tab ${bottomTab === tab ? 'active' : ''}`} onClick={() => setBottomTab(tab)}>
+                    {tab === 'scripts' ? `Scripts (${project.scripts.length})` : tab === 'timeline' ? `Timeline (${project.animations.length})` : `Console (${logs.length})`}
+                  </button>
+                ))}
+              </div>
+              <div className="bottom-content">
+                {bottomTab === 'scripts' && <ScriptEditor project={project} onUpdateScript={handleUpdateScript} onAddScript={handleAddScript} onDeleteScript={handleDeleteScript} />}
+                {bottomTab === 'timeline' && <Timeline project={project} onUpdateAnimation={handleUpdateAnimation} onAddAnimation={handleAddAnimation} onDeleteAnimation={handleDeleteAnimation} onAddTrack={handleAddTrack} onAddKeyframe={handleAddKeyframe} onDeleteKeyframe={() => {}} onUpdateKeyframe={() => {}} />}
+                {bottomTab === 'console' && <ConsolePanel logs={logs} onClear={() => setLogs([])} onCommand={execute} isRunning={isPlaying} onStop={stopPlay} />}
+              </div>
+            </div>
+          </div>
+
+          <div className="editor-right">
+            <Inspector project={project} editorState={editorState} onUpdateObject={handleUpdateObject} onUpdateComponent={handleUpdateComponent} />
+          </div>
+
+          <div className="editor-statusbar">
+            <span className={isPlaying ? 'status-playing' : ''}>{isPlaying ? 'PLAYING' : 'EDIT'}</span>
+            <span>Tool: {editorState.activeTool}</span>
+            <span>Zoom: {(editorState.camera.zoom * 100).toFixed(0)}%</span>
+            <span>Obj: {project.objects.length} | Scripts: {project.scripts.length} | Anims: {project.animations.length}</span>
+            <span style={{ flex: 1 }} />
+            <span style={{ opacity: 0.6 }}>F5: Play | Ctrl+S: Save | Ctrl+Z/Y: Undo/Redo</span>
+            <span style={{ marginLeft: 12, fontWeight: 600 }}>{project.meta.name}</span>
           </div>
         </div>
-      </div>
-
-      <div className="editor-right">
-        <Inspector project={project} editorState={editorState} onUpdateObject={handleUpdateObject} onUpdateComponent={handleUpdateComponent} />
-      </div>
-
-      <div className="editor-statusbar">
-        <span className={isPlaying ? 'status-playing' : ''}>{isPlaying ? 'PLAYING' : 'EDIT'}</span>
-        <span>Tool: {editorState.activeTool}</span>
-        <span>Zoom: {(editorState.camera.zoom * 100).toFixed(0)}%</span>
-        <span>Obj: {project.objects.length} | Scripts: {project.scripts.length} | Anims: {project.animations.length}</span>
-        <span style={{ flex: 1 }} />
-        <span style={{ opacity: 0.6 }}>F5: Play | Ctrl+S: Save | Ctrl+Z/Y: Undo/Redo</span>
-        <span style={{ marginLeft: 12, fontWeight: 600 }}>{project.meta.name}</span>
-      </div>
-    </div>
+      )}
+    </>
   );
 }
 
