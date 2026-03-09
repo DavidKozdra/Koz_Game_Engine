@@ -62,6 +62,17 @@ const DEFAULT_CAMERA = {
   zoom: 1,
   minZoom: 0.25,
   maxZoom: 4,
+  offsetX: 0,
+  offsetY: 0,
+  deadZoneWidth: 180,
+  deadZoneHeight: 120,
+  lookAheadX: 0,
+  lookAheadY: 0,
+  visibleMargin: 40,
+  followX: true,
+  followY: true,
+  clampToWorld: true,
+  maxSpeed: 2000,
 };
 
 function clone(v) {
@@ -149,6 +160,15 @@ function ensureProjectShape(project) {
               speed: (components.Camera && Number.isFinite(components.Camera.speed)) ? components.Camera.speed : 8,
               offsetX: (components.Camera && Number.isFinite(components.Camera.offsetX)) ? components.Camera.offsetX : 0,
               offsetY: (components.Camera && Number.isFinite(components.Camera.offsetY)) ? components.Camera.offsetY : 0,
+              deadZoneWidth: (components.Camera && Number.isFinite(components.Camera.deadZoneWidth)) ? components.Camera.deadZoneWidth : 180,
+              deadZoneHeight: (components.Camera && Number.isFinite(components.Camera.deadZoneHeight)) ? components.Camera.deadZoneHeight : 120,
+              lookAheadX: (components.Camera && Number.isFinite(components.Camera.lookAheadX)) ? components.Camera.lookAheadX : 0,
+              lookAheadY: (components.Camera && Number.isFinite(components.Camera.lookAheadY)) ? components.Camera.lookAheadY : 0,
+              visibleMargin: (components.Camera && Number.isFinite(components.Camera.visibleMargin)) ? components.Camera.visibleMargin : 40,
+              followX: (components.Camera && components.Camera.followX) !== false,
+              followY: (components.Camera && components.Camera.followY) !== false,
+              clampToWorld: (components.Camera && components.Camera.clampToWorld) !== false,
+              maxSpeed: (components.Camera && Number.isFinite(components.Camera.maxSpeed)) ? components.Camera.maxSpeed : 2000,
             },
             Render: {
               layerId: (components.Render && components.Render.layerId) || obj.layerId || 'obj-main',
