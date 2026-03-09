@@ -6,19 +6,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
   const [imageQuery, setImageQuery] = useState('');
   const selectedId = editorState.selectedObjectId;
   const obj = selectedId && project ? project.objects.find(o => o.id === selectedId) : null;
-
-  if (!obj) {
-    return (
-      <div className="panel-section">
-        <h3>Inspector</h3>
-        <div style={{ color: 'var(--text-muted)', fontSize: 11, padding: '4px 0' }}>
-          Select an object to inspect
-        </div>
-      </div>
-    );
-  }
-
-  const components = obj.components || {};
+  const components = obj?.components || {};
   const bindings = components.ScriptBindings || [];
   const imageAssets = (project.assets || []).filter((a) => a && a.kind === 'image' && a.mime === 'image/png');
   const imageAssetById = new Map(imageAssets.map((a) => [a.id, a]));
@@ -32,6 +20,17 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
       return id.includes(q) || name.includes(q);
     });
   }, [imageAssets, imageQuery]);
+
+  if (!obj) {
+    return (
+      <div className="panel-section">
+        <h3>Inspector</h3>
+        <div style={{ color: 'var(--text-muted)', fontSize: 11, padding: '4px 0' }}>
+          Select an object to inspect
+        </div>
+      </div>
+    );
+  }
 
   function handleNameChange(e) {
     onUpdateObject(obj.id, { name: e.target.value });
