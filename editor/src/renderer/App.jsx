@@ -5,11 +5,13 @@ import ObjectList from './components/ObjectList.jsx';
 import WorldTools from './components/WorldTools.jsx';
 import Inspector from './components/Inspector.jsx';
 import ScriptEditor from './components/ScriptEditor.jsx';
+import SystemsTab from './components/SystemsTab.jsx';
 import Timeline from './components/Timeline.jsx';
 import ConsolePanel from './components/Console.jsx';
 import { usePlayMode } from './components/PlayMode.jsx';
 import KozLogo from './components/KozLogo.jsx';
 import Modal from './components/Modal.jsx';
+import { ensureProjectShape, normalizeCellTypeId, getBrushValue } from './state/projectModel.js';
 import './editor.css';
 
 // ---- Project helpers ----
@@ -23,7 +25,7 @@ function createDefaultProject(opts = {}) {
     for (let x = 0; x < cols; x++) row.push(dc);
     grid.push(row);
   }
-  return {
+  return ensureProjectShape({
     schemaVersion: 1,
     meta: { name: opts.name || 'Untitled Project', version: '1.0.0', resolution: { width: 960, height: 540 }, engineVersion: '0.1.0' },
     world: { cols, rows, defaultCell: dc, grid, elements: [], meta: {} },
@@ -32,22 +34,71 @@ function createDefaultProject(opts = {}) {
     scripts: [],
     assets: [],
     build: { profile: 'web-prod', pwa: false },
-  };
+  });
 }
 
 let _idCounter = 0;
 function genId(prefix) { _idCounter++; return prefix + '_' + Date.now().toString(36) + '_' + _idCounter; }
 
 function createGameObject(name, x, y, opts = {}) {
+  const type = opts.type || 'generic';
   return {
-    id: genId('obj'), name: name || 'Object', type: 'generic', x, y,
+    id: genId('obj'), name: name || 'Object', type, x, y,
     components: {
       Transform: { x, y, rotation: 0, scaleX: 1, scaleY: 1 },
       Sprite: { assetId: null, color: opts.color || '#4ade80', width: 32, height: 32 },
       Collider: { shape: 'rect', width: 32, height: 32 },
+      Collision: { enabled: true, isTrigger: false },
+      RigidBody: { enabled: false, weight: 1, friction: 0.4 },
+      Render: { layerId: opts.layerId || 'obj-main', visible: true, zIndex: 0 },
       ScriptBindings: [],
-      Animator: { clipId: null },
+      Animator: { clipId: null, autoplay: type === 'animator' },
     },
+  };
+}
+
+function buildExportHtml(project, projectJson, target) {
+  const safeJson = projectJson
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026');
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${(project && project.meta && project.meta.name) || 'Koz Game'}</title>
+</head>
+<body style="margin:0;background:#0b1220;color:#e2e8f0;font-family:sans-serif;">
+  <div style="padding:12px;border-bottom:1px solid #334155;">Export target: ${target || 'html-zip'}</div>
+  <canvas id="game" width="${project?.meta?.resolution?.width || 960}" height="${project?.meta?.resolution?.height || 540}" style="display:block;margin:12px auto;background:#111827;"></canvas>
+  <script>window.__KOZ_PROJECT__=${safeJson};</script>
+  <script>
+    const p = window.__KOZ_PROJECT__;
+    const ctx = document.getElementById('game').getContext('2d');
+    ctx.fillStyle = '#111827'; ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);
+    ctx.fillStyle = '#22c55e'; ctx.font = '16px sans-serif';
+    ctx.fillText((p.meta && p.meta.name) || 'Koz Export', 16, 28);
+    ctx.fillStyle = '#94a3b8'; ctx.font = '12px sans-serif';
+    ctx.fillText('Project exported with target: ${(target || 'html-zip')}', 16, 50);
+  </script>
+</body>
+</html>`;
+}
+
+function resolveActiveScene(project) {
+  if (!project || !Array.isArray(project.scenes) || project.scenes.length === 0) return null;
+  return project.scenes.find((scene) => scene.id === project.activeSceneId) || project.scenes[0];
+}
+
+function withActiveSceneView(project) {
+  if (!project) return project;
+  const active = resolveActiveScene(project);
+  if (!active) return project;
+  return {
+    ...project,
+    world: active.world || project.world,
+    objects: active.objects || project.objects || [],
   };
 }
 
@@ -58,20 +109,72 @@ function App() {
   const [project, setProject] = useState(null);
   const [showProjectSelector, setShowProjectSelector] = useState(true);
   const [editorState, setEditorState] = useState({
-    mode: 'EDIT', activeTool: 'brush', brushValue: 1,
+    mode: 'EDIT', activeTool: 'brush', brushValue: 'solid',
     selectedObjectId: null, selectedScriptId: null, camera: { x: 0, y: 0, zoom: 1 }, gridVisible: true,
   });
   const [bottomTab, setBottomTab] = useState('timeline');
   const [bottomHeight, setBottomHeight] = useState(240);
   const [logs, setLogs] = useState([]);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState([]);
+  const [exportConfig, setExportConfig] = useState({
+    target: 'html-zip',
+    fileName: '',
+    includeAssets: true,
+    includeScripts: true,
+    minify: true,
+    pwaOfflineCache: true,
+    electronSingleFile: false,
+    tarGzip: true,
+    desktopPlatform: 'auto',
+    desktopFormat: 'portable',
+  });
   const undoStackRef = useRef([]);
   const redoStackRef = useRef([]);
   const [mainTab, setMainTab] = useState('world');
+  const inferredPlatform = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
+    ? 'mac'
+    : typeof navigator !== 'undefined' && /win/i.test(navigator.platform)
+      ? 'win'
+      : 'linux';
+  const effectiveDesktopPlatform = exportConfig.desktopPlatform === 'auto' ? inferredPlatform : exportConfig.desktopPlatform;
+  const desktopFormats = effectiveDesktopPlatform === 'win'
+    ? ['portable', 'nsis', 'zip']
+    : effectiveDesktopPlatform === 'mac'
+      ? ['dmg', 'zip']
+      : ['AppImage', 'deb', 'zip'];
+  const projectView = withActiveSceneView(project);
 
   // ...existing callbacks and logic...
 
   const updateEditor = useCallback((patch) => {
     setEditorState(prev => ({ ...prev, ...patch }));
+  }, []);
+
+  const mutateActiveScene = useCallback((prevProject, mutateFn) => {
+    const base = ensureProjectShape(prevProject);
+    const scenes = Array.isArray(base.scenes) && base.scenes.length > 0 ? base.scenes : [{
+      id: 'scene_main',
+      name: 'Main Scene',
+      world: base.world,
+      objects: base.objects || [],
+    }];
+    const active = resolveActiveScene(base) || scenes[0];
+    const activeId = active.id;
+    const world = JSON.parse(JSON.stringify(active.world || base.world));
+    const objects = JSON.parse(JSON.stringify(active.objects || base.objects || []));
+    const nextState = mutateFn({ world, objects }) || { world, objects };
+    const nextScenes = scenes.map((scene) => (
+      scene.id === activeId ? { ...scene, world: nextState.world, objects: nextState.objects } : scene
+    ));
+    return ensureProjectShape({
+      ...base,
+      scenes: nextScenes,
+      activeSceneId: activeId,
+      world: nextState.world,
+      objects: nextState.objects,
+    });
   }, []);
 
   // ---- Undo/redo ----
@@ -103,7 +206,7 @@ function App() {
   }, []);
 
   // ---- Play mode ----
-  const { canvasRef: playCanvasRef, isPlaying, start: startPlay, stop: stopPlay, execute } = usePlayMode(project, addLog);
+  const { canvasRef: playCanvasRef, isPlaying, start: startPlay, stop: stopPlay, execute } = usePlayMode(projectView, addLog);
 
   const handlePlayToggle = useCallback(() => {
     if (isPlaying) { stopPlay(); updateEditor({ mode: 'EDIT' }); }
@@ -114,82 +217,95 @@ function App() {
   const handleCellPaint = useCallback((cx, cy, value) => {
     setProject(prev => {
       pushUndo(prev);
-      const p = { ...prev, world: { ...prev.world } };
-      if (cy >= 0 && cy < p.world.rows && cx >= 0 && cx < p.world.cols) {
-        p.world.grid = [...p.world.grid];
-        p.world.grid[cy] = [...p.world.grid[cy]];
-        p.world.grid[cy][cx] = value;
-      }
-      return p;
+      return mutateActiveScene(prev, ({ world, objects }) => {
+        if (cy >= 0 && cy < world.rows && cx >= 0 && cx < world.cols) {
+          world.grid = [...world.grid];
+          world.grid[cy] = [...world.grid[cy]];
+          world.grid[cy][cx] = value || 'empty';
+        }
+        return { world, objects };
+      });
     });
-  }, [pushUndo]);
+  }, [pushUndo, mutateActiveScene]);
 
   const handleCellFill = useCallback((startX, startY, value) => {
     setProject(prev => {
       pushUndo(prev);
-      const p = { ...prev, world: { ...prev.world, grid: prev.world.grid.map(r => [...r]) } };
-      const grid = p.world.grid;
-      const { cols, rows } = p.world;
-      if (startY < 0 || startY >= rows || startX < 0 || startX >= cols) return prev;
-      const old = grid[startY][startX];
-      if (old === value) return prev;
+      return mutateActiveScene(prev, ({ world, objects }) => {
+        world.grid = world.grid.map((r) => [...r]);
+        const grid = world.grid;
+        const { cols, rows } = world;
+        if (startY < 0 || startY >= rows || startX < 0 || startX >= cols) return { world, objects };
+      const old = normalizeCellTypeId(grid[startY][startX]);
+        if (old === value) return { world, objects };
       const stack = [[startX, startY]];
       const visited = new Set();
       while (stack.length > 0) {
         const [x, y] = stack.pop();
         const key = x + ',' + y;
         if (visited.has(key) || x < 0 || x >= cols || y < 0 || y >= rows) continue;
-        if (grid[y][x] !== old) continue;
+        if (normalizeCellTypeId(grid[y][x]) !== old) continue;
         visited.add(key);
         grid[y][x] = value;
         stack.push([x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]);
       }
-      return p;
+        return { world, objects };
+      });
     });
-  }, [pushUndo]);
+  }, [pushUndo, mutateActiveScene]);
 
   // ---- Object management ----
   const handleAddObject = useCallback(() => {
     const cam = editorState.camera;
-    const obj = createGameObject('Object', Math.floor(cam.x + 100), Math.floor(cam.y + 100));
-    setProject(prev => { pushUndo(prev); return { ...prev, objects: [...prev.objects, obj] }; });
+    const cls = (projectView?.defaultClasses || [])[0];
+    const obj = createGameObject('Object', Math.floor(cam.x + 100), Math.floor(cam.y + 100), { type: (cls && cls.baseType) || 'generic' });
+    setProject(prev => {
+      pushUndo(prev);
+      return mutateActiveScene(prev, ({ world, objects }) => ({ world, objects: [...objects, obj] }));
+    });
     updateEditor({ selectedObjectId: obj.id });
-  }, [editorState.camera, updateEditor, pushUndo]);
+  }, [editorState.camera, updateEditor, pushUndo, projectView, mutateActiveScene]);
 
   const handleRemoveObject = useCallback((id) => {
-    setProject(prev => { pushUndo(prev); return { ...prev, objects: prev.objects.filter(o => o.id !== id) }; });
+    setProject(prev => {
+      pushUndo(prev);
+      return mutateActiveScene(prev, ({ world, objects }) => ({ world, objects: objects.filter((o) => o.id !== id) }));
+    });
     setEditorState(prev => prev.selectedObjectId === id ? { ...prev, selectedObjectId: null } : prev);
-  }, [pushUndo]);
+  }, [pushUndo, mutateActiveScene]);
 
   const handleSelectObject = useCallback((id) => {
     updateEditor({ selectedObjectId: id, activeTool: id ? 'select' : editorState.activeTool });
   }, [updateEditor, editorState.activeTool]);
 
   const handleUpdateObject = useCallback((id, patch) => {
-    setProject(prev => ({ ...prev, objects: prev.objects.map(o => o.id === id ? { ...o, ...patch } : o) }));
-  }, []);
+    setProject(prev => mutateActiveScene(prev, ({
+      world,
+      objects,
+    }) => ({ world, objects: objects.map((o) => (o.id === id ? { ...o, ...patch } : o)) })));
+  }, [mutateActiveScene]);
 
   const handleUpdateComponent = useCallback((objId, compName, compData) => {
-    setProject(prev => ({
-      ...prev,
-      objects: prev.objects.map(o => {
+    setProject(prev => mutateActiveScene(prev, ({ world, objects }) => ({
+      world,
+      objects: objects.map(o => {
         if (o.id !== objId) return o;
         const updated = { ...o, components: { ...o.components, [compName]: compData } };
         if (compName === 'Transform') { updated.x = compData.x; updated.y = compData.y; }
         return updated;
       }),
-    }));
-  }, []);
+    })));
+  }, [mutateActiveScene]);
 
   const handleMoveObject = useCallback((id, x, y) => {
-    setProject(prev => ({
-      ...prev,
-      objects: prev.objects.map(o => {
+    setProject(prev => mutateActiveScene(prev, ({ world, objects }) => ({
+      world,
+      objects: objects.map(o => {
         if (o.id !== id) return o;
         return { ...o, x, y, components: { ...o.components, Transform: { ...o.components.Transform, x, y } } };
       }),
-    }));
-  }, []);
+    })));
+  }, [mutateActiveScene]);
 
   // ---- Scripts ----
   const handleUpdateScript = useCallback((id, patch) => {
@@ -345,7 +461,7 @@ def on_update(self, engine, dt):
   // ---- File ops ----
   const handleSave = useCallback(() => {
     if (!project) return;
-    const json = JSON.stringify(project, null, 2);
+    const json = JSON.stringify(ensureProjectShape(project), null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = (project.meta.name || 'project') + '.json'; a.click();
@@ -359,7 +475,7 @@ def on_update(self, engine, dt):
       try {
         const data = JSON.parse(ev.target.result);
         if (data.schemaVersion === 1) {
-          setProject(data);
+          setProject(ensureProjectShape(data));
           setShowProjectSelector(false);
         } else {
           alert('Unknown schema version');
@@ -383,19 +499,99 @@ def on_update(self, engine, dt):
   const handleNew = useCallback(() => {
     setProject(createDefaultProject());
     setShowProjectSelector(false);
-    updateEditor({ selectedObjectId: null, selectedScriptId: null, camera: { x: 0, y: 0, zoom: 1 } });
+    updateEditor({ selectedObjectId: null, selectedScriptId: null, camera: { x: 0, y: 0, zoom: 1 }, brushValue: 'solid' });
     undoStackRef.current = []; redoStackRef.current = [];
   }, [updateEditor]);
 
+  const handlePatchProject = useCallback((patch) => {
+    setProject(prev => {
+      const merged = ensureProjectShape({ ...prev, ...patch });
+      const active = resolveActiveScene(merged);
+      if (!active) return merged;
+      return ensureProjectShape({ ...merged, world: active.world, objects: active.objects, activeSceneId: active.id });
+    });
+  }, []);
+
+  const openExportModal = useCallback(() => {
+    if (!project) return;
+    const normalized = ensureProjectShape(project);
+    const defaultTarget = (normalized.build && normalized.build.target) || 'html-zip';
+    setExportConfig(prev => ({
+      ...prev,
+      target: defaultTarget,
+      fileName: normalized.meta && normalized.meta.name ? normalized.meta.name : 'game',
+    }));
+    setExportProgress([]);
+    setShowExportModal(true);
+  }, [project]);
+
   const handleExport = useCallback(() => {
-    const json = JSON.stringify(project);
-    const html = buildExportHtml(project, json);
+    if (isExporting) return;
+    const normalized = ensureProjectShape(project);
+    const target = exportConfig.target || 'html-zip';
+    const projectForExport = ensureProjectShape({
+      ...normalized,
+      build: { ...normalized.build, target },
+      exportOptions: {
+        includeAssets: exportConfig.includeAssets,
+        includeScripts: exportConfig.includeScripts,
+        minify: exportConfig.minify,
+        pwaOfflineCache: exportConfig.pwaOfflineCache,
+        electronSingleFile: exportConfig.electronSingleFile,
+        tarGzip: exportConfig.tarGzip,
+        desktopPlatform: exportConfig.desktopPlatform,
+        desktopFormat: exportConfig.desktopFormat,
+      },
+    });
+    setProject(projectForExport);
+
+    const json = JSON.stringify(projectForExport);
+    const html = buildExportHtml(projectForExport, json, target);
+    const baseName = (exportConfig.fileName || projectForExport.meta.name || 'game').trim();
+
+    const electronApi = window.api && typeof window.api.exportBuild === 'function' ? window.api : null;
+    if (electronApi) {
+      setIsExporting(true);
+      setExportProgress((prev) => [...prev, `Starting export for ${target}...`]);
+      electronApi.exportBuild({
+        target,
+        fileName: baseName,
+        html,
+        projectJson: json,
+        options: {
+          includeAssets: exportConfig.includeAssets,
+          includeScripts: exportConfig.includeScripts,
+          minify: exportConfig.minify,
+          pwaOfflineCache: exportConfig.pwaOfflineCache,
+          electronSingleFile: exportConfig.electronSingleFile,
+          tarGzip: exportConfig.tarGzip,
+          desktopPlatform: exportConfig.desktopPlatform,
+          desktopFormat: exportConfig.desktopFormat,
+        },
+      }).then((result) => {
+        setIsExporting(false);
+        if (result && result.ok) {
+          setShowExportModal(false);
+          addLog({ type: 'info', message: `Exported build target: ${target}`, time: new Date().toLocaleTimeString() });
+          if (result.warning) {
+            addLog({ type: 'warn', message: result.warning, time: new Date().toLocaleTimeString() });
+          }
+        } else if (result && result.canceled) {
+          addLog({ type: 'warn', message: 'Export canceled', time: new Date().toLocaleTimeString() });
+        } else {
+          addLog({ type: 'error', message: `Export failed: ${(result && result.error) || 'Unknown error'}`, time: new Date().toLocaleTimeString() });
+        }
+      });
+      return;
+    }
+
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = (project.meta.name || 'game') + '.html'; a.click();
+    const a = document.createElement('a'); a.href = url; a.download = baseName + '.html'; a.click();
     URL.revokeObjectURL(url);
-    addLog({ type: 'info', message: 'Exported standalone build', time: new Date().toLocaleTimeString() });
-  }, [project, addLog]);
+    setShowExportModal(false);
+    addLog({ type: 'info', message: `Exported fallback HTML: ${target}`, time: new Date().toLocaleTimeString() });
+  }, [project, addLog, exportConfig, isExporting]);
 
   // ---- Bottom panel resize ----
   const handleResizeStart = useCallback((e) => {
@@ -429,6 +625,31 @@ def on_update(self, engine, dt):
     return () => window.removeEventListener('keydown', handleKey);
   }, [handleUndo, handleRedo, handleSave, handlePlayToggle, updateEditor, editorState.selectedObjectId, handleRemoveObject, isPlaying]);
 
+  useEffect(() => {
+    if (!window.api || typeof window.api.onMenuEvent !== 'function') return;
+    const unbind = window.api.onMenuEvent((eventName) => {
+      if (eventName === 'menu-save') handleSave();
+      if (eventName === 'menu-load') handleLoad();
+      if (eventName === 'menu-export') openExportModal();
+    });
+    return () => { if (typeof unbind === 'function') unbind(); };
+  }, [handleSave, handleLoad, openExportModal]);
+
+  useEffect(() => {
+    if (!window.api || typeof window.api.onExportProgress !== 'function') return;
+    const unbind = window.api.onExportProgress((entry) => {
+      if (!entry || !entry.message) return;
+      setExportProgress((prev) => [...prev.slice(-199), entry.message]);
+    });
+    return () => { if (typeof unbind === 'function') unbind(); };
+  }, []);
+
+  useEffect(() => {
+    if (exportConfig.target !== 'electron-exe') return;
+    if (desktopFormats.includes(exportConfig.desktopFormat)) return;
+    setExportConfig((prev) => ({ ...prev, desktopFormat: desktopFormats[0] || 'portable' }));
+  }, [exportConfig.target, exportConfig.desktopFormat, desktopFormats]);
+
   // Render project selector modal if no project loaded
   return (
     <>
@@ -447,22 +668,22 @@ def on_update(self, engine, dt):
       {!(showProjectSelector || !project) && (
         // ...existing code for the editor layout...
         <div className="editor-layout">
-          <Toolbar editorState={editorState} isPlaying={isPlaying}
+          <Toolbar project={projectView} editorState={editorState} isPlaying={isPlaying}
             onToolChange={(tool) => updateEditor({ activeTool: tool })}
-            onBrushChange={(val) => updateEditor({ brushValue: val })}
+            onBrushChange={(val) => updateEditor({ brushValue: getBrushValue({ brushValue: val }) })}
             onUndo={handleUndo} onRedo={handleRedo}
             onNewProject={handleNew} onSaveProject={handleSave} onLoadProject={handleLoad}
-            onExport={handleExport} onPlayToggle={handlePlayToggle}
+            onExport={openExportModal} onPlayToggle={handlePlayToggle}
             undoCount={undoStackRef.current.length} redoCount={redoStackRef.current.length} />
 
           <div className="editor-left">
-            <WorldTools project={project} editorState={editorState} onUpdateCamera={handleUpdateCamera} onToggleGrid={handleToggleGrid} />
-            <ObjectList project={project} editorState={editorState} onSelectObject={handleSelectObject} onAddObject={handleAddObject} onRemoveObject={handleRemoveObject} />
+            <WorldTools project={projectView} editorState={editorState} onUpdateCamera={handleUpdateCamera} onToggleGrid={handleToggleGrid} />
+            <ObjectList project={projectView} editorState={editorState} onSelectObject={handleSelectObject} onAddObject={handleAddObject} onRemoveObject={handleRemoveObject} />
           </div>
 
           <div className="editor-center">
             <div className="main-tabs" style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: '#181c24' }}>
-              {['world', 'scripts'].map(tab => (
+              {['world', 'scripts', 'assets'].map(tab => (
                 <button
                   key={tab}
                   className={`main-tab ${mainTab === tab ? 'active' : ''}`}
@@ -479,7 +700,11 @@ def on_update(self, engine, dt):
                   }}
                   onClick={() => setMainTab(tab)}
                 >
-                  {tab === 'world' ? 'World / Game' : `Scripts (${project && Array.isArray(project.scripts) ? project.scripts.length : 0})`}
+                  {tab === 'world'
+                    ? 'World / Game'
+                    : tab === 'scripts'
+                      ? `Scripts (${projectView && Array.isArray(projectView.scripts) ? projectView.scripts.length : 0})`
+                      : 'Assets'}
                 </button>
               ))}
             </div>
@@ -488,12 +713,19 @@ def on_update(self, engine, dt):
               <>
                 <div className="editor-viewport">
                   {isPlaying ? (
-                    <canvas ref={playCanvasRef} width={project.meta.resolution.width} height={project.meta.resolution.height}
+                    <canvas ref={playCanvasRef} width={projectView.meta.resolution.width} height={projectView.meta.resolution.height}
                       style={{ display: 'block', maxWidth: '100%', maxHeight: '100%', margin: '0 auto', background: '#0b1220' }} tabIndex={0} />
                   ) : (
-                    <Viewport project={project} editorState={editorState}
+                    <Viewport project={projectView} editorState={editorState}
                       onCellPaint={handleCellPaint} onCellFill={handleCellFill} onSelectObject={handleSelectObject}
-                      onPlaceObject={(x, y) => { const obj = createGameObject('Object', x, y); setProject(prev => { pushUndo(prev); return { ...prev, objects: [...prev.objects, obj] }; }); updateEditor({ selectedObjectId: obj.id }); }}
+                      onPlaceObject={(x, y) => {
+                        const obj = createGameObject('Object', x, y);
+                        setProject(prev => {
+                          pushUndo(prev);
+                          return mutateActiveScene(prev, ({ world, objects }) => ({ world, objects: [...objects, obj] }));
+                        });
+                        updateEditor({ selectedObjectId: obj.id });
+                      }}
                       onMoveObject={handleMoveObject} onUpdateCamera={handleUpdateCamera} />
                   )}
                 </div>
@@ -503,7 +735,7 @@ def on_update(self, engine, dt):
                     {['timeline', 'console'].map(tab => (
                       <button key={tab} className={`bottom-tab ${bottomTab === tab ? 'active' : ''}`} onClick={() => setBottomTab(tab)}>
                         {tab === 'timeline'
-                          ? `Timeline (${project && Array.isArray(project.animations) ? project.animations.length : 0})`
+                          ? `Timeline (${projectView && Array.isArray(projectView.animations) ? projectView.animations.length : 0})`
                           : `Console (${logs.length})`}
                       </button>
                     ))}
@@ -511,7 +743,7 @@ def on_update(self, engine, dt):
                   <div style={{ flex: 1, minHeight: 0 }}>
                     {bottomTab === 'timeline' && (
                       <Timeline
-                        project={project}
+                        project={projectView}
                         onUpdateAnimation={handleUpdateAnimation}
                         onAddAnimation={handleAddAnimation}
                         onDeleteAnimation={handleDeleteAnimation}
@@ -535,7 +767,7 @@ def on_update(self, engine, dt):
             {mainTab === 'scripts' && (
               <div style={{ flex: 1, minHeight: 0 }}>
                 <ScriptEditor
-                  project={project}
+                  project={projectView}
                   onUpdateScript={handleUpdateScript}
                   onAddScript={handleAddScript}
                   onDeleteScript={handleDeleteScript}
@@ -545,10 +777,93 @@ def on_update(self, engine, dt):
                 />
               </div>
             )}
+            {mainTab === 'assets' && (
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <SystemsTab
+                  project={project}
+                  selectedObjectId={editorState.selectedObjectId}
+                  onPatchProject={handlePatchProject}
+                  onSelectObject={handleSelectObject}
+                />
+              </div>
+            )}
           </div>
-          <Inspector project={project} editorState={editorState} onUpdateObject={handleUpdateObject} onUpdateComponent={handleUpdateComponent} />
+          <Inspector project={projectView} editorState={editorState} onUpdateObject={handleUpdateObject} onUpdateComponent={handleUpdateComponent} />
         </div>
       )}
+      <Modal open={showExportModal} title="Export Project" onClose={() => setShowExportModal(false)}>
+        <div style={{ display: 'grid', gap: 10 }}>
+          <div className="field">
+            <label>Target</label>
+            <select value={exportConfig.target} onChange={(e) => setExportConfig(prev => ({ ...prev, target: e.target.value }))}>
+              <option value="electron-exe">Electron based EXE</option>
+              <option value="pwa">PWA</option>
+              <option value="html-zip">HTML/ZIP</option>
+              <option value="tarball">Tarball</option>
+            </select>
+          </div>
+          <div className="field">
+            <label>Filename</label>
+            <input
+              value={exportConfig.fileName}
+              onChange={(e) => setExportConfig(prev => ({ ...prev, fileName: e.target.value }))}
+              placeholder="Build file name"
+            />
+          </div>
+          <div className="field">
+            <label>Assets</label>
+            <input type="checkbox" checked={exportConfig.includeAssets} onChange={(e) => setExportConfig(prev => ({ ...prev, includeAssets: e.target.checked }))} />
+            <label>Scripts</label>
+            <input type="checkbox" checked={exportConfig.includeScripts} onChange={(e) => setExportConfig(prev => ({ ...prev, includeScripts: e.target.checked }))} />
+            <label>Minify</label>
+            <input type="checkbox" checked={exportConfig.minify} onChange={(e) => setExportConfig(prev => ({ ...prev, minify: e.target.checked }))} />
+          </div>
+          {exportConfig.target === 'pwa' && (
+            <div className="field">
+              <label>Offline Cache</label>
+              <input type="checkbox" checked={exportConfig.pwaOfflineCache} onChange={(e) => setExportConfig(prev => ({ ...prev, pwaOfflineCache: e.target.checked }))} />
+            </div>
+          )}
+          {exportConfig.target === 'electron-exe' && (
+            <>
+              <div className="field">
+                <label>Platform</label>
+                <select value={exportConfig.desktopPlatform} onChange={(e) => setExportConfig(prev => ({ ...prev, desktopPlatform: e.target.value }))}>
+                  <option value="auto">Auto (current OS)</option>
+                  <option value="win">Windows</option>
+                  <option value="linux">Linux</option>
+                  <option value="mac">macOS</option>
+                </select>
+              </div>
+              <div className="field">
+                <label>Format</label>
+                <select value={exportConfig.desktopFormat} onChange={(e) => setExportConfig(prev => ({ ...prev, desktopFormat: e.target.value }))}>
+                  {desktopFormats.map((fmt) => (
+                    <option key={`desktop-fmt-${fmt}`} value={fmt}>{fmt}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
+          {exportConfig.target === 'tarball' && (
+            <div className="field">
+              <label>gzip</label>
+              <input type="checkbox" checked={exportConfig.tarGzip} onChange={(e) => setExportConfig(prev => ({ ...prev, tarGzip: e.target.checked }))} />
+            </div>
+          )}
+          {exportProgress.length > 0 && (
+            <div style={{ border: '1px solid var(--border)', borderRadius: 4, padding: 6, background: '#0b1220', maxHeight: 120, overflow: 'auto', fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>
+              {exportProgress.map((line, i) => (
+                <div key={`exp-line-${i}`} style={{ color: '#94a3b8' }}>{line}</div>
+              ))}
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+            <button className="btn btn-sm" onClick={() => setShowExportModal(false)} disabled={isExporting}>Cancel</button>
+            <button className="btn btn-sm btn-play" onClick={handleExport} disabled={isExporting}>{isExporting ? 'Exporting...' : 'Export'}</button>
+          </div>
+        </div>
+      </Modal>
             </>
           );
 }

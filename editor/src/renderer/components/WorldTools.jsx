@@ -20,6 +20,14 @@ export default function WorldTools({ project, editorState, onUpdateCamera, onTog
         <label>Zoom</label>
         <span style={{ fontSize: 11 }}>{(editorState.camera.zoom * 100).toFixed(0)}%</span>
       </div>
+      <div className="field">
+        <label>Cam Speed</label>
+        <span style={{ fontSize: 11 }}>{(project.camera && project.camera.speed) || 8}</span>
+      </div>
+      <div className="field">
+        <label>Target</label>
+        <span style={{ fontSize: 11 }}>{project.camera && project.camera.targetObjectId ? project.camera.targetObjectId : 'None'}</span>
+      </div>
       <div style={{ marginTop: 6, display: 'flex', gap: 4 }}>
         <button className="btn btn-sm" onClick={() => onUpdateCamera({ ...editorState.camera, zoom: 1, x: 0, y: 0 })}>
           Reset View

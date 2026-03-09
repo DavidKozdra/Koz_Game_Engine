@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useCallback } from 'react';
+import { getCellType, normalizeCellTypeId } from '../state/projectModel.js';
 
 /**
  * In-editor play mode.
@@ -13,6 +14,7 @@ export function usePlayMode(project, onLog) {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
   const keysRef = useRef(new Set());
+  const imageCacheRef = useRef(new Map());
 
   const isPlaying = stateRef.current !== null && stateRef.current.running;
 
@@ -42,6 +44,9 @@ export function usePlayMode(project, onLog) {
 
     // Index scripts
     (snapshot.scripts || []).forEach(s => { scripts[s.id] = s; });
+    const scriptingConfig = snapshot.scripting || { engines: { javascript: true } };
+    const assetById = new Map((snapshot.assets || []).map((a) => [a.id, a]));
+    const warnedMissingAssets = new Set();
 
     // Build console interceptor
     const makeConsole = () => ({
@@ -62,6 +67,12 @@ export function usePlayMode(project, onLog) {
         if (!binding.active || !binding.scriptId || !scripts[binding.scriptId]) return;
         try {
           const src = scripts[binding.scriptId].source;
+          const language = scripts[binding.scriptId].language || 'javascript';
+          const enabled = language === 'javascript' || !!(scriptingConfig.engines && scriptingConfig.engines[language]);
+          if (!enabled || language !== 'javascript') {
+            onLog({ type: 'warn', message: `Script "${scripts[binding.scriptId].name}" skipped (${language} runtime unavailable in play mode).`, time: new Date().toLocaleTimeString() });
+            return;
+          }
           const factory = new Function('return (function(self, props, console, keyIsDown, LEFT_ARROW, RIGHT_ARROW, UP_ARROW) { ' + src + ' return { onInit: typeof onInit==="function"?onInit:null, onUpdate: typeof onUpdate==="function"?onUpdate:null }; })')();
           const props = binding.properties ? JSON.parse(JSON.stringify(binding.properties)) : {};
           const hooks = factory(obj, props, sandboxConsole, (code) => keysRef.current.has(code), 37, 39, 38);
@@ -72,14 +83,34 @@ export function usePlayMode(project, onLog) {
       });
     });
 
+    gameObjects.forEach((obj) => {
+      const sprite = (obj.components && obj.components.Sprite) || {};
+      const ids = [];
+      if (sprite.assetId) ids.push(sprite.assetId);
+      if (Array.isArray(sprite.frameAssetIds)) ids.push(...sprite.frameAssetIds);
+      ids.forEach((id) => {
+        if (!id || warnedMissingAssets.has(id)) return;
+        const asset = assetById.get(id);
+        if (!asset) {
+          warnedMissingAssets.add(id);
+          onLog({ type: 'warn', message: `Missing sprite asset: ${id}`, time: new Date().toLocaleTimeString() });
+        }
+      });
+    });
+
     const state = {
       running: true,
       elapsed: 0,
+      projectSnapshot: snapshot,
       world: snapshot.world,
       gameObjects,
+      assetById,
       scriptInstances,
       animClips,
       keys: keysRef.current,
+      cameraConfig: snapshot.camera || {},
+      viewX: 0,
+      viewY: 0,
     };
 
     // Engine API for scripts
@@ -174,6 +205,13 @@ export function usePlayMode(project, onLog) {
       });
 
       // Render
+      const camera = state.cameraConfig || {};
+      const camTarget = camera.targetObjectId ? state.gameObjects.find((o) => o.id === camera.targetObjectId) : null;
+      if (camTarget) {
+        const speed = Number.isFinite(camera.speed) ? camera.speed : 8;
+        state.viewX = (state.viewX || 0) + (camTarget.x - (state.viewX || 0)) * Math.min(dt * speed, 1);
+        state.viewY = (state.viewY || 0) + (camTarget.y - (state.viewY || 0)) * Math.min(dt * speed, 1);
+      }
       renderFrame(state);
       rafRef.current = requestAnimationFrame(tick);
     }
@@ -191,16 +229,24 @@ export function usePlayMode(project, onLog) {
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = '#0b1220';
     ctx.fillRect(0, 0, w, h);
+    ctx.save();
+    ctx.translate(-(state.viewX || 0), -(state.viewY || 0));
 
     // World
     const world = state.world;
     if (world && world.grid) {
-      for (let y = 0; y < world.rows; y++) {
-        for (let x = 0; x < world.cols; x++) {
-          const cell = world.grid[y] && world.grid[y][x];
-          if (cell !== null && cell !== undefined && cell !== 0) {
-            const hue = (typeof cell === 'number' ? cell * 40 : 120) % 360;
-            ctx.fillStyle = `hsl(${hue}, 50%, 35%)`;
+      const proj = state.projectSnapshot || {};
+      const cellLayers = ((proj.layers && proj.layers.cells) || [])
+        .filter((layer) => layer.visible !== false)
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+      for (const layer of cellLayers) {
+        for (let y = 0; y < world.rows; y++) {
+          for (let x = 0; x < world.cols; x++) {
+            const cell = world.grid[y] && world.grid[y][x];
+            if (normalizeCellTypeId(cell) === 'empty') continue;
+            const type = getCellType(proj, cell);
+            if ((type.layerId || cellLayers[0].id) !== layer.id) continue;
+            ctx.fillStyle = type.color || '#334155';
             ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
           }
         }
@@ -208,14 +254,59 @@ export function usePlayMode(project, onLog) {
     }
 
     // Objects
-    state.gameObjects.forEach(obj => {
-      ctx.fillStyle = obj.color;
-      ctx.fillRect(obj.x, obj.y, obj.width, obj.height);
+    const proj = state.projectSnapshot || {};
+    const objectLayers = ((proj.layers && proj.layers.objects) || [])
+      .filter((layer) => layer.visible !== false)
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+    state.gameObjects.slice().sort((a, b) => {
+      const ar = (a.components && a.components.Render) || {};
+      const br = (b.components && b.components.Render) || {};
+      const ao = objectLayers.find((l) => l.id === ar.layerId);
+      const bo = objectLayers.find((l) => l.id === br.layerId);
+      const layerDelta = ((ao && ao.order) || 0) - ((bo && bo.order) || 0);
+      if (layerDelta !== 0) return layerDelta;
+      return (ar.zIndex || 0) - (br.zIndex || 0);
+    }).forEach(obj => {
+      const render = (obj.components && obj.components.Render) || {};
+      const sprite = (obj.components && obj.components.Sprite) || {};
+      if (render.visible === false) return;
+      let drawn = false;
+      const frameIds = Array.isArray(sprite.frameAssetIds) ? sprite.frameAssetIds : [];
+      const frameId = frameIds.length > 0
+        ? frameIds[Math.floor(state.elapsed * (sprite.fps || 8)) % frameIds.length]
+        : sprite.assetId;
+      const asset = frameId ? state.assetById.get(frameId) : null;
+      const sourceAsset = asset && asset.sourceAssetId ? state.assetById.get(asset.sourceAssetId) : null;
+      const src = (sourceAsset && (sourceAsset.previewUrl || sourceAsset.url || sourceAsset.src))
+        || (asset && (asset.previewUrl || asset.url || asset.src));
+      if (src) {
+        if (!imageCacheRef.current.has(src)) {
+          const img = new Image();
+          img.src = src;
+          imageCacheRef.current.set(src, img);
+        }
+        const img = imageCacheRef.current.get(src);
+        if (img && img.complete && img.naturalWidth > 0) {
+          const rect = asset && asset.frameRect;
+          if (rect && Number.isFinite(rect.x) && Number.isFinite(rect.y) && Number.isFinite(rect.w) && Number.isFinite(rect.h)) {
+            ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, obj.x, obj.y, obj.width, obj.height);
+          } else {
+            ctx.drawImage(img, obj.x, obj.y, obj.width, obj.height);
+          }
+          drawn = true;
+        }
+      }
+      if (!drawn) {
+        ctx.fillStyle = obj.color;
+        ctx.fillRect(obj.x, obj.y, obj.width, obj.height);
+      }
       ctx.fillStyle = '#fff';
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(obj.name, obj.x + obj.width / 2, obj.y - 3);
     });
+
+    ctx.restore();
 
     // HUD
     ctx.fillStyle = '#e2e8f0';
