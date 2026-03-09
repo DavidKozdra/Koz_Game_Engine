@@ -189,10 +189,16 @@ function App() {
     setProject(prev => ({ ...prev, scripts: prev.scripts.map(s => s.id === id ? { ...s, ...patch } : s) }));
   }, []);
 
-  const handleAddScript = useCallback((name) => {
+  const handleAddScript = useCallback((name, language = 'javascript') => {
+    const templates = {
+      javascript: `function onInit(self, engine) {\n  // Called once when game starts\n}\n\nfunction onUpdate(self, engine, dt) {\n  // Called every frame\n  // Use engine.keyIsDown(keyCode) for input\n}\n`,
+      typescript: `// TypeScript support coming soon\nfunction onInit(self: any, engine: any): void {\n  // Called once when game starts\n}\n\nfunction onUpdate(self: any, engine: any, dt: number): void {\n  // Called every frame\n}\n`,
+      lua: `-- Lua support coming soon\nfunction onInit(self, engine)\n  -- Called once when game starts\nend\n\nfunction onUpdate(self, engine, dt)\n  -- Called every frame\nend\n`,
+      python: `# Python support coming soon\ndef on_init(self, engine):\n    # Called once when game starts\n    pass\n\ndef on_update(self, engine, dt):\n    # Called every frame\n    pass\n`,
+    };
     const script = {
-      id: genId('script'), name,
-      source: `function onInit(self, engine) {\n  // Called once when game starts\n}\n\nfunction onUpdate(self, engine, dt) {\n  // Called every frame\n  // Use engine.keyIsDown(keyCode) for input\n}\n`,
+      id: genId('script'), name, language,
+      source: templates[language] || templates.javascript,
     };
     setProject(prev => { pushUndo(prev); return { ...prev, scripts: [...prev.scripts, script] }; });
   }, [pushUndo]);
