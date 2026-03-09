@@ -145,6 +145,18 @@ export function usePlayMode(project, onLog) {
       return { type, layerId: type.layerId || baseCellLayer };
     });
 
+    const initialCamera = resolvePlayCamera(state);
+    const initialView = resolveDesiredView(
+      state,
+      initialCamera,
+      0,
+      true,
+      canvasRef.current ? canvasRef.current.width : 960,
+      canvasRef.current ? canvasRef.current.height : 540,
+    );
+    state.viewX = initialView.x;
+    state.viewY = initialView.y;
+
     stateRef.current = state;
     startLoop();
   }, [project, onLog]);
@@ -220,39 +232,13 @@ export function usePlayMode(project, onLog) {
 
       // Render
       const camera = resolvePlayCamera(state);
-      const camTarget = camera.targetObjectId ? state.gameObjects.find((o) => o.id === camera.targetObjectId) : null;
-      const speed = Number.isFinite(camera.speed) ? camera.speed : 8;
-      const offsetX = Number.isFinite(camera.offsetX) ? camera.offsetX : 0;
-      const offsetY = Number.isFinite(camera.offsetY) ? camera.offsetY : 0;
-      const canvas = canvasRef.current;
-      const viewW = canvas ? canvas.width : 0;
-      const viewH = canvas ? canvas.height : 0;
-      let desiredX = null;
-      let desiredY = null;
-      if (camTarget) {
-        desiredX = camTarget.x + (camTarget.width || 32) * 0.5 + offsetX - viewW * 0.5;
-        desiredY = camTarget.y + (camTarget.height || 32) * 0.5 + offsetY - viewH * 0.5;
-      } else if (Number.isFinite(camera.originX) && Number.isFinite(camera.originY)) {
-        desiredX = camera.originX + offsetX - viewW * 0.5;
-        desiredY = camera.originY + offsetY - viewH * 0.5;
-      }
-      const world = state.world || {};
-      const rows = Number.isFinite(world.rows) ? world.rows : ((world.grid && world.grid.length) || 0);
-      const cols = Number.isFinite(world.cols) ? world.cols : ((world.grid && world.grid[0] && world.grid[0].length) || 0);
-      const offsetCellX = Number.isFinite(world.offsetX) ? world.offsetX : 0;
-      const offsetCellY = Number.isFinite(world.offsetY) ? world.offsetY : 0;
-      if (desiredX !== null && desiredY !== null && cols > 0 && rows > 0) {
-        const minX = offsetCellX * CELL_SIZE;
-        const minY = offsetCellY * CELL_SIZE;
-        const maxX = (offsetCellX + cols) * CELL_SIZE - viewW;
-        const maxY = (offsetCellY + rows) * CELL_SIZE - viewH;
-        desiredX = maxX < minX ? minX - ((viewW - cols * CELL_SIZE) * 0.5) : Math.max(minX, Math.min(maxX, desiredX));
-        desiredY = maxY < minY ? minY - ((viewH - rows * CELL_SIZE) * 0.5) : Math.max(minY, Math.min(maxY, desiredY));
-      }
-      if (desiredX !== null && desiredY !== null) {
-        state.viewX = (state.viewX || 0) + (desiredX - (state.viewX || 0)) * Math.min(dt * speed, 1);
-        state.viewY = (state.viewY || 0) + (desiredY - (state.viewY || 0)) * Math.min(dt * speed, 1);
-      }
+      const viewW = canvasRef.current ? canvasRef.current.width : 960;
+      const viewH = canvasRef.current ? canvasRef.current.height : 540;
+      const desired = resolveDesiredView(state, camera, dt, false, viewW, viewH);
+      const speed = Number.isFinite(camera.speed) ? Math.max(0.1, camera.speed) : 8;
+      const maxSpeed = Number.isFinite(camera.maxSpeed) ? Math.max(60, camera.maxSpeed) : Infinity;
+      state.viewX = smoothAxis(state.viewX || 0, desired.x, dt, speed, maxSpeed);
+      state.viewY = smoothAxis(state.viewY || 0, desired.y, dt, speed, maxSpeed);
       renderFrame(state);
       rafRef.current = requestAnimationFrame(tick);
     }
@@ -522,7 +508,7 @@ function resolvePlayCamera(state) {
     const c = o && o.components && o.components.Camera;
     return c && c.enabled !== false;
   });
-  if (!cameraObject) return { ...fallback, offsetX: 0, offsetY: 0 };
+  if (!cameraObject) return { ...fallback, offsetX: 0, offsetY: 0, followX: true, followY: true, clampToWorld: true };
 
   const cameraComp = cameraObject.components.Camera || {};
   let targetObjectId = cameraComp.targetObjectId || fallback.targetObjectId || null;
@@ -538,4 +524,99 @@ function resolvePlayCamera(state) {
     originY: Number.isFinite(cameraObject.y) ? cameraObject.y : 0,
     targetObjectId,
   };
+}
+
+function smoothAxis(current, target, dt, speed, maxSpeed) {
+  if (!Number.isFinite(target)) return current;
+  const alpha = 1 - Math.exp(-Math.max(0.1, speed) * Math.max(0.0001, dt));
+  let next = current + (target - current) * alpha;
+  if (Number.isFinite(maxSpeed)) {
+    const delta = next - current;
+    const maxStep = Math.max(1, maxSpeed) * Math.max(0.0001, dt);
+    if (delta > maxStep) next = current + maxStep;
+    if (delta < -maxStep) next = current - maxStep;
+  }
+  return next;
+}
+
+function resolveDesiredView(state, camera, dt, snapToTarget, viewW = 960, viewH = 540) {
+  const objects = Array.isArray(state.gameObjects) ? state.gameObjects : [];
+  const target = camera.targetObjectId ? objects.find((o) => o.id === camera.targetObjectId) : null;
+  const offsetX = Number.isFinite(camera.offsetX) ? camera.offsetX : 0;
+  const offsetY = Number.isFinite(camera.offsetY) ? camera.offsetY : 0;
+  const lookAheadX = Number.isFinite(camera.lookAheadX) ? camera.lookAheadX : 0;
+  const lookAheadY = Number.isFinite(camera.lookAheadY) ? camera.lookAheadY : 0;
+  const deadZoneWidth = Math.max(0, Number.isFinite(camera.deadZoneWidth) ? camera.deadZoneWidth : 0);
+  const deadZoneHeight = Math.max(0, Number.isFinite(camera.deadZoneHeight) ? camera.deadZoneHeight : 0);
+  const visibleMargin = Math.max(0, Number.isFinite(camera.visibleMargin) ? camera.visibleMargin : 0);
+  const followX = camera.followX !== false;
+  const followY = camera.followY !== false;
+
+  let desiredX = Number.isFinite(state.viewX) ? state.viewX : 0;
+  let desiredY = Number.isFinite(state.viewY) ? state.viewY : 0;
+
+  const focusCenterX = target
+    ? (target.x + (target.width || 32) * 0.5 + offsetX + lookAheadX)
+    : (Number.isFinite(camera.originX) ? camera.originX + offsetX + lookAheadX : desiredX + viewW * 0.5);
+  const focusCenterY = target
+    ? (target.y + (target.height || 32) * 0.5 + offsetY + lookAheadY)
+    : (Number.isFinite(camera.originY) ? camera.originY + offsetY + lookAheadY : desiredY + viewH * 0.5);
+
+  if (followX) {
+    if (snapToTarget || deadZoneWidth <= 0) {
+      desiredX = focusCenterX - viewW * 0.5;
+    } else {
+      const currentLeft = (state.viewX || 0) + viewW * 0.5 - deadZoneWidth * 0.5;
+      const currentRight = (state.viewX || 0) + viewW * 0.5 + deadZoneWidth * 0.5;
+      if (focusCenterX < currentLeft) desiredX = focusCenterX - (viewW * 0.5 - deadZoneWidth * 0.5);
+      if (focusCenterX > currentRight) desiredX = focusCenterX - (viewW * 0.5 + deadZoneWidth * 0.5);
+    }
+  }
+  if (followY) {
+    if (snapToTarget || deadZoneHeight <= 0) {
+      desiredY = focusCenterY - viewH * 0.5;
+    } else {
+      const currentTop = (state.viewY || 0) + viewH * 0.5 - deadZoneHeight * 0.5;
+      const currentBottom = (state.viewY || 0) + viewH * 0.5 + deadZoneHeight * 0.5;
+      if (focusCenterY < currentTop) desiredY = focusCenterY - (viewH * 0.5 - deadZoneHeight * 0.5);
+      if (focusCenterY > currentBottom) desiredY = focusCenterY - (viewH * 0.5 + deadZoneHeight * 0.5);
+    }
+  }
+
+  if (target) {
+    const tx = Number.isFinite(target.x) ? target.x : 0;
+    const ty = Number.isFinite(target.y) ? target.y : 0;
+    const tw = Number.isFinite(target.width) ? target.width : 32;
+    const th = Number.isFinite(target.height) ? target.height : 32;
+    const left = desiredX + visibleMargin;
+    const right = desiredX + viewW - visibleMargin;
+    const top = desiredY + visibleMargin;
+    const bottom = desiredY + viewH - visibleMargin;
+    if (followX) {
+      if (tx < left) desiredX = tx - visibleMargin;
+      if (tx + tw > right) desiredX = tx + tw + visibleMargin - viewW;
+    }
+    if (followY) {
+      if (ty < top) desiredY = ty - visibleMargin;
+      if (ty + th > bottom) desiredY = ty + th + visibleMargin - viewH;
+    }
+  }
+
+  if (camera.clampToWorld !== false) {
+    const world = state.world || {};
+    const rows = Number.isFinite(world.rows) ? world.rows : ((world.grid && world.grid.length) || 0);
+    const cols = Number.isFinite(world.cols) ? world.cols : ((world.grid && world.grid[0] && world.grid[0].length) || 0);
+    if (cols > 0 && rows > 0) {
+      const ox = Number.isFinite(world.offsetX) ? world.offsetX : 0;
+      const oy = Number.isFinite(world.offsetY) ? world.offsetY : 0;
+      const minX = ox * CELL_SIZE;
+      const minY = oy * CELL_SIZE;
+      const maxX = (ox + cols) * CELL_SIZE - viewW;
+      const maxY = (oy + rows) * CELL_SIZE - viewH;
+      desiredX = maxX < minX ? minX - ((viewW - cols * CELL_SIZE) * 0.5) : Math.max(minX, Math.min(maxX, desiredX));
+      desiredY = maxY < minY ? minY - ((viewH - rows * CELL_SIZE) * 0.5) : Math.max(minY, Math.min(maxY, desiredY));
+    }
+  }
+
+  return { x: desiredX, y: desiredY };
 }

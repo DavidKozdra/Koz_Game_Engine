@@ -398,6 +398,100 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
+            <label>DeadZone W</label>
+            <input
+              type="number"
+              value={components.Camera.deadZoneWidth || 0}
+              onChange={(e) => {
+                const n = e.target.valueAsNumber;
+                if (Number.isNaN(n)) return;
+                handleComponentChange('Camera', 'deadZoneWidth', Math.max(0, n));
+              }}
+            />
+          </div>
+          <div className="field">
+            <label>DeadZone H</label>
+            <input
+              type="number"
+              value={components.Camera.deadZoneHeight || 0}
+              onChange={(e) => {
+                const n = e.target.valueAsNumber;
+                if (Number.isNaN(n)) return;
+                handleComponentChange('Camera', 'deadZoneHeight', Math.max(0, n));
+              }}
+            />
+          </div>
+          <div className="field">
+            <label>LookAhead X</label>
+            <input
+              type="number"
+              value={components.Camera.lookAheadX || 0}
+              onChange={(e) => {
+                const n = e.target.valueAsNumber;
+                if (Number.isNaN(n)) return;
+                handleComponentChange('Camera', 'lookAheadX', n);
+              }}
+            />
+          </div>
+          <div className="field">
+            <label>LookAhead Y</label>
+            <input
+              type="number"
+              value={components.Camera.lookAheadY || 0}
+              onChange={(e) => {
+                const n = e.target.valueAsNumber;
+                if (Number.isNaN(n)) return;
+                handleComponentChange('Camera', 'lookAheadY', n);
+              }}
+            />
+          </div>
+          <div className="field">
+            <label>Margin</label>
+            <input
+              type="number"
+              value={components.Camera.visibleMargin || 0}
+              onChange={(e) => {
+                const n = e.target.valueAsNumber;
+                if (Number.isNaN(n)) return;
+                handleComponentChange('Camera', 'visibleMargin', Math.max(0, n));
+              }}
+            />
+          </div>
+          <div className="field">
+            <label>Max Speed</label>
+            <input
+              type="number"
+              value={components.Camera.maxSpeed || 2000}
+              onChange={(e) => {
+                const n = e.target.valueAsNumber;
+                if (Number.isNaN(n)) return;
+                handleComponentChange('Camera', 'maxSpeed', Math.max(1, n));
+              }}
+            />
+          </div>
+          <div className="field">
+            <label>Follow X</label>
+            <input
+              type="checkbox"
+              checked={components.Camera.followX !== false}
+              onChange={(e) => handleComponentChange('Camera', 'followX', e.target.checked)}
+            />
+            <label>Follow Y</label>
+            <input
+              type="checkbox"
+              checked={components.Camera.followY !== false}
+              onChange={(e) => handleComponentChange('Camera', 'followY', e.target.checked)}
+            />
+          </div>
+          <div className="field">
+            <label>Clamp</label>
+            <input
+              type="checkbox"
+              checked={components.Camera.clampToWorld !== false}
+              onChange={(e) => handleComponentChange('Camera', 'clampToWorld', e.target.checked)}
+            />
+          </div>
+          <div className="field">
             <label>Target</label>
             <select
               value={components.Camera.targetObjectId || ''}
