@@ -9,6 +9,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
   const components = obj?.components || {};
   const bindings = components.ScriptBindings || [];
   const imageAssets = (project.assets || []).filter((a) => a && a.kind === 'image' && a.mime === 'image/png');
+  const sceneObjects = (project && project.objects) || [];
   const imageAssetById = new Map(imageAssets.map((a) => [a.id, a]));
   const selectedImageAsset = components.Sprite && components.Sprite.assetId ? imageAssetById.get(components.Sprite.assetId) : null;
   const filteredImages = useMemo(() => {
@@ -330,6 +331,78 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             <label>Z Index</label>
             <input type="number" value={components.Render.zIndex || 0}
               onChange={(e) => handleComponentChange('Render', 'zIndex', parseInt(e.target.value, 10) || 0)} />
+          </div>
+        </div>
+      )}
+
+      {/* Camera */}
+      {components.Camera && (
+        <div className="panel-section">
+          <h3>Camera</h3>
+          <div className="field">
+            <label>Enabled</label>
+            <input
+              type="checkbox"
+              checked={components.Camera.enabled !== false}
+              onChange={(e) => handleComponentChange('Camera', 'enabled', e.target.checked)}
+            />
+          </div>
+          <div className="field">
+            <label>Speed</label>
+            <input
+              type="number"
+              value={components.Camera.speed || 8}
+              onChange={(e) => handleComponentChange('Camera', 'speed', parseFloat(e.target.value) || 8)}
+            />
+          </div>
+          <div className="field">
+            <label>Offset X</label>
+            <input
+              type="number"
+              value={components.Camera.offsetX || 0}
+              onChange={(e) => {
+                const n = e.target.valueAsNumber;
+                if (Number.isNaN(n)) return;
+                handleComponentChange('Camera', 'offsetX', n);
+              }}
+            />
+          </div>
+          <div className="field">
+            <label>Offset Y</label>
+            <input
+              type="number"
+              value={components.Camera.offsetY || 0}
+              onChange={(e) => {
+                const n = e.target.valueAsNumber;
+                if (Number.isNaN(n)) return;
+                handleComponentChange('Camera', 'offsetY', n);
+              }}
+            />
+          </div>
+          <div className="field">
+            <label>Target</label>
+            <select
+              value={components.Camera.targetObjectId || ''}
+              onChange={(e) => handleComponentChange('Camera', 'targetObjectId', e.target.value || null)}
+            >
+              <option value="">None</option>
+              {sceneObjects.map((o) => (
+                <option key={o.id} value={o.id}>{o.name || o.id}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label>Quick Set</label>
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                const player = sceneObjects.find((o) => o.type === 'player');
+                if (!player) return;
+                handleComponentChange('Camera', 'targetObjectId', player.id);
+              }}
+            >
+              Grab Player
+            </button>
           </div>
         </div>
       )}
