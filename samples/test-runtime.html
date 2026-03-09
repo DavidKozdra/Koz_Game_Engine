@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Runtime Test - Koz Engine</title>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.4.2/lib/p5.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #0f172a; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-direction: column; color: #e2e8f0; font-family: sans-serif; }
+    #info { padding: 12px; font-size: 13px; }
+  </style>
+</head>
+<body>
+<div id="info">Runtime Test: WASD/Arrows to move green player. Red enemy patrols via animation.</div>
+<script>
+// Load the demo project inline (in a real export this would be embedded)
+const PROJECT = {
+  "schemaVersion": 1,
+  "meta": { "name": "Demo Game", "version": "1.0.0", "resolution": { "width": 960, "height": 540 }, "engineVersion": "0.1.0" },
+  "world": { "cols": 30, "rows": 20, "defaultCell": null, "grid": [], "elements": [], "meta": {} },
+  "objects": [
+    {
+      "id": "obj_player", "name": "Player", "type": "player", "x": 64, "y": 64,
+      "components": {
+        "Transform": { "x": 64, "y": 64, "rotation": 0, "scaleX": 1, "scaleY": 1 },
+        "Sprite": { "assetId": null, "color": "#4ade80", "width": 32, "height": 32 },
+        "Collider": { "shape": "rect", "width": 32, "height": 32 },
+        "ScriptBinding": { "scriptId": "script_movement" },
+        "Animator": { "clipId": null }
+      }
+    },
+    {
+      "id": "obj_enemy", "name": "Enemy", "type": "enemy", "x": 400, "y": 300,
+      "components": {
+        "Transform": { "x": 400, "y": 300, "rotation": 0, "scaleX": 1, "scaleY": 1 },
+        "Sprite": { "assetId": null, "color": "#ef4444", "width": 32, "height": 32 },
+        "Collider": { "shape": "rect", "width": 32, "height": 32 },
+        "ScriptBinding": { "scriptId": null },
+        "Animator": { "clipId": "anim_patrol" }
+      }
+    }
+  ],
+  "animations": [
+    {
+      "id": "anim_patrol", "name": "Patrol", "duration": 4.0, "loop": true,
+      "tracks": [{ "targetObjectId": "obj_enemy", "property": "x", "keyframes": [{ "time": 0, "value": 400, "easing": "linear" }, { "time": 2, "value": 600, "easing": "linear" }, { "time": 4, "value": 400, "easing": "linear" }] }]
+    }
+  ],
+  "scripts": [
+    {
+      "id": "script_movement", "name": "PlayerMovement",
+      "source": "function onInit(self, engine) {\n  self.speed = 3;\n}\nfunction onUpdate(self, engine, dt) {\n  if (typeof keyIsDown === 'function') {\n    if (keyIsDown(65) || keyIsDown(37)) self.x -= self.speed;\n    if (keyIsDown(68) || keyIsDown(39)) self.x += self.speed;\n    if (keyIsDown(87) || keyIsDown(38)) self.y -= self.speed;\n    if (keyIsDown(83) || keyIsDown(40)) self.y += self.speed;\n  }\n}\n"
+    }
+  ],
+  "assets": [],
+  "build": { "profile": "web-prod", "pwa": false }
+};
+
+const CELL_SIZE = 24;
+let gameObjects = [];
+let scripts = {};
+let scriptInstances = [];
+let animClips = [];
+let elapsed = 0;
+
+function setup() {
+  const canvas = createCanvas(PROJECT.meta.resolution.width, PROJECT.meta.resolution.height);
+  canvas.parent(document.body);
+  pixelDensity(1);
+  textFont('Trebuchet MS');
+
+  (PROJECT.objects || []).forEach(function(obj) {
+    const t = (obj.components && obj.components.Transform) || {};
+    gameObjects.push({
+      id: obj.id, name: obj.name, type: obj.type,
+      x: t.x || obj.x || 0, y: t.y || obj.y || 0,
+      width: (obj.components && obj.components.Sprite && obj.components.Sprite.width) || 32,
+      height: (obj.components && obj.components.Sprite && obj.components.Sprite.height) || 32,
+      color: (obj.components && obj.components.Sprite && obj.components.Sprite.color) || '#4ade80',
+      components: obj.components || {},
+    });
+  });
+
+  (PROJECT.scripts || []).forEach(function(s) { scripts[s.id] = s; });
+
+  gameObjects.forEach(function(obj) {
+    var binding = obj.components.ScriptBinding;
+    if (binding && binding.scriptId && scripts[binding.scriptId]) {
+      try {
+        var src = scripts[binding.scriptId].source;
+        var factory = new Function('return (function(self, console) { ' + src + ' return { onInit: typeof onInit==="function"?onInit:null, onUpdate: typeof onUpdate==="function"?onUpdate:null }; })')();
+        var hooks = factory(obj, console);
+        scriptInstances.push({ obj: obj, hooks: hooks });
+      } catch(e) { console.error('Script error:', e); }
+    }
+  });
+
+  animClips = PROJECT.animations || [];
+
+  var engine = { gameObjects: gameObjects, elapsed: 0, findObject: function(id) { return gameObjects.find(function(o){return o.id===id;})||null; } };
+  scriptInstances.forEach(function(inst) {
+    if (inst.hooks.onInit) try { inst.hooks.onInit(inst.obj, engine); } catch(e) { console.error(e); }
+  });
+}
+
+function draw() {
+  var dt = Math.min(deltaTime / 1000, 0.033);
+  elapsed += dt;
+  background('#0b1220');
+
+  // Draw world
+  var world = PROJECT.world;
+  if (world && world.grid) {
+    for (var y = 0; y < world.rows; y++) {
+      for (var x = 0; x < world.cols; x++) {
+        var cell = world.grid[y] && world.grid[y][x];
+        if (cell !== null && cell !== undefined && cell !== 0) {
+          var hue = (typeof cell === 'number' ? cell * 40 : 120) % 360;
+          fill('hsl(' + hue + ', 50%, 35%)');
+          noStroke();
+          rect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+        }
+      }
+    }
+  }
+
+  // Grid outline
+  stroke('#1e293b');
+  strokeWeight(0.5);
+  noFill();
+  rect(0, 0, world.cols * CELL_SIZE, world.rows * CELL_SIZE);
+
+  // Animations
+  animClips.forEach(function(clip) {
+    if (!clip.tracks) return;
+    var dur = clip.duration || 1;
+    var t = clip.loop ? (elapsed % dur) : Math.min(elapsed, dur);
+    clip.tracks.forEach(function(track) {
+      var obj = gameObjects.find(function(o){return o.id===track.targetObjectId;});
+      if (!obj || !track.keyframes || track.keyframes.length === 0) return;
+      var val = sampleTrack(track, t);
+      if (val !== null) obj[track.property] = val;
+    });
+  });
+
+  // Scripts
+  var engine = { gameObjects: gameObjects, elapsed: elapsed, findObject: function(id) { return gameObjects.find(function(o){return o.id===id;})||null; } };
+  scriptInstances.forEach(function(inst) {
+    if (inst.hooks.onUpdate) try { inst.hooks.onUpdate(inst.obj, engine, dt); } catch(e) { console.error(e); }
+  });
+
+  // Draw objects
+  gameObjects.forEach(function(obj) {
+    fill(obj.color);
+    noStroke();
+    rect(obj.x, obj.y, obj.width, obj.height);
+    fill('#fff');
+    textSize(10);
+    textAlign(CENTER, BOTTOM);
+    text(obj.name, obj.x + obj.width/2, obj.y - 2);
+  });
+
+  // HUD
+  fill('#e2e8f0');
+  textSize(12);
+  textAlign(LEFT, TOP);
+  noStroke();
+  text('FPS: ' + floor(frameRate()), 10, 10);
+  text('Elapsed: ' + elapsed.toFixed(1) + 's', 10, 26);
+}
+
+function sampleTrack(track, time) {
+  var kfs = track.keyframes;
+  if (kfs.length === 0) return null;
+  if (kfs.length === 1) return kfs[0].value;
+  if (time <= kfs[0].time) return kfs[0].value;
+  if (time >= kfs[kfs.length-1].time) return kfs[kfs.length-1].value;
+  for (var i = 0; i < kfs.length - 1; i++) {
+    if (time >= kfs[i].time && time <= kfs[i+1].time) {
+      var range = kfs[i+1].time - kfs[i].time;
+      var t = range > 0 ? (time - kfs[i].time) / range : 0;
+      return kfs[i].value + (kfs[i+1].value - kfs[i].value) * t;
+    }
+  }
+  return kfs[kfs.length-1].value;
+}
+</script>
+</body>
+</html>
