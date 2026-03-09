@@ -1,42 +1,41 @@
 import React from 'react';
 
 const TOOLS = [
-  { id: 'brush', label: 'Brush', icon: '/' },
-  { id: 'fill', label: 'Fill', icon: '~' },
-  { id: 'erase', label: 'Erase', icon: 'X' },
-  { id: 'select', label: 'Select', icon: '+' },
-  { id: 'place', label: 'Place', icon: 'O' },
+  { id: 'brush', label: 'Brush', key: 'B' },
+  { id: 'fill', label: 'Fill', key: 'F' },
+  { id: 'erase', label: 'Erase', key: 'E' },
+  { id: 'select', label: 'Select', key: 'V' },
+  { id: 'place', label: 'Place', key: 'P' },
 ];
 
-export default function Toolbar({ editorState, onToolChange, onBrushChange, onUndo, onRedo, onNewProject, onSaveProject, onLoadProject, onExport }) {
+export default function Toolbar({ editorState, isPlaying, onToolChange, onBrushChange, onUndo, onRedo, onNewProject, onSaveProject, onLoadProject, onExport, onPlayToggle, undoCount, redoCount }) {
   return (
     <div className="editor-toolbar">
       <div className="toolbar-group">
         <button className="btn btn-sm" onClick={onNewProject} title="New Project">New</button>
-        <button className="btn btn-sm" onClick={onSaveProject} title="Save Project">Save</button>
+        <button className="btn btn-sm" onClick={onSaveProject} title="Save (Ctrl+S)">Save</button>
         <button className="btn btn-sm" onClick={onLoadProject} title="Load Project">Load</button>
       </div>
 
       <div className="toolbar-group">
         {TOOLS.map(tool => (
-          <button
-            key={tool.id}
+          <button key={tool.id}
             className={`btn btn-sm ${editorState.activeTool === tool.id ? 'active' : ''}`}
             onClick={() => onToolChange(tool.id)}
-            title={tool.label}
+            title={`${tool.label} (${tool.key})`}
+            disabled={isPlaying}
           >
-            [{tool.icon}] {tool.label}
+            {tool.label}
           </button>
         ))}
       </div>
 
       <div className="toolbar-group">
         <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Cell:</label>
-        <select
-          value={editorState.brushValue}
+        <select value={editorState.brushValue}
           onChange={(e) => onBrushChange(parseInt(e.target.value, 10))}
-          style={{ padding: '2px 4px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3, fontSize: 11 }}
-        >
+          disabled={isPlaying}
+          style={{ padding: '2px 4px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3, fontSize: 11 }}>
           {[0, 1, 2, 3, 4, 5, 6, 7, 8].map(v => (
             <option key={v} value={v}>Type {v}</option>
           ))}
@@ -44,14 +43,21 @@ export default function Toolbar({ editorState, onToolChange, onBrushChange, onUn
       </div>
 
       <div className="toolbar-group">
-        <button className="btn btn-sm" onClick={onUndo} title="Undo (Ctrl+Z)">Undo</button>
-        <button className="btn btn-sm" onClick={onRedo} title="Redo (Ctrl+Y)">Redo</button>
+        <button className="btn btn-sm" onClick={onUndo} title="Undo (Ctrl+Z)" disabled={isPlaying || !undoCount}>Undo</button>
+        <button className="btn btn-sm" onClick={onRedo} title="Redo (Ctrl+Y)" disabled={isPlaying || !redoCount}>Redo</button>
+      </div>
+
+      <div className="toolbar-group">
+        <button className={`btn btn-sm ${isPlaying ? 'btn-playing' : 'btn-play'}`}
+          onClick={onPlayToggle} title="Play/Stop (F5)">
+          {isPlaying ? 'Stop' : 'Play'}
+        </button>
       </div>
 
       <div style={{ flex: 1 }} />
 
       <div className="toolbar-group">
-        <button className="btn btn-sm" onClick={onExport} title="Export to standalone HTML/JS/CSS">Export Build</button>
+        <button className="btn btn-sm" onClick={onExport} title="Export standalone HTML">Export</button>
       </div>
     </div>
   );
