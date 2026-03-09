@@ -14,6 +14,8 @@ function checkViteRunning() {
   });
 }
 
+const { Menu, shell } = require('electron');
+
 async function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
@@ -37,6 +39,62 @@ async function createWindow() {
     const distPath = path.join(__dirname, '../renderer/dist/index.html');
     win.loadFile(distPath);
   }
+
+  // Custom menu
+  const template = [
+    {
+      label: 'File',
+      submenu: [
+        { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => { win.webContents.send('menu-save'); } },
+        { label: 'Load', accelerator: 'CmdOrCtrl+O', click: () => { win.webContents.send('menu-load'); } },
+        { label: 'Export', accelerator: 'CmdOrCtrl+E', click: () => { win.webContents.send('menu-export'); } },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forcereload' },
+        { role: 'toggledevtools' },
+        { type: 'separator' },
+        { role: 'resetzoom' },
+        { role: 'zoomin' },
+        { role: 'zoomout' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+        { type: 'separator' },
+        { role: 'minimize' },
+        { role: 'close' }
+      ]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Koz Engine GitHub',
+          click: async () => {
+            await shell.openExternal('https://github.com/DavidKozdra/Koz_Engine_boilerPlate');
+          }
+        }
+      ]
+    }
+  ];
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
 }
 
 app.whenReady().then(createWindow);
