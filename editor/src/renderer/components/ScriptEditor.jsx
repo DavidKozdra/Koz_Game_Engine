@@ -7,14 +7,82 @@ import Modal from './Modal.jsx';
 
 const LANGUAGES = [
   { id: 'javascript', label: 'JavaScript' },
+  { id: 'ui', label: 'UI Screen' },
   { id: 'typescript', label: 'TypeScript (planned)' },
   { id: 'lua', label: 'Lua (planned)' },
   { id: 'python', label: 'Python (planned)' },
 ];
 
 const TEMPLATES = {
-  javascript: `function onInit(self, engine) {\n  // Called once when game starts\n}\n\nfunction onUpdate(self, engine, dt) {\n  // Called every frame\n  // Use engine.keyIsDown(keyCode) for input\n}\n`,
-  lua: `-- Lua scripting (planned)\nfunction onInit(self, engine)\n  -- Called once when game starts\nend\n\nfunction onUpdate(self, engine, dt)\n  -- Called every frame\nend\n`,
+  javascript: `function onInit(self, engine) {
+  // Called once when game starts
+}
+
+function onUpdate(self, engine, dt) {
+  // Called every frame
+  // Use engine.keyIsDown(keyCode) for input
+}
+`,
+  ui: `// UI Screen using KozUIManager
+// Registers a screen that shows/hides based on game state
+
+function onInit(self, engine) {
+  // Register screen with UIManager (auto-injected as global)
+  if (typeof KozUIManager !== 'undefined') {
+    KozUIManager.registerScreen('myScreen', {
+      // validStates: ['RUNNING', 'PAUSED'], // Show in these states
+      create: function() {
+        const container = document.createElement('div');
+        container.id = 'myScreen';
+        container.style.cssText = 'position:absolute;top:20px;right:20px;padding:16px;background:rgba(0,0,0,0.8);color:#fff;border-radius:8px;font-family:sans-serif;';
+        container.innerHTML = '<h3>My UI</h3><p>Game time: 0s</p><button id="myBtn">Click Me</button>';
+        
+        // Add click handler
+        const btn = container.querySelector('#myBtn');
+        if (btn) {
+          btn.onclick = function() {
+            console.log('Button clicked!');
+          };
+        }
+        
+        return container;
+      },
+      show: function() {
+        // Called when screen becomes visible
+        console.log('UI Screen shown');
+      },
+      hide: function() {
+        // Called when screen hides
+        console.log('UI Screen hidden');
+      },
+      update: function() {
+        // Called every frame while visible
+        const container = this.container;
+        if (container) {
+          const time = Math.floor(engine.elapsed || 0);
+          const p = container.querySelector('p');
+          if (p) p.textContent = 'Game time: ' + time + 's';
+        }
+      },
+      validStates: ['RUNNING']
+    });
+  }
+}
+
+function onUpdate(self, engine, dt) {
+  // Called every frame
+  // KozUIManager.updateAll() is called automatically
+}
+`,
+  lua: `-- Lua scripting (planned)
+function onInit(self, engine)
+  -- Called once when game starts
+end
+
+function onUpdate(self, engine, dt)
+  -- Called every frame
+end
+`,
 };
 
 export default function ScriptEditor({ project, onUpdateScript, onAddScript, onDeleteScript }) {

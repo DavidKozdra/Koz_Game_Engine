@@ -51,19 +51,25 @@ export function usePlayMode(project, onLog) {
     });
     const sandboxConsole = makeConsole();
 
-    // Bind scripts to objects
+    // Bind scripts to objects (supports multiple bindings per object)
     gameObjects.forEach(obj => {
-      const binding = obj.components.ScriptBinding;
-      if (binding && binding.scriptId && scripts[binding.scriptId]) {
+      const bindings = obj.components.ScriptBindings || [];
+      // Legacy single binding support
+      const legacy = obj.components.ScriptBinding;
+      if (legacy && legacy.scriptId) bindings.push({ scriptId: legacy.scriptId, active: true, properties: {} });
+
+      bindings.forEach(binding => {
+        if (!binding.active || !binding.scriptId || !scripts[binding.scriptId]) return;
         try {
           const src = scripts[binding.scriptId].source;
-          const factory = new Function('return (function(self, console) { ' + src + ' return { onInit: typeof onInit==="function"?onInit:null, onUpdate: typeof onUpdate==="function"?onUpdate:null }; })')();
-          const hooks = factory(obj, sandboxConsole);
-          scriptInstances.push({ obj, hooks });
+          const factory = new Function('return (function(self, props, console) { ' + src + ' return { onInit: typeof onInit==="function"?onInit:null, onUpdate: typeof onUpdate==="function"?onUpdate:null }; })')();
+          const props = binding.properties ? JSON.parse(JSON.stringify(binding.properties)) : {};
+          const hooks = factory(obj, props, sandboxConsole);
+          scriptInstances.push({ obj, hooks, props });
         } catch (e) {
           onLog({ type: 'error', message: `Script compile error: ${e.message}`, time: new Date().toLocaleTimeString() });
         }
-      }
+      });
     });
 
     const state = {
