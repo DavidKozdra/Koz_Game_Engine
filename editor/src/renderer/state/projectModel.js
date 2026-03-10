@@ -95,6 +95,13 @@ const DEFAULT_SOUND = {
   maxDistance: 0,
 };
 
+function normalizeRenderMode(value, fallback = '2d') {
+  const mode = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (mode === '3d' || mode === 'webgl-3d') return 'webgl-3d';
+  if (mode === '2d') return '2d';
+  return fallback;
+}
+
 function clone(v) {
   return JSON.parse(JSON.stringify(v));
 }
@@ -112,9 +119,11 @@ function normalizeWorld(world) {
 
 function defaultSceneFromProject(projectLike) {
   const base = projectLike || {};
+  const fallbackRenderMode = normalizeRenderMode(base?.meta?.renderMode, '2d');
   return {
     id: 'scene_main',
     name: 'Main Scene',
+    renderMode: fallbackRenderMode,
     world: normalizeWorld(base.world || { cols: 30, rows: 20, offsetX: 0, offsetY: 0, defaultCell: null, grid: [], elements: [], meta: {} }),
     objects: clone(base.objects || []),
   };
@@ -130,9 +139,12 @@ function ensureProjectShape(project) {
   if (!Array.isArray(next.layers.objects)) next.layers.objects = clone(DEFAULT_OBJECT_LAYERS);
   if (!Array.isArray(next.prefabs)) next.prefabs = [];
   if (!Array.isArray(next.scenes) || next.scenes.length === 0) next.scenes = [defaultSceneFromProject(next)];
+  if (!next.meta || typeof next.meta !== 'object') next.meta = {};
+  next.meta.renderMode = normalizeRenderMode(next.meta.renderMode, '2d');
   next.scenes = next.scenes.map((scene, idx) => ({
     id: scene.id || `scene_${idx}`,
     name: scene.name || `Scene ${idx + 1}`,
+    renderMode: normalizeRenderMode(scene && scene.renderMode, next.meta.renderMode),
     world: normalizeWorld(scene.world || next.world),
     objects: clone(scene.objects || next.objects || []),
   }));

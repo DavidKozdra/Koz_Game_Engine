@@ -8,9 +8,9 @@
       "height": 540
     },
     "engineVersion": "0.1.0",
-    "renderMode": "webgl-3d"
+    "renderMode": "2d"
   },
-  "activeSceneId": "scene_fps_lab",
+  "activeSceneId": "scene_menu",
   "world": {
     "cols": 12,
     "rows": 11,
@@ -235,6 +235,7 @@
     {
       "id": "scene_menu",
       "name": "Main Menu",
+      "renderMode": "2d",
       "world": {
         "cols": 1,
         "rows": 1,
@@ -282,10 +283,11 @@
                 "active": true,
                 "properties": {
                   "title": "FPS Menu Scene",
-                  "subtitle": "Secondary scene for project browser testing",
-                  "instructions": "Switch back to Prototype Lab to run the pseudo-first-person shell.",
-                  "actionLabel": "Hide Overlay",
-                  "note": "Switch back to Prototype Lab to run the WebGL first-person test scene."
+                  "subtitle": "Start menu for the 3D template",
+                  "instructions": "Load the Prototype Lab to switch from the 2D menu scene into the WebGL gameplay scene.",
+                  "actionLabel": "Load Prototype Lab",
+                  "nextSceneId": "scene_fps_lab",
+                  "note": "This project is the mixed-mode test case: the menu stays 2D while the lab scene renders through WebGL."
                 }
               }
             ],
@@ -299,6 +301,7 @@
     {
       "id": "scene_fps_lab",
       "name": "Prototype Lab",
+      "renderMode": "webgl-3d",
       "world": {
         "cols": 12,
         "rows": 11,
@@ -527,7 +530,7 @@
       "id": "script_menu_overlay",
       "name": "MainMenuOverlay",
       "language": "javascript",
-      "source": "function onInit(self, engine) {\n  if (typeof self.started !== 'boolean') self.started = false;\n  if (typeof self.completed !== 'boolean') self.completed = false;\n  var manager = engine.uiManager || (typeof KozUIManager !== 'undefined' ? KozUIManager : null) || (typeof uiManager !== 'undefined' ? uiManager : null);\n  if (!manager) return;\n  manager.registerScreen(self.id + '_menu', {\n    layer: 'hud',\n    layerOrder: 100,\n    isVisible: function() { return !self.started; },\n    create: function() {\n      var wrap = document.createElement('div');\n      wrap.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at top, rgba(249,115,22,0.18), rgba(2,6,23,0.95));pointer-events:auto;font-family:Trebuchet MS,sans-serif;';\n      var card = document.createElement('div');\n      card.style.cssText = 'width:min(560px,92vw);padding:28px 26px;border-radius:18px;background:rgba(15,23,42,0.96);border:1px solid rgba(148,163,184,0.25);box-shadow:0 24px 80px rgba(0,0,0,0.45);color:#e2e8f0;';\n      var title = document.createElement('h1');\n      title.textContent = props.title || 'Koz Template';\n      title.style.cssText = 'margin:0 0 8px;font-size:34px;';\n      var subtitle = document.createElement('p');\n      subtitle.textContent = props.subtitle || '';\n      subtitle.style.cssText = 'margin:0 0 14px;color:#94a3b8;line-height:1.4;';\n      var instructions = document.createElement('p');\n      instructions.textContent = props.instructions || '';\n      instructions.style.cssText = 'margin:0 0 18px;color:#cbd5e1;line-height:1.5;';\n      var button = document.createElement('button');\n      button.textContent = props.actionLabel || 'Start';\n      button.style.cssText = 'padding:12px 18px;border:none;border-radius:999px;background:#fb923c;color:#431407;font-weight:700;cursor:pointer;';\n      button.onclick = function() {\n        self.started = true;\n        self.completed = false;\n        if (typeof self.onStartGame === 'function') self.onStartGame();\n      };\n      var note = document.createElement('p');\n      note.textContent = props.note || '';\n      note.style.cssText = 'margin:14px 0 0;color:#64748b;font-size:12px;line-height:1.5;';\n      card.appendChild(title);\n      if (subtitle.textContent) card.appendChild(subtitle);\n      if (instructions.textContent) card.appendChild(instructions);\n      card.appendChild(button);\n      if (note.textContent) card.appendChild(note);\n      wrap.appendChild(card);\n      return wrap;\n    }\n  });\n}\n\nfunction onUpdate(self, engine, dt) {}\n"
+      "source": "function onInit(self, engine) {\n  if (typeof self.started !== 'boolean') self.started = false;\n  if (typeof self.completed !== 'boolean') self.completed = false;\n  var manager = engine.uiManager || (typeof KozUIManager !== 'undefined' ? KozUIManager : null) || (typeof uiManager !== 'undefined' ? uiManager : null);\n  if (!manager) return;\n  manager.registerScreen(self.id + '_menu', {\n    layer: 'hud',\n    layerOrder: 100,\n    isVisible: function() { return !self.started; },\n    create: function() {\n      var wrap = document.createElement('div');\n      wrap.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at top, rgba(249,115,22,0.18), rgba(2,6,23,0.95));pointer-events:auto;font-family:Trebuchet MS,sans-serif;';\n      var card = document.createElement('div');\n      card.style.cssText = 'width:min(560px,92vw);padding:28px 26px;border-radius:18px;background:rgba(15,23,42,0.96);border:1px solid rgba(148,163,184,0.25);box-shadow:0 24px 80px rgba(0,0,0,0.45);color:#e2e8f0;';\n      var title = document.createElement('h1');\n      title.textContent = props.title || 'Koz Template';\n      title.style.cssText = 'margin:0 0 8px;font-size:34px;';\n      var subtitle = document.createElement('p');\n      subtitle.textContent = props.subtitle || '';\n      subtitle.style.cssText = 'margin:0 0 14px;color:#94a3b8;line-height:1.4;';\n      var instructions = document.createElement('p');\n      instructions.textContent = props.instructions || '';\n      instructions.style.cssText = 'margin:0 0 18px;color:#cbd5e1;line-height:1.5;';\n      var button = document.createElement('button');\n      button.textContent = props.actionLabel || 'Start';\n      button.style.cssText = 'padding:12px 18px;border:none;border-radius:999px;background:#fb923c;color:#431407;font-weight:700;cursor:pointer;';\n      button.onclick = function() {\n        self.started = true;\n        self.completed = false;\n        var manager = (engine && engine.sceneManager) || (typeof sceneManager !== 'undefined' ? sceneManager : null) || window.sceneManager;\n        if (props.nextSceneId && manager && typeof manager.loadScene === 'function') {\n          window.__kozPendingAutoStart = true;\n          manager.loadScene(props.nextSceneId);\n          return;\n        }\n        if (typeof self.onStartGame === 'function') self.onStartGame();\n      };\n      var note = document.createElement('p');\n      note.textContent = props.note || '';\n      note.style.cssText = 'margin:14px 0 0;color:#64748b;font-size:12px;line-height:1.5;';\n      card.appendChild(title);\n      if (subtitle.textContent) card.appendChild(subtitle);\n      if (instructions.textContent) card.appendChild(instructions);\n      card.appendChild(button);\n      if (note.textContent) card.appendChild(note);\n      wrap.appendChild(card);\n      return wrap;\n    }\n  });\n}\n\nfunction onUpdate(self, engine, dt) {\n  if (!self.started && !props.nextSceneId && window.__kozPendingAutoStart && typeof self.onStartGame === 'function') {\n    window.__kozPendingAutoStart = false;\n    self.started = true;\n    self.completed = false;\n    self.onStartGame();\n  }\n}\n"
     },
     {
       "id": "script_fps_shell",

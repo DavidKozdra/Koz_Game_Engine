@@ -7,6 +7,14 @@
 
   const CURRENT_VERSION = 1;
   const DEFAULT_SCENE_ID = "scene_main";
+  const DEFAULT_RENDER_MODE = "2d";
+
+  function normalizeRenderMode(value, fallback) {
+    const mode = typeof value === "string" ? value.trim().toLowerCase() : "";
+    if (mode === "3d" || mode === "webgl-3d") return "webgl-3d";
+    if (mode === "2d") return "2d";
+    return fallback || DEFAULT_RENDER_MODE;
+  }
 
   function deepClone(value) {
     if (value === undefined) return undefined;
@@ -26,10 +34,12 @@
     };
   }
 
-  function createScene(id, name, world, objects) {
+  function createScene(id, name, world, objects, options) {
+    const opts = options || {};
     return {
       id: id || DEFAULT_SCENE_ID,
       name: name || "Main Scene",
+      renderMode: normalizeRenderMode(opts.renderMode, DEFAULT_RENDER_MODE),
       world: world || createDefaultWorld(30, 20, null),
       objects: Array.isArray(objects) ? objects : [],
     };
@@ -41,6 +51,7 @@
       ...deepClone(source),
       id: source.id || (index === 0 ? DEFAULT_SCENE_ID : "scene_" + index),
       name: source.name || (index === 0 ? "Main Scene" : "Scene " + (index + 1)),
+      renderMode: normalizeRenderMode(source.renderMode, DEFAULT_RENDER_MODE),
       world: source.world && typeof source.world === "object"
         ? source.world
         : (fallbackWorld && typeof fallbackWorld === "object" ? fallbackWorld : createDefaultWorld(30, 20, null)),
@@ -56,15 +67,18 @@
       ? source.world
       : createDefaultWorld(30, 20, null);
     const fallbackObjects = Array.isArray(source.objects) ? source.objects : [];
+    const projectRenderMode = normalizeRenderMode(source.meta && source.meta.renderMode, DEFAULT_RENDER_MODE);
     let scenes = [];
 
     if (Array.isArray(source.scenes) && source.scenes.length > 0) {
       scenes = source.scenes.map(function mapScene(scene, index) {
-        return normalizeScene(scene, index, fallbackWorld, fallbackObjects);
+        const normalized = normalizeScene(scene, index, fallbackWorld, fallbackObjects);
+        normalized.renderMode = normalizeRenderMode(scene && scene.renderMode, projectRenderMode);
+        return normalized;
       });
     } else {
       scenes = [
-        createScene(source.activeSceneId || DEFAULT_SCENE_ID, "Main Scene", fallbackWorld, fallbackObjects),
+        createScene(source.activeSceneId || DEFAULT_SCENE_ID, "Main Scene", fallbackWorld, fallbackObjects, { renderMode: projectRenderMode }),
       ];
     }
 
@@ -100,7 +114,10 @@
     const opts = options || {};
     const defaultWorld = createDefaultWorld(opts.cols || 30, opts.rows || 20, opts.defaultCell);
     const defaultObjects = [];
-    const defaultScene = createScene(opts.sceneId || DEFAULT_SCENE_ID, opts.sceneName || "Main Scene", defaultWorld, defaultObjects);
+    const defaultRenderMode = normalizeRenderMode(opts.renderMode, DEFAULT_RENDER_MODE);
+    const defaultScene = createScene(opts.sceneId || DEFAULT_SCENE_ID, opts.sceneName || "Main Scene", defaultWorld, defaultObjects, {
+      renderMode: defaultRenderMode,
+    });
     return {
       schemaVersion: CURRENT_VERSION,
       meta: {
@@ -108,6 +125,7 @@
         version: "1.0.0",
         resolution: { width: opts.width || 960, height: opts.height || 540 },
         engineVersion: "0.1.0",
+        renderMode: defaultRenderMode,
       },
       world: defaultWorld,
       objects: defaultObjects,
@@ -179,6 +197,11 @@
         if (typeof scene.name !== "string" || !scene.name) {
           errors.push("scenes[" + index + "].name must be a non-empty string");
         }
+        if (typeof scene.renderMode !== "string" || !scene.renderMode) {
+          errors.push("scenes[" + index + "].renderMode must be a non-empty string");
+        } else if (scene.renderMode !== "2d" && scene.renderMode !== "webgl-3d") {
+          errors.push("scenes[" + index + "].renderMode must be \"2d\" or \"webgl-3d\"");
+        }
         validateWorld(scene.world, "scenes[" + index + "].world", errors);
         if (!Array.isArray(scene.objects)) {
           errors.push("scenes[" + index + "].objects must be an array");
@@ -234,7 +257,9 @@
     if (Array.isArray(data.scenes) && data.scenes.length > 0) {
       project.scenes = deepClone(data.scenes);
     } else {
-      project.scenes = [createScene(project.activeSceneId || DEFAULT_SCENE_ID, "Main Scene", project.world, project.objects)];
+      project.scenes = [createScene(project.activeSceneId || DEFAULT_SCENE_ID, "Main Scene", project.world, project.objects, {
+        renderMode: normalizeRenderMode(data.meta && data.meta.renderMode, DEFAULT_RENDER_MODE),
+      })];
     }
     if (Array.isArray(data.animations)) project.animations = deepClone(data.animations);
     if (Array.isArray(data.scripts)) project.scripts = deepClone(data.scripts);

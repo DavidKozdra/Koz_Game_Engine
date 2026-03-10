@@ -60,11 +60,12 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
     if (!name) return;
     const id = `scene_${Date.now().toString(36)}`;
     const baseWorld = project.world || { cols: 30, rows: 20, offsetX: 0, offsetY: 0, defaultCell: 'empty', grid: [], elements: [], meta: {} };
+    const baseRenderMode = (project.meta && project.meta.renderMode) || '2d';
     const world = JSON.parse(JSON.stringify(baseWorld));
     if (Array.isArray(world.grid)) {
       world.grid = world.grid.map((row) => (Array.isArray(row) ? row.map(() => world.defaultCell || 'empty') : []));
     }
-    onPatchProject({ scenes: [...scenes, { id, name, world, objects: [] }], activeSceneId: id });
+    onPatchProject({ scenes: [...scenes, { id, name, renderMode: baseRenderMode, world, objects: [] }], activeSceneId: id });
     setNewSceneName('');
   }
 
@@ -81,10 +82,19 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
     const copy = {
       id: `scene_${Date.now().toString(36)}`,
       name: `${source.name} Copy`,
+      renderMode: source.renderMode || ((project.meta && project.meta.renderMode) || '2d'),
       world: JSON.parse(JSON.stringify(source.world || project.world)),
       objects: JSON.parse(JSON.stringify(source.objects || [])),
     };
     onPatchProject({ scenes: [...scenes, copy], activeSceneId: copy.id });
+  }
+
+  function updateSceneRenderMode(id, renderMode) {
+    onPatchProject({
+      scenes: scenes.map((scene) => (
+        scene.id === id ? { ...scene, renderMode } : scene
+      )),
+    });
   }
 
   function moveScene(id, dir) {
@@ -268,7 +278,8 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
             </div>
             <div style={{ display: 'grid', gap: 4 }}>
               {scenes.map((scene) => (
-                <div key={scene.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', border: '1px solid var(--border)', borderRadius: 4, background: activeSceneId === scene.id ? 'rgba(59,130,246,0.16)' : '#111827' }}>
+                <div key={scene.id} style={{ display: 'grid', gap: 6, padding: '6px', border: '1px solid var(--border)', borderRadius: 4, background: activeSceneId === scene.id ? 'rgba(59,130,246,0.16)' : '#111827' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <button type="button" onClick={() => onPatchProject({ activeSceneId: scene.id })} style={{ background: 'none', border: 'none', color: '#cbd5e1', textAlign: 'left', cursor: 'pointer', flex: 1 }}>
                     {scene.name}
                   </button>
@@ -276,6 +287,18 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
                   <button className="btn btn-sm" onClick={() => moveScene(scene.id, 1)} title="Move Down" aria-label={`Move ${scene.name} down`}><Icon name="arrowDown" /></button>
                   <button className="btn btn-sm" onClick={() => duplicateScene(scene.id)} title="Duplicate" aria-label={`Duplicate ${scene.name}`}><Icon name="copy" />Copy</button>
                   <button className="btn btn-sm btn-danger" onClick={() => removeScene(scene.id)} disabled={scenes.length <= 1} aria-label={`Delete ${scene.name}`}><Icon name="delete" /></button>
+                </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 11 }}>
+                    <span>Render</span>
+                    <select
+                      value={scene.renderMode || ((project.meta && project.meta.renderMode) || '2d')}
+                      onChange={(e) => updateSceneRenderMode(scene.id, e.target.value)}
+                      style={{ padding: '3px 6px', background: '#0f172a', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3, fontSize: 11 }}
+                    >
+                      <option value="2d">2D Canvas</option>
+                      <option value="webgl-3d">3D WebGL</option>
+                    </select>
+                  </div>
                 </div>
               ))}
             </div>

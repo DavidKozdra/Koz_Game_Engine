@@ -36,6 +36,7 @@ assert(Array.isArray(project.objects), 'objects is array');
 assert(Array.isArray(project.scenes), 'scenes is array');
 assert(project.scenes.length === 1, 'default project has one scene');
 assert(project.activeSceneId === project.scenes[0].id, 'activeSceneId points at default scene');
+assert(project.scenes[0].renderMode === '2d', 'default scene render mode is 2d');
 assert(project.scenes[0].world === project.world, 'top-level world aliases active scene world');
 assert(project.scenes[0].objects === project.objects, 'top-level objects alias active scene objects');
 assert(Array.isArray(project.scripts), 'scripts is array');
@@ -57,6 +58,7 @@ assert(migrated.schemaVersion === 1, 'migrated to v1');
 assert(migrated.world.cols === 5, 'preserved cols');
 assert(Array.isArray(migrated.scenes) && migrated.scenes.length === 1, 'legacy project migrated to one scene');
 assert(migrated.activeSceneId === migrated.scenes[0].id, 'migrated project has active scene');
+assert(migrated.scenes[0].renderMode === '2d', 'migrated legacy scene gets a default render mode');
 
 // Test 5: Create game object
 const obj = projectSchema.createGameObject('Player', 10, 20, { color: '#ff0000' });
