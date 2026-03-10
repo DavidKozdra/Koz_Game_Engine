@@ -33,6 +33,9 @@
         profile: "web-prod",
         pwa: false,
       },
+      settings: {
+        preferredEditor: "vscode",
+      },
     };
   }
 
@@ -155,12 +158,26 @@
     };
   }
 
-  function createScript(name, source) {
+  function createScript(name, source, options) {
+    const opts = options || {};
+    const lang = opts.language || 'javascript';
+    const ext = lang === 'javascript' ? 'js' : lang === 'typescript' ? 'ts' : lang === 'lua' ? 'lua' : lang === 'python' ? 'py' : 'js';
+    const safeName = (name || 'NewScript').toLowerCase().replace(/[^a-z0-9]/g, '_');
     return {
-      id: generateId("script"),
+      id: opts.id || generateId("script"),
       name: name || "NewScript",
+      filePath: opts.filePath || `scripts/${safeName}.${ext}`,
+      language: lang,
       source: source || "function onInit(self, engine) {\n  // Called once when the game starts\n}\n\nfunction onUpdate(self, engine, dt) {\n  // Called every frame\n}\n",
     };
+  }
+
+  function getScriptFileName(script) {
+    if (script.filePath) return script.filePath;
+    const lang = script.language || 'javascript';
+    const ext = lang === 'javascript' ? 'js' : lang === 'typescript' ? 'ts' : lang === 'lua' ? 'lua' : lang === 'python' ? 'py' : 'js';
+    const safeName = (script.name || 'NewScript').toLowerCase().replace(/[^a-z0-9]/g, '_');
+    return `scripts/${safeName}.${ext}`;
   }
 
   function createAnimationClip(name, options) {
@@ -182,6 +199,7 @@
     generateId: generateId,
     createGameObject: createGameObject,
     createScript: createScript,
+    getScriptFileName: getScriptFileName,
     createAnimationClip: createAnimationClip,
   };
 });

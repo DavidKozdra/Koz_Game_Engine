@@ -155,6 +155,13 @@ export default function SystemsTab({ mode = 'assets', project, selectedObjectId,
   }
 
   if (mode === 'settings') {
+    const settings = project.settings || {};
+    const preferredEditor = settings.preferredEditor || 'vscode';
+    
+    function updatePreferredEditor(value) {
+      patch({ settings: { ...settings, preferredEditor: value } });
+    }
+    
     return (
       <div style={{ overflow: 'auto', padding: 12, display: 'grid', gap: 12 }}>
         <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
@@ -166,6 +173,25 @@ export default function SystemsTab({ mode = 'assets', project, selectedObjectId,
             <input type="checkbox" checked={!!project.scripting.engines.lua} onChange={(e) => updateEngine('lua', e.target.checked)} />
             <label>Python</label>
             <input type="checkbox" checked={!!project.scripting.engines.python} onChange={(e) => updateEngine('python', e.target.checked)} />
+          </div>
+        </div>
+
+        <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
+          <h3>External Editor</h3>
+          <div className="field">
+            <label>Preferred Editor</label>
+            <select value={preferredEditor} onChange={(e) => updatePreferredEditor(e.target.value)}>
+              <option value="vscode">VS Code</option>
+              <option value="code">VS Code (command)</option>
+              <option value="cursor">Cursor</option>
+              <option value="vscodium">VSCodium</option>
+              <option value="atom">Atom</option>
+              <option value="sublime">Sublime Text</option>
+              <option value="webstorm">WebStorm</option>
+            </select>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+            Scripts will auto-save to external files and can be opened in your preferred editor.
           </div>
         </div>
 

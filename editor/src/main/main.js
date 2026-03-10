@@ -438,6 +438,115 @@ ipcMain.handle('projects:saveAs', async (_event, payload) => {
   }
 });
 
+// ---- Script file operations ----
+
+function getScriptsDir(projectPath) {
+  const folder = path.dirname(resolveProjectJsonPath(projectPath) || projectPath);
+  // Avoid double scripts/scripts
+  if (folder.endsWith('/scripts')) return folder;
+  return path.join(folder, 'scripts');
+}
+
+ipcMain.handle('scripts:list', async (_event, payload) => {
+  const scriptsDir = getScriptsDir(payload?.projectPath);
+  try {
+    if (!fs.existsSync(scriptsDir)) {
+      return { ok: true, files: [] };
+    }
+    const entries = await fs.promises.readdir(scriptsDir);
+    const files = entries
+      .filter(f => f.endsWith('.js') || f.endsWith('.ts') || f.endsWith('.lua') || f.endsWith('.py'))
+      .map(f => ({ name: f, path: path.join(scriptsDir, f) }));
+    return { ok: true, files };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+});
+
+ipcMain.handle('scripts:load', async (_event, payload) => {
+  const scriptsDir = getScriptsDir(payload?.projectPath);
+  const filePath = payload?.filePath;
+  if (!filePath) return { ok: false, error: 'Missing filePath' };
+  
+  const fullPath = path.isAbsolute(filePath) ? filePath : path.join(scriptsDir, filePath);
+  try {
+    if (!fs.existsSync(fullPath)) {
+      return { ok: false, error: 'File not found', notFound: true };
+    }
+    const content = await fs.promises.readFile(fullPath, 'utf8');
+    return { ok: true, content, filePath: fullPath };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+});
+
+ipcMain.handle('scripts:save', async (_event, payload) => {
+  const scriptsDir = getScriptsDir(payload?.projectPath);
+  const filePath = payload?.filePath;
+  const content = payload?.content;
+  console.log('[DEBUG][main] scripts:save called with:', { projectPath: payload?.projectPath, scriptsDir, filePath, contentPreview: content && content.slice ? content.slice(0, 100) : content });
+  if (!filePath) {
+    console.error('[DEBUG][main] scripts:save missing filePath');
+    return { ok: false, error: 'Missing filePath' };
+  }
+  if (content === undefined) {
+    console.error('[DEBUG][main] scripts:save missing content');
+    return { ok: false, error: 'Missing content' };
+  }
+  const fullPath = path.isAbsolute(filePath) ? filePath : path.join(scriptsDir, filePath);
+  console.log('[DEBUG][main] scripts:save resolved fullPath:', fullPath);
+  try {
+    await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
+    await fs.promises.writeFile(fullPath, content, 'utf8');
+    console.log('[DEBUG][main] scripts:save wrote file:', fullPath);
+    return { ok: true, filePath: fullPath };
+  } catch (error) {
+    console.error('[DEBUG][main] scripts:save error:', error);
+    return { ok: false, error: error.message };
+  }
+});
+
+ipcMain.handle('scripts:delete', async (_event, payload) => {
+  const scriptsDir = getScriptsDir(payload?.projectPath);
+  const filePath = payload?.filePath;
+  if (!filePath) return { ok: false, error: 'Missing filePath' };
+  
+  const fullPath = path.isAbsolute(filePath) ? filePath : path.join(scriptsDir, filePath);
+  try {
+    if (fs.existsSync(fullPath)) {
+      await fs.promises.unlink(fullPath);
+    }
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+});
+
+ipcMain.handle('editor:openFile', async (_event, payload) => {
+  const filePath = payload?.filePath;
+  const editor = payload?.editor || 'vscode';
+  if (!filePath) return { ok: false, error: 'Missing filePath' };
+  
+  try {
+    const fullPath = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
+    let command;
+    if (editor === 'code' || editor === 'vscode') {
+      command = 'code';
+    } else if (editor === 'cursor') {
+      command = 'cursor';
+    } else if (editor === 'vscodium') {
+      command = 'vscodium';
+    } else {
+      command = editor;
+    }
+    
+    await spawn(command, [fullPath], { detached: true, stdio: 'ignore' });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+});
+
 async function createWindow() {
   const win = new BrowserWindow({
     width: 1200,

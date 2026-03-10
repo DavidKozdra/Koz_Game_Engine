@@ -7,6 +7,11 @@ contextBridge.exposeInMainWorld('api', {
   loadProject: (projectPath) => ipcRenderer.invoke('projects:load', { projectPath }),
   saveProject: (payload) => ipcRenderer.invoke('projects:save', payload),
   saveProjectAs: (payload) => ipcRenderer.invoke('projects:saveAs', payload),
+  listScripts: (projectPath) => ipcRenderer.invoke('scripts:list', { projectPath }),
+  loadScript: (projectPath, filePath) => ipcRenderer.invoke('scripts:load', { projectPath, filePath }),
+  saveScript: (projectPath, filePath, content) => ipcRenderer.invoke('scripts:save', { projectPath, filePath, content }),
+  deleteScript: (projectPath, filePath) => ipcRenderer.invoke('scripts:delete', { projectPath, filePath }),
+  openInEditor: (filePath, editor) => ipcRenderer.invoke('editor:openFile', { filePath, editor }),
   onExportProgress: (handler) => {
     const ch = 'export:progress';
     const cb = (_event, payload) => handler(payload);
