@@ -17,17 +17,29 @@ class SpatialGrid {
   constructor(cellSize = 32) {
       this._cs = cellSize;
       this._cells = new Map();
+      this._entityCount = 0;
     }
 
     /**
-     * Generates a unique key for grid coordinates.
+     * Generates a unique integer key for grid coordinates using spatial hashing.
+     * Avoids string concatenation for better GC performance.
      * @param {number} tx - Tile x coordinate
      * @param {number} ty - Tile y coordinate
-     * @returns {string} Grid cell key
+     * @returns {number} Grid cell key
      * @private
      */
     _key(tx, ty) {
-      return `${Math.floor(tx / this._cs)},${Math.floor(ty / this._cs)}`;
+      const cx = Math.floor(tx / this._cs);
+      const cy = Math.floor(ty / this._cs);
+      return (cx * 73856093) ^ (cy * 19349669);
+    }
+
+    /**
+     * Generates cell coords for key comparison.
+     * @private
+     */
+    _cellCoords(tx, ty) {
+      return (Math.floor(tx / this._cs) << 16) | (Math.floor(ty / this._cs) & 0xFFFF);
     }
 
     /**
@@ -45,6 +57,7 @@ class SpatialGrid {
       }
       cell.add(entity);
       entity._sgKey = key;
+      this._entityCount++;
     }
 
     /**
@@ -58,6 +71,7 @@ class SpatialGrid {
       if (cell) {
         cell.delete(entity);
         if (cell.size === 0) this._cells.delete(key);
+        this._entityCount--;
       }
       entity._sgKey = null;
     }
@@ -73,6 +87,23 @@ class SpatialGrid {
       if (entity._sgKey === newKey) return;
       this.remove(entity);
       this.insert(entity, newTx, newTy);
+    }
+
+    /**
+     * Bulk insert an array of entities at their current positions.
+     * @param {Array} entities - Array of entities with tx/ty or x/y properties
+     * @param {Function} [posGetter] - Optional function to get {tx, ty} from entity
+     */
+    insertBatch(entities, posGetter) {
+      for (let i = 0; i < entities.length; i++) {
+        const e = entities[i];
+        if (posGetter) {
+          const pos = posGetter(e);
+          this.insert(e, pos.tx, pos.ty);
+        } else {
+          this.insert(e, e.tx || e.x || 0, e.ty || e.y || 0);
+        }
+      }
     }
 
     /**
@@ -95,15 +126,17 @@ class SpatialGrid {
         tileSize: typeof tileSize !== "undefined" ? tileSize : 1,
       };
 
-      const minCX = Math.floor((vp.minX / vp.tileSize) / cs);
-      const maxCX = Math.floor((vp.maxX / vp.tileSize) / cs);
-      const minCY = Math.floor((vp.minY / vp.tileSize) / cs);
-      const maxCY = Math.floor((vp.maxY / vp.tileSize) / cs);
+      const ts = vp.tileSize || 1;
+      const minCX = Math.floor((vp.minX / ts) / cs);
+      const maxCX = Math.floor((vp.maxX / ts) / cs);
+      const minCY = Math.floor((vp.minY / ts) / cs);
+      const maxCY = Math.floor((vp.maxY / ts) / cs);
 
       const result = [];
       for (let cy = minCY; cy <= maxCY; cy++) {
         for (let cx = minCX; cx <= maxCX; cx++) {
-          const cell = this._cells.get(`${cx},${cy}`);
+          const key = (cx * 73856093) ^ (cy * 19349669);
+          const cell = this._cells.get(key);
           if (cell) {
             for (const e of cell) result.push(e);
           }
@@ -113,10 +146,50 @@ class SpatialGrid {
     }
 
     /**
+     * Queries entities within radius of a point (tile coords).
+     * @param {number} tx - Center tile x
+     * @param {number} ty - Center tile y
+     * @param {number} radius - Radius in tiles
+     * @returns {Array} Entities within radius
+     */
+    queryRadius(tx, ty, radius) {
+      const cs = this._cs;
+      const minCX = Math.floor((tx - radius) / cs);
+      const maxCX = Math.floor((tx + radius) / cs);
+      const minCY = Math.floor((ty - radius) / cs);
+      const maxCY = Math.floor((ty + radius) / cs);
+      const r2 = radius * radius;
+      const result = [];
+
+      for (let cy = minCY; cy <= maxCY; cy++) {
+        for (let cx = minCX; cx <= maxCX; cx++) {
+          const key = (cx * 73856093) ^ (cy * 19349669);
+          const cell = this._cells.get(key);
+          if (!cell) continue;
+          for (const e of cell) {
+            const ex = e.tx != null ? e.tx : (e.x || 0);
+            const ey = e.ty != null ? e.ty : (e.y || 0);
+            const dx = ex - tx, dy = ey - ty;
+            if (dx * dx + dy * dy <= r2) result.push(e);
+          }
+        }
+      }
+      return result;
+    }
+
+    /**
+     * Returns total entity count.
+     */
+    get size() {
+      return this._entityCount;
+    }
+
+    /**
      * Clears all entities from the grid.
      */
     clear() {
       this._cells.clear();
+      this._entityCount = 0;
     }
   }
 

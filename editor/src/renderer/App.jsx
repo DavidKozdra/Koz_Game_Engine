@@ -199,18 +199,47 @@ function createGameObject(name, x, y, opts = {}) {
     };
   }
   const isAudioType = type === 'audio_source' || type === 'music_source';
+  const isLightingManagerType = type === 'lighting_manager';
+  const isLightType = type === 'light';
   const next = {
     id: genId('obj'), name: name || 'Object', type, x, y,
     parentId: null,
     components: {
       Transform: { x, y, rotation: 0, scaleX: 1, scaleY: 1 },
-      Sprite: { assetId: null, color: opts.color || '#4ade80', width: 32, height: 32 },
-      Collider: { shape: 'rect', width: 32, height: 32 },
-      Collision: { enabled: true, isTrigger: false },
+      Sprite: {
+        assetId: null,
+        color: opts.color || (isLightingManagerType ? '#60a5fa' : (isLightType ? '#fbbf24' : '#4ade80')),
+        width: isLightingManagerType ? 20 : (isLightType ? 18 : 32),
+        height: isLightingManagerType ? 20 : (isLightType ? 18 : 32),
+      },
+      Collider: { shape: isLightType ? 'circle' : 'rect', width: isLightingManagerType ? 20 : (isLightType ? 18 : 32), height: isLightingManagerType ? 20 : (isLightType ? 18 : 32) },
+      Collision: { enabled: !isLightType && !isLightingManagerType, isTrigger: false },
       RigidBody: { enabled: false, weight: 1, friction: 0.4 },
-      Render: { layerId: opts.layerId || 'obj-main', visible: true, zIndex: 0 },
+      Render: { layerId: opts.layerId || ((isLightType || isLightingManagerType) ? 'obj-fx' : 'obj-main'), visible: !isLightingManagerType, zIndex: 0 },
       ScriptBindings: [],
       Animator: { clipId: null, autoplay: type === 'animator' },
+      ...(isLightingManagerType ? {
+        LightingManager: {
+          enabled: false,
+          ambientColor: '#0b1220',
+          ambientIntensity: 0.35,
+          overlayOpacity: 0.82,
+          fogColor: '#07111d',
+          fogDensity: 0.65,
+        },
+      } : {}),
+      ...(isLightType ? {
+        Light: {
+          enabled: true,
+          color: '#ffd27a',
+          intensity: 1,
+          radius: 180,
+          falloff: 0.65,
+          offsetX: 0,
+          offsetY: 0,
+          height: 18,
+        },
+      } : {}),
       ...(isAudioType ? {
         Sound: {
           assetId: null,
@@ -224,6 +253,10 @@ function createGameObject(name, x, y, opts = {}) {
     },
   };
   if (isAudioType) {
+    next.components.Render.visible = false;
+  }
+  if (isLightingManagerType) {
+    next.components.Collision.enabled = false;
     next.components.Render.visible = false;
   }
   return next;

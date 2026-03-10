@@ -14,6 +14,34 @@ function getObjectType(obj) {
   return base;
 }
 
+const TYPE_ICON_MAP = {
+  generic: 'objGeneric',
+  sprite: 'objSprite',
+  animator: 'objAnimator',
+  camera: 'camera',
+  light: 'objLight',
+  lighting_manager: 'objLightingManager',
+  audio_source: 'objAudioSource',
+  music_source: 'objMusicSource',
+};
+
+const TYPE_COLOR_MAP = {
+  generic: '#94a3b8',
+  sprite: '#a78bfa',
+  animator: '#34d399',
+  camera: '#93c5fd',
+  light: '#fbbf24',
+  lighting_manager: '#f59e0b',
+  audio_source: '#f472b6',
+  music_source: '#c084fc',
+};
+
+function objectTypeIcon(type, size) {
+  const iconName = TYPE_ICON_MAP[type] || 'objGeneric';
+  const color = TYPE_COLOR_MAP[type] || '#94a3b8';
+  return <Icon name={iconName} size={size || 14} style={{ color, flexShrink: 0 }} />;
+}
+
 export default function ObjectList({ project, editorState, onSelectObject, onAddObject, onAddCameraObject, onRemoveObject, onDuplicateObject, onReparentObject }) {
   const objects = (project && project.objects) || [];
   const prefabs = (project && project.prefabs) || [];
@@ -134,7 +162,7 @@ export default function ObjectList({ project, editorState, onSelectObject, onAdd
             ) : nodeColor ? (
               <span style={{ display: 'inline-block', width: 14, height: 14, background: nodeColor, borderRadius: 2, flexShrink: 0 }} />
             ) : (
-              <span style={{ color: '#94a3b8' }}>{getObjectType(obj) === 'camera' ? '[CAM]' : '[OBJ]'}</span>
+              objectTypeIcon(getObjectType(obj), 14)
             )}
             <span>{obj.name || obj.id}</span>
           </span>
@@ -264,8 +292,6 @@ export default function ObjectList({ project, editorState, onSelectObject, onAdd
                   <div style={{ height: 94, background: '#1f2937', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 7, overflow: 'hidden' }}>
                     {tpl.preview ? (
                       <img src={tpl.preview} alt={tpl.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-                    ) : tpl.type === 'camera' ? (
-                      <div style={{ fontSize: 26, color: '#93c5fd' }}>[CAM]</div>
                     ) : tpl.spriteColor ? (
                       <div style={{
                         width: Math.min(tpl.spriteW || 32, 80),
@@ -274,7 +300,7 @@ export default function ObjectList({ project, editorState, onSelectObject, onAdd
                         borderRadius: 3,
                       }} />
                     ) : (
-                      <div style={{ fontSize: 18, color: '#94a3b8' }}>[OBJ]</div>
+                      objectTypeIcon(tpl.type || 'generic', 36)
                     )}
                   </div>
                   <div style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tpl.name}</div>

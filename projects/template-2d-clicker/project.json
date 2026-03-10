@@ -15,16 +15,206 @@
     "rows": 10,
     "defaultCell": 0,
     "grid": [
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
     ],
     "elements": [],
     "meta": {}
@@ -37,10 +227,27 @@
       "x": 0,
       "y": 0,
       "components": {
-        "Transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 },
-        "Sprite": { "assetId": null, "color": "#082f49", "width": 1, "height": 1 },
-        "Collider": { "shape": "rect", "width": 1, "height": 1 },
-        "ScriptBinding": { "scriptId": null },
+        "Transform": {
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        "Sprite": {
+          "assetId": null,
+          "color": "#082f49",
+          "width": 1,
+          "height": 1
+        },
+        "Collider": {
+          "shape": "rect",
+          "width": 1,
+          "height": 1
+        },
+        "ScriptBinding": {
+          "scriptId": null
+        },
         "ScriptBindings": [
           {
             "scriptId": "script_menu_overlay",
@@ -61,7 +268,9 @@
             }
           }
         ],
-        "Animator": { "clipId": null }
+        "Animator": {
+          "clipId": null
+        }
       }
     },
     {
@@ -71,13 +280,35 @@
       "x": 110,
       "y": 130,
       "components": {
-        "Transform": { "x": 110, "y": 130, "rotation": 0, "scaleX": 1, "scaleY": 1 },
-        "Sprite": { "assetId": null, "color": "#f97316", "width": 46, "height": 46 },
-        "Collider": { "shape": "rect", "width": 46, "height": 46 },
-        "Collision": { "enabled": true, "isTrigger": true },
-        "ScriptBinding": { "scriptId": "script_target_wobble" },
+        "Transform": {
+          "x": 110,
+          "y": 130,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        "Sprite": {
+          "assetId": null,
+          "color": "#f97316",
+          "width": 46,
+          "height": 46
+        },
+        "Collider": {
+          "shape": "rect",
+          "width": 46,
+          "height": 46
+        },
+        "Collision": {
+          "enabled": true,
+          "isTrigger": true
+        },
+        "ScriptBinding": {
+          "scriptId": "script_target_wobble"
+        },
         "ScriptBindings": [],
-        "Animator": { "clipId": null }
+        "Animator": {
+          "clipId": null
+        }
       }
     },
     {
@@ -87,13 +318,35 @@
       "x": 290,
       "y": 240,
       "components": {
-        "Transform": { "x": 290, "y": 240, "rotation": 0, "scaleX": 1, "scaleY": 1 },
-        "Sprite": { "assetId": null, "color": "#22c55e", "width": 46, "height": 46 },
-        "Collider": { "shape": "rect", "width": 46, "height": 46 },
-        "Collision": { "enabled": true, "isTrigger": true },
-        "ScriptBinding": { "scriptId": "script_target_wobble" },
+        "Transform": {
+          "x": 290,
+          "y": 240,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        "Sprite": {
+          "assetId": null,
+          "color": "#22c55e",
+          "width": 46,
+          "height": 46
+        },
+        "Collider": {
+          "shape": "rect",
+          "width": 46,
+          "height": 46
+        },
+        "Collision": {
+          "enabled": true,
+          "isTrigger": true
+        },
+        "ScriptBinding": {
+          "scriptId": "script_target_wobble"
+        },
         "ScriptBindings": [],
-        "Animator": { "clipId": null }
+        "Animator": {
+          "clipId": null
+        }
       }
     },
     {
@@ -103,13 +356,35 @@
       "x": 470,
       "y": 130,
       "components": {
-        "Transform": { "x": 470, "y": 130, "rotation": 0, "scaleX": 1, "scaleY": 1 },
-        "Sprite": { "assetId": null, "color": "#a855f7", "width": 46, "height": 46 },
-        "Collider": { "shape": "rect", "width": 46, "height": 46 },
-        "Collision": { "enabled": true, "isTrigger": true },
-        "ScriptBinding": { "scriptId": "script_target_wobble" },
+        "Transform": {
+          "x": 470,
+          "y": 130,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        "Sprite": {
+          "assetId": null,
+          "color": "#a855f7",
+          "width": 46,
+          "height": 46
+        },
+        "Collider": {
+          "shape": "rect",
+          "width": 46,
+          "height": 46
+        },
+        "Collision": {
+          "enabled": true,
+          "isTrigger": true
+        },
+        "ScriptBinding": {
+          "scriptId": "script_target_wobble"
+        },
         "ScriptBindings": [],
-        "Animator": { "clipId": null }
+        "Animator": {
+          "clipId": null
+        }
       }
     }
   ],
@@ -121,7 +396,11 @@
         "cols": 1,
         "rows": 1,
         "defaultCell": 0,
-        "grid": [[0]],
+        "grid": [
+          [
+            0
+          ]
+        ],
         "elements": [],
         "meta": {}
       },
@@ -133,10 +412,27 @@
           "x": 0,
           "y": 0,
           "components": {
-            "Transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 },
-            "Sprite": { "assetId": null, "color": "#082f49", "width": 1, "height": 1 },
-            "Collider": { "shape": "rect", "width": 1, "height": 1 },
-            "ScriptBinding": { "scriptId": null },
+            "Transform": {
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#082f49",
+              "width": 1,
+              "height": 1
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 1,
+              "height": 1
+            },
+            "ScriptBinding": {
+              "scriptId": null
+            },
             "ScriptBindings": [
               {
                 "scriptId": "script_menu_overlay",
@@ -151,10 +447,13 @@
                 }
               }
             ],
-            "Animator": { "clipId": null }
+            "Animator": {
+              "clipId": null
+            }
           }
         }
-      ]
+      ],
+      "renderMode": "2d"
     },
     {
       "id": "scene_click_arena",
@@ -164,21 +463,268 @@
         "rows": 10,
         "defaultCell": 0,
         "grid": [
-          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
         ],
         "elements": [],
         "meta": {}
       },
       "objects": [
+        {
+          "id": "obj_clicker_lighting_manager",
+          "name": "Lighting Manager",
+          "type": "lighting_manager",
+          "x": 0,
+          "y": 0,
+          "components": {
+            "Transform": {
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#60a5fa",
+              "width": 20,
+              "height": 20
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 20,
+              "height": 20
+            },
+            "Collision": {
+              "enabled": false,
+              "isTrigger": false
+            },
+            "RigidBody": {
+              "enabled": false,
+              "weight": 1,
+              "friction": 0.4
+            },
+            "Render": {
+              "layerId": "obj-fx",
+              "visible": false,
+              "zIndex": 0
+            },
+            "ScriptBinding": {
+              "scriptId": null
+            },
+            "ScriptBindings": [],
+            "Animator": {
+              "clipId": null,
+              "autoplay": false
+            },
+            "LightingManager": {
+              "enabled": true,
+              "ambientColor": "#081118",
+              "ambientIntensity": 0.24,
+              "overlayOpacity": 0.84,
+              "fogColor": "#081118",
+              "fogDensity": 0.3
+            }
+          }
+        },
         {
           "id": "obj_clicker_state",
           "name": "Clicker State",
@@ -186,10 +732,27 @@
           "x": 0,
           "y": 0,
           "components": {
-            "Transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 },
-            "Sprite": { "assetId": null, "color": "#082f49", "width": 1, "height": 1 },
-            "Collider": { "shape": "rect", "width": 1, "height": 1 },
-            "ScriptBinding": { "scriptId": null },
+            "Transform": {
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#082f49",
+              "width": 1,
+              "height": 1
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 1,
+              "height": 1
+            },
+            "ScriptBinding": {
+              "scriptId": null
+            },
             "ScriptBindings": [
               {
                 "scriptId": "script_menu_overlay",
@@ -210,7 +773,9 @@
                 }
               }
             ],
-            "Animator": { "clipId": null }
+            "Animator": {
+              "clipId": null
+            }
           }
         },
         {
@@ -220,13 +785,35 @@
           "x": 110,
           "y": 130,
           "components": {
-            "Transform": { "x": 110, "y": 130, "rotation": 0, "scaleX": 1, "scaleY": 1 },
-            "Sprite": { "assetId": null, "color": "#f97316", "width": 46, "height": 46 },
-            "Collider": { "shape": "rect", "width": 46, "height": 46 },
-            "Collision": { "enabled": true, "isTrigger": true },
-            "ScriptBinding": { "scriptId": "script_target_wobble" },
+            "Transform": {
+              "x": 110,
+              "y": 130,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#f97316",
+              "width": 46,
+              "height": 46
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 46,
+              "height": 46
+            },
+            "Collision": {
+              "enabled": true,
+              "isTrigger": true
+            },
+            "ScriptBinding": {
+              "scriptId": "script_target_wobble"
+            },
             "ScriptBindings": [],
-            "Animator": { "clipId": null }
+            "Animator": {
+              "clipId": null
+            }
           }
         },
         {
@@ -236,13 +823,35 @@
           "x": 290,
           "y": 240,
           "components": {
-            "Transform": { "x": 290, "y": 240, "rotation": 0, "scaleX": 1, "scaleY": 1 },
-            "Sprite": { "assetId": null, "color": "#22c55e", "width": 46, "height": 46 },
-            "Collider": { "shape": "rect", "width": 46, "height": 46 },
-            "Collision": { "enabled": true, "isTrigger": true },
-            "ScriptBinding": { "scriptId": "script_target_wobble" },
+            "Transform": {
+              "x": 290,
+              "y": 240,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#22c55e",
+              "width": 46,
+              "height": 46
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 46,
+              "height": 46
+            },
+            "Collision": {
+              "enabled": true,
+              "isTrigger": true
+            },
+            "ScriptBinding": {
+              "scriptId": "script_target_wobble"
+            },
             "ScriptBindings": [],
-            "Animator": { "clipId": null }
+            "Animator": {
+              "clipId": null
+            }
           }
         },
         {
@@ -252,16 +861,98 @@
           "x": 470,
           "y": 130,
           "components": {
-            "Transform": { "x": 470, "y": 130, "rotation": 0, "scaleX": 1, "scaleY": 1 },
-            "Sprite": { "assetId": null, "color": "#a855f7", "width": 46, "height": 46 },
-            "Collider": { "shape": "rect", "width": 46, "height": 46 },
-            "Collision": { "enabled": true, "isTrigger": true },
-            "ScriptBinding": { "scriptId": "script_target_wobble" },
+            "Transform": {
+              "x": 470,
+              "y": 130,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#a855f7",
+              "width": 46,
+              "height": 46
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 46,
+              "height": 46
+            },
+            "Collision": {
+              "enabled": true,
+              "isTrigger": true
+            },
+            "ScriptBinding": {
+              "scriptId": "script_target_wobble"
+            },
             "ScriptBindings": [],
-            "Animator": { "clipId": null }
+            "Animator": {
+              "clipId": null
+            }
+          }
+        },
+        {
+          "id": "obj_clicker_lamp",
+          "name": "Arena Lamp",
+          "type": "light",
+          "x": 304,
+          "y": 148,
+          "components": {
+            "Transform": {
+              "x": 304,
+              "y": 148,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#fbbf24",
+              "width": 18,
+              "height": 18
+            },
+            "Collider": {
+              "shape": "circle",
+              "width": 18,
+              "height": 18
+            },
+            "Collision": {
+              "enabled": false,
+              "isTrigger": false
+            },
+            "RigidBody": {
+              "enabled": false,
+              "weight": 1,
+              "friction": 0.4
+            },
+            "Render": {
+              "layerId": "obj-fx",
+              "visible": true,
+              "zIndex": 0
+            },
+            "ScriptBinding": {
+              "scriptId": null
+            },
+            "ScriptBindings": [],
+            "Animator": {
+              "clipId": null,
+              "autoplay": false
+            },
+            "Light": {
+              "enabled": true,
+              "color": "#ffe08a",
+              "intensity": 1,
+              "radius": 220,
+              "falloff": 0.58,
+              "offsetX": 0,
+              "offsetY": 0,
+              "height": 18
+            }
           }
         }
-      ]
+      ],
+      "renderMode": "2d"
     }
   ],
   "animations": [],

@@ -1,6 +1,24 @@
 function exportRuntimeMain() {
   var PLAY_RENDER_MODE_WEBGL_3D = 'webgl-3d';
   var CELL_SIZE = 24;
+  var DEFAULT_SCENE_LIGHTING = {
+    enabled: false,
+    ambientColor: '#0b1220',
+    ambientIntensity: 0.35,
+    overlayOpacity: 0.82,
+    fogColor: '#07111d',
+    fogDensity: 0.65,
+  };
+  var DEFAULT_LIGHT_COMPONENT = {
+    enabled: true,
+    color: '#ffd27a',
+    intensity: 1,
+    radius: 180,
+    falloff: 0.65,
+    offsetX: 0,
+    offsetY: 0,
+    height: 18,
+  };
   var project = window.__KOZ_PROJECT__ || {};
   var canvas2d = document.getElementById('game-2d');
   var canvas3d = document.getElementById('game-3d');
@@ -12,6 +30,7 @@ function exportRuntimeMain() {
   var elapsed = 0;
   var activeSceneId = project.activeSceneId || (((project.scenes || [])[0] || {}).id) || 'scene_main';
   var currentScene = null;
+  var sceneLighting = Object.assign({}, DEFAULT_SCENE_LIGHTING);
   var renderMode = '2d';
   var activeCanvas = canvas2d;
   var world = {};
@@ -31,9 +50,16 @@ function exportRuntimeMain() {
   var renderer3dController = null;
   var engine = null;
   var sceneManager = null;
+  var lightingManager = null;
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
+  }
+
+  function clampLighting01(value) {
+    var n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(1, n));
   }
 
   function normalizeRenderMode(value, fallback) {
@@ -50,6 +76,7 @@ function exportRuntimeMain() {
         id: sceneId || project.activeSceneId || 'scene_main',
         name: 'Main Scene',
         renderMode: normalizeRenderMode(project && project.meta && project.meta.renderMode, '2d'),
+        lighting: normalizeSceneLighting(project && project.lighting),
         world: project.world || {},
         objects: project.objects || [],
       };
@@ -69,6 +96,46 @@ function exportRuntimeMain() {
   function resolveSceneName(sceneId) {
     var scene = resolveScene(sceneId);
     return scene ? scene.name : sceneId;
+  }
+
+  function normalizeSceneLighting(lighting) {
+    var source = lighting && typeof lighting === 'object' ? lighting : {};
+    return {
+      enabled: source.enabled === true,
+      ambientColor: typeof source.ambientColor === 'string' && source.ambientColor ? source.ambientColor : DEFAULT_SCENE_LIGHTING.ambientColor,
+      ambientIntensity: clampLighting01(source.ambientIntensity == null ? DEFAULT_SCENE_LIGHTING.ambientIntensity : source.ambientIntensity),
+      overlayOpacity: clampLighting01(source.overlayOpacity == null ? DEFAULT_SCENE_LIGHTING.overlayOpacity : source.overlayOpacity),
+      fogColor: typeof source.fogColor === 'string' && source.fogColor ? source.fogColor : DEFAULT_SCENE_LIGHTING.fogColor,
+      fogDensity: clampLighting01(source.fogDensity == null ? DEFAULT_SCENE_LIGHTING.fogDensity : source.fogDensity),
+    };
+  }
+
+  function normalizeLightComponent(light) {
+    var source = light && typeof light === 'object' ? light : {};
+    return {
+      enabled: source.enabled !== false,
+      color: typeof source.color === 'string' && source.color ? source.color : DEFAULT_LIGHT_COMPONENT.color,
+      intensity: clampLighting01(source.intensity == null ? DEFAULT_LIGHT_COMPONENT.intensity : source.intensity),
+      radius: Number.isFinite(source.radius) ? Math.max(1, source.radius) : DEFAULT_LIGHT_COMPONENT.radius,
+      falloff: clampLighting01(source.falloff == null ? DEFAULT_LIGHT_COMPONENT.falloff : source.falloff),
+      offsetX: Number.isFinite(source.offsetX) ? source.offsetX : DEFAULT_LIGHT_COMPONENT.offsetX,
+      offsetY: Number.isFinite(source.offsetY) ? source.offsetY : DEFAULT_LIGHT_COMPONENT.offsetY,
+      height: Number.isFinite(source.height) ? Math.max(0, source.height) : DEFAULT_LIGHT_COMPONENT.height,
+    };
+  }
+
+  function getLightingManagerObject() {
+    return (Array.isArray(gameObjects) ? gameObjects : []).find(function(obj) {
+      return obj && obj.components && obj.components.LightingManager;
+    }) || null;
+  }
+
+  function resolveLightingSettings(sceneLike) {
+    var managerObject = getLightingManagerObject();
+    if (managerObject && managerObject.components && managerObject.components.LightingManager) {
+      return normalizeSceneLighting(managerObject.components.LightingManager);
+    }
+    return normalizeSceneLighting(sceneLike && sceneLike.lighting);
   }
 
   function resolveCellType(cell) {
@@ -706,6 +773,7 @@ function exportRuntimeMain() {
     return {
       enabled: enabled,
       meshDirty: enabled,
+      lightingSignature: '',
       runtime: null,
       camera: {
         x: CELL_SIZE * 1.5,
@@ -748,6 +816,142 @@ function exportRuntimeMain() {
     });
   }
 
+  function rgbaString(rgb, alpha) {
+    return 'rgba(' + rgb[0] + ', ' + rgb[1] + ', ' + rgb[2] + ', ' + clamp01(alpha) + ')';
+  }
+
+  function resolveLightAnchor(obj, light) {
+    var sprite = (obj && obj.components && obj.components.Sprite) || {};
+    var width = Number.isFinite(obj && obj.width) ? obj.width : ((Number.isFinite(sprite.width) ? sprite.width : 32) * (Number.isFinite(obj && obj.scaleX) ? obj.scaleX : 1));
+    var height = Number.isFinite(obj && obj.height) ? obj.height : ((Number.isFinite(sprite.height) ? sprite.height : 32) * (Number.isFinite(obj && obj.scaleY) ? obj.scaleY : 1));
+    return {
+      worldX: (Number(obj && obj.x) || 0) + (width * 0.5) + light.offsetX,
+      worldY: (Number(obj && obj.y) || 0) + (height * 0.5) + light.offsetY,
+    };
+  }
+
+  function getActiveLights() {
+    return (Array.isArray(gameObjects) ? gameObjects : []).map(function(obj) {
+      if (!obj || !obj.components || !obj.components.Light) return null;
+      var light = normalizeLightComponent(obj.components.Light);
+      if (light.enabled === false) return null;
+      var anchor = resolveLightAnchor(obj, light);
+      return {
+        id: obj.id,
+        objectId: obj.id,
+        color: light.color,
+        rgb: parseHexColor(light.color, parseHexColor(DEFAULT_LIGHT_COMPONENT.color, [255, 210, 122])),
+        intensity: light.intensity,
+        radius: light.radius,
+        falloff: light.falloff,
+        offsetX: light.offsetX,
+        offsetY: light.offsetY,
+        height: light.height,
+        worldX: anchor.worldX,
+        worldY: anchor.worldY,
+      };
+    }).filter(Boolean);
+  }
+
+  function buildLightingSignature() {
+    sceneLighting = resolveLightingSettings(currentScene);
+    var lights = getActiveLights().map(function(light) {
+      return [
+        light.id,
+        Math.round(light.worldX * 10) / 10,
+        Math.round(light.worldY * 10) / 10,
+        Math.round(light.height * 10) / 10,
+        light.color,
+        Math.round(light.intensity * 100) / 100,
+        Math.round(light.radius * 10) / 10,
+        Math.round(light.falloff * 100) / 100,
+      ].join(':');
+    }).sort();
+    return JSON.stringify({
+      enabled: sceneLighting.enabled,
+      ambientColor: sceneLighting.ambientColor,
+      ambientIntensity: sceneLighting.ambientIntensity,
+      overlayOpacity: sceneLighting.overlayOpacity,
+      fogColor: sceneLighting.fogColor,
+      fogDensity: sceneLighting.fogDensity,
+      lights: lights,
+    });
+  }
+
+  function computeLightStrength(distance, radius, intensity, falloff) {
+    var maxRadius = Math.max(1, Number(radius) || 1);
+    var remaining = Math.max(0, 1 - ((Number(distance) || 0) / maxRadius));
+    if (remaining <= 0) return 0;
+    var exponent = 1 + ((1 - clamp01(falloff)) * 2.5);
+    return clamp01(intensity) * Math.pow(remaining, exponent);
+  }
+
+  function apply3DLighting(baseRgb, samplePoint, lights) {
+    if (!sceneLighting.enabled) return baseRgb.slice();
+    var ambientRgb = parseHexColor(sceneLighting.ambientColor, [11, 18, 32]);
+    var ambient = clamp01(sceneLighting.ambientIntensity);
+    var next = [
+      baseRgb[0] * (0.18 + ambient * 0.82) + ambientRgb[0] * (1 - ambient) * 0.08,
+      baseRgb[1] * (0.18 + ambient * 0.82) + ambientRgb[1] * (1 - ambient) * 0.08,
+      baseRgb[2] * (0.18 + ambient * 0.82) + ambientRgb[2] * (1 - ambient) * 0.08,
+    ];
+    (lights || []).forEach(function(light) {
+      var distance = Math.hypot(samplePoint[0] - light.worldX, samplePoint[1] - light.height, samplePoint[2] - light.worldY);
+      var strength = computeLightStrength(distance, light.radius, light.intensity, light.falloff);
+      if (strength <= 0) return;
+      next[0] += baseRgb[0] * strength * (0.28 + ((light.rgb[0] / 255) * 0.72));
+      next[1] += baseRgb[1] * strength * (0.28 + ((light.rgb[1] / 255) * 0.72));
+      next[2] += baseRgb[2] * strength * (0.28 + ((light.rgb[2] / 255) * 0.72));
+    });
+    return next.map(function(value) {
+      return Math.max(0, Math.min(255, Math.round(value)));
+    });
+  }
+
+  function renderFrame2DLighting() {
+    if (!ctx2d || !sceneLighting.enabled) return;
+    var ambientRgb = parseHexColor(sceneLighting.ambientColor, [11, 18, 32]);
+    var lights = getActiveLights();
+    var overlayAlpha = clamp01(sceneLighting.overlayOpacity * (1 - (sceneLighting.ambientIntensity * 0.6)));
+
+    ctx2d.save();
+    ctx2d.fillStyle = rgbaString(ambientRgb, overlayAlpha);
+    ctx2d.fillRect(0, 0, canvas2d.width, canvas2d.height);
+    if (lights.length > 0) {
+      ctx2d.globalCompositeOperation = 'destination-out';
+      lights.forEach(function(light) {
+        var radius = Math.max(8, light.radius);
+        var sx = light.worldX - viewX;
+        var sy = light.worldY - viewY;
+        var innerRadius = Math.max(0, radius * (0.12 + ((1 - light.falloff) * 0.18)));
+        var alpha = clamp01(0.92 * light.intensity);
+        var cutout = ctx2d.createRadialGradient(sx, sy, innerRadius, sx, sy, radius);
+        cutout.addColorStop(0, 'rgba(0, 0, 0, ' + alpha + ')');
+        cutout.addColorStop(Math.min(0.68, 0.2 + (light.falloff * 0.48)), 'rgba(0, 0, 0, ' + (alpha * 0.42) + ')');
+        cutout.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx2d.fillStyle = cutout;
+        ctx2d.beginPath();
+        ctx2d.arc(sx, sy, radius, 0, Math.PI * 2);
+        ctx2d.fill();
+      });
+      ctx2d.globalCompositeOperation = 'lighter';
+      lights.forEach(function(light) {
+        var radius = Math.max(8, light.radius * 0.95);
+        var sx = light.worldX - viewX;
+        var sy = light.worldY - viewY;
+        var glow = ctx2d.createRadialGradient(sx, sy, 0, sx, sy, radius);
+        glow.addColorStop(0, rgbaString(light.rgb, light.intensity * 0.24));
+        glow.addColorStop(0.4, rgbaString(light.rgb, light.intensity * 0.14));
+        glow.addColorStop(1, rgbaString(light.rgb, 0));
+        ctx2d.fillStyle = glow;
+        ctx2d.beginPath();
+        ctx2d.arc(sx, sy, radius, 0, Math.PI * 2);
+        ctx2d.fill();
+      });
+    }
+    ctx2d.restore();
+  }
+
   function pushColoredQuad(positions, colors, a, b, c, d, rgb) {
     positions.push(
       a[0], a[1], a[2],
@@ -765,6 +969,7 @@ function exportRuntimeMain() {
   function build3DMesh() {
     var positions = [];
     var colors = [];
+    var activeLights = getActiveLights();
     var metrics = resolveWorldMetrics(world, CELL_SIZE);
     if (!metrics) {
       return { positions: new Float32Array(0), colors: new Float32Array(0), farPlane: 600 };
@@ -779,9 +984,11 @@ function exportRuntimeMain() {
     var minZ = metrics.minY;
     var maxX = metrics.maxX;
     var maxZ = metrics.maxY;
+    var floorLit = apply3DLighting(floorColor, [(minX + maxX) * 0.5, 0, (minZ + maxZ) * 0.5], []);
+    var ceilingLit = apply3DLighting(ceilingColor, [(minX + maxX) * 0.5, wallHeight, (minZ + maxZ) * 0.5], []);
 
-    pushColoredQuad(positions, colors, [minX, 0, minZ], [maxX, 0, minZ], [maxX, 0, maxZ], [minX, 0, maxZ], floorColor);
-    pushColoredQuad(positions, colors, [minX, wallHeight, maxZ], [maxX, wallHeight, maxZ], [maxX, wallHeight, minZ], [minX, wallHeight, minZ], ceilingColor);
+    pushColoredQuad(positions, colors, [minX, 0, minZ], [maxX, 0, minZ], [maxX, 0, maxZ], [minX, 0, maxZ], floorLit);
+    pushColoredQuad(positions, colors, [minX, wallHeight, maxZ], [maxX, wallHeight, maxZ], [maxX, wallHeight, minZ], [minX, wallHeight, minZ], ceilingLit);
 
     for (var y = metrics.offsetY; y < metrics.offsetY + metrics.rows; y += 1) {
       for (var x = metrics.offsetX; x < metrics.offsetX + metrics.cols; x += 1) {
@@ -794,16 +1001,16 @@ function exportRuntimeMain() {
         var z0 = y * metrics.cellSize;
         var z1 = z0 + metrics.cellSize;
         if (!isCollidableCell(readWorldCell(world, x, y - 1))) {
-          pushColoredQuad(positions, colors, [x0, 0, z0], [x1, 0, z0], [x1, wallHeight, z0], [x0, wallHeight, z0], shadeRgb(baseColor, 1));
+          pushColoredQuad(positions, colors, [x0, 0, z0], [x1, 0, z0], [x1, wallHeight, z0], [x0, wallHeight, z0], apply3DLighting(shadeRgb(baseColor, 1), [x0 + (metrics.cellSize * 0.5), wallHeight * 0.5, z0], activeLights));
         }
         if (!isCollidableCell(readWorldCell(world, x, y + 1))) {
-          pushColoredQuad(positions, colors, [x1, 0, z1], [x0, 0, z1], [x0, wallHeight, z1], [x1, wallHeight, z1], shadeRgb(baseColor, 0.82));
+          pushColoredQuad(positions, colors, [x1, 0, z1], [x0, 0, z1], [x0, wallHeight, z1], [x1, wallHeight, z1], apply3DLighting(shadeRgb(baseColor, 0.82), [x0 + (metrics.cellSize * 0.5), wallHeight * 0.5, z1], activeLights));
         }
         if (!isCollidableCell(readWorldCell(world, x - 1, y))) {
-          pushColoredQuad(positions, colors, [x0, 0, z1], [x0, 0, z0], [x0, wallHeight, z0], [x0, wallHeight, z1], shadeRgb(baseColor, 0.7));
+          pushColoredQuad(positions, colors, [x0, 0, z1], [x0, 0, z0], [x0, wallHeight, z0], [x0, wallHeight, z1], apply3DLighting(shadeRgb(baseColor, 0.7), [x0, wallHeight * 0.5, z0 + (metrics.cellSize * 0.5)], activeLights));
         }
         if (!isCollidableCell(readWorldCell(world, x + 1, y))) {
-          pushColoredQuad(positions, colors, [x1, 0, z0], [x1, 0, z1], [x1, wallHeight, z1], [x1, wallHeight, z0], shadeRgb(baseColor, 0.9));
+          pushColoredQuad(positions, colors, [x1, 0, z0], [x1, 0, z1], [x1, wallHeight, z1], [x1, wallHeight, z0], apply3DLighting(shadeRgb(baseColor, 0.9), [x1, wallHeight * 0.5, z0 + (metrics.cellSize * 0.5)], activeLights));
         }
       }
     }
@@ -871,10 +1078,11 @@ function exportRuntimeMain() {
       'precision mediump float;',
       'varying vec3 vColor;',
       'varying float vFogDepth;',
+      'uniform vec3 uFogColor;',
+      'uniform float uFogDensity;',
       'void main() {',
-      '  vec3 fogColor = vec3(0.03, 0.06, 0.11);',
       '  float fog = smoothstep(0.15, 0.95, clamp((vFogDepth + 1.0) * 0.5, 0.0, 1.0));',
-      '  vec3 color = mix(vColor, fogColor, fog * 0.65);',
+      '  vec3 color = mix(vColor, uFogColor, fog * uFogDensity);',
       '  gl_FragColor = vec4(color, 1.0);',
       '}'
     ].join('\n');
@@ -903,6 +1111,8 @@ function exportRuntimeMain() {
         uniforms: {
           projection: gl.getUniformLocation(program, 'uProjection'),
           view: gl.getUniformLocation(program, 'uView'),
+          fogColor: gl.getUniformLocation(program, 'uFogColor'),
+          fogDensity: gl.getUniformLocation(program, 'uFogDensity'),
         },
         buffers: { position: position, color: color },
       };
@@ -981,7 +1191,9 @@ function exportRuntimeMain() {
     var width = canvas3d.width || 960;
     var height = canvas3d.height || 540;
     var camera = render3D.camera || {};
-    var clear = parseHexColor((render3D.options && render3D.options.clearColor) || '#07111d', [7, 17, 29]);
+    var clear = parseHexColor(sceneLighting.enabled ? sceneLighting.fogColor : ((render3D.options && render3D.options.clearColor) || '#07111d'), [7, 17, 29]);
+    var fogColor = parseHexColor(sceneLighting.fogColor || '#07111d', [7, 17, 29]);
+    var fogDensity = sceneLighting.enabled ? clamp01(sceneLighting.fogDensity) : 0.65;
     var eye = [
       Number.isFinite(camera.x) ? camera.x : CELL_SIZE * 1.5,
       Number.isFinite(camera.y) ? camera.y : CELL_SIZE * 0.72,
@@ -1011,6 +1223,8 @@ function exportRuntimeMain() {
     gl.vertexAttribPointer(runtime.attributes.color, 3, gl.FLOAT, false, 0, 0);
     gl.uniformMatrix4fv(runtime.uniforms.projection, false, projection);
     gl.uniformMatrix4fv(runtime.uniforms.view, false, view);
+    gl.uniform3f(runtime.uniforms.fogColor, fogColor[0] / 255, fogColor[1] / 255, fogColor[2] / 255);
+    gl.uniform1f(runtime.uniforms.fogDensity, fogDensity);
     gl.drawArrays(gl.TRIANGLES, 0, runtime.vertexCount);
   }
 
@@ -1206,6 +1420,7 @@ function exportRuntimeMain() {
     ctx2d.fillRect(0, 0, canvas2d.width, canvas2d.height);
     drawWorld(viewX, viewY);
     drawObjects(viewX, viewY);
+    renderFrame2DLighting();
     ctx2d.fillStyle = '#e2e8f0';
     ctx2d.font = '11px sans-serif';
     ctx2d.textAlign = 'left';
@@ -1284,6 +1499,7 @@ function exportRuntimeMain() {
     project.objects = nextScene.objects || project.objects;
     world = clone(nextScene.world || project.world || {});
     gameObjects.splice(0, gameObjects.length, ...((nextScene.objects || project.objects || []).map(buildRuntimeObject)));
+    sceneLighting = resolveLightingSettings(nextScene);
     scriptInstances = [];
     pendingSceneId = null;
     if (audioSystem && audioSystem.api) audioSystem.api.stopAll();
@@ -1341,6 +1557,8 @@ function exportRuntimeMain() {
     audio: audioSystem.api,
     renderer3d: renderer3dController,
     sceneManager: null,
+    lightingManager: null,
+    lighting: null,
     findObject: function(id) { return gameObjects.find(function(obj) { return obj.id === id; }) || null; },
     findObjectsByType: function(type) { return gameObjects.filter(function(obj) { return obj.type === type; }); },
     keyIsDown: function(code) { return keys.has(code); },
@@ -1349,6 +1567,82 @@ function exportRuntimeMain() {
       height: activeCanvas ? activeCanvas.height : 540,
     },
   };
+  lightingManager = {
+    isEnabled: function() {
+      return !!resolveLightingSettings(currentScene).enabled;
+    },
+    getSettings: function() {
+      return resolveLightingSettings(currentScene);
+    },
+    getManagerObject: function() {
+      return getLightingManagerObject();
+    },
+    setEnabled: function(enabled) {
+      var managerObject = getLightingManagerObject();
+      var next = normalizeSceneLighting(Object.assign({}, resolveLightingSettings(currentScene), { enabled: !!enabled }));
+      if (managerObject) {
+        if (!managerObject.components) managerObject.components = {};
+        managerObject.components.LightingManager = clone(next);
+      } else {
+        if (currentScene) currentScene.lighting = clone(next);
+        var activeScene = Array.isArray(project.scenes) ? project.scenes.find(function(scene) { return scene && scene.id === activeSceneId; }) : null;
+        if (activeScene) activeScene.lighting = clone(next);
+      }
+      sceneLighting = resolveLightingSettings(currentScene);
+      if (render3D) {
+        render3D.meshDirty = true;
+        render3D.lightingSignature = '';
+      }
+      return true;
+    },
+    setSettings: function(patch) {
+      var managerObject = getLightingManagerObject();
+      var next = normalizeSceneLighting(Object.assign({}, resolveLightingSettings(currentScene), patch || {}));
+      if (managerObject) {
+        if (!managerObject.components) managerObject.components = {};
+        managerObject.components.LightingManager = clone(next);
+      } else {
+        if (currentScene) currentScene.lighting = clone(next);
+        var activeScene = Array.isArray(project.scenes) ? project.scenes.find(function(scene) { return scene && scene.id === activeSceneId; }) : null;
+        if (activeScene) activeScene.lighting = clone(next);
+      }
+      sceneLighting = resolveLightingSettings(currentScene);
+      if (render3D) {
+        render3D.meshDirty = true;
+        render3D.lightingSignature = '';
+      }
+      return clone(sceneLighting);
+    },
+    getLights: function() {
+      return getActiveLights();
+    },
+    getLight: function(objectId) {
+      if (!objectId) return null;
+      var obj = gameObjects.find(function(entry) { return entry.id === objectId; });
+      return obj && obj.components && obj.components.Light ? normalizeLightComponent(obj.components.Light) : null;
+    },
+    setLight: function(objectId, patch) {
+      if (!objectId) return null;
+      var obj = gameObjects.find(function(entry) { return entry.id === objectId; });
+      if (!obj) return null;
+      if (!obj.components) obj.components = {};
+      obj.components.Light = normalizeLightComponent(Object.assign({}, normalizeLightComponent(obj.components.Light), patch || {}));
+      if (render3D) {
+        render3D.meshDirty = true;
+        render3D.lightingSignature = '';
+      }
+      return clone(obj.components.Light);
+    },
+    refresh: function() {
+      if (render3D) {
+        render3D.meshDirty = true;
+        render3D.lightingSignature = '';
+      }
+      return true;
+    },
+  };
+  engine.lightingManager = lightingManager;
+  engine.lighting = lightingManager;
   sceneManager = {
     activeSceneId: activeSceneId,
     currentSceneId: activeSceneId,
@@ -1387,6 +1681,7 @@ function exportRuntimeMain() {
   window.KozUIManager = uiManager;
   window.uiManager = uiManager;
   window.sceneManager = sceneManager;
+  window.lightingManager = lightingManager;
 
   syncCanvasMode(resolveRenderMode(activeSceneId));
   render3D = createInitial3DState();
@@ -1479,6 +1774,14 @@ function exportRuntimeMain() {
     var maxSpeed = Number.isFinite(camera.maxSpeed) ? Math.max(60, camera.maxSpeed) : Infinity;
     viewX = smoothAxis(viewX || 0, desired.x, dt, speed, maxSpeed);
     viewY = smoothAxis(viewY || 0, desired.y, dt, speed, maxSpeed);
+    sceneLighting = resolveLightingSettings(currentScene);
+    if (renderMode === PLAY_RENDER_MODE_WEBGL_3D && render3D) {
+      var lightingSignature = buildLightingSignature();
+      if (lightingSignature !== render3D.lightingSignature) {
+        render3D.lightingSignature = lightingSignature;
+        render3D.meshDirty = true;
+      }
+    }
 
     renderFrame();
     requestAnimationFrame(frame);

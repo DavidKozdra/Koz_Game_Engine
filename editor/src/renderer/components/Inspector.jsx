@@ -4,6 +4,8 @@ import Modal from './Modal.jsx';
 const AVAILABLE_COMPONENTS = [
   { id: 'Grid', label: 'Grid', defaults: { cols: 10, rows: 10, cellSize: 24, visible: true, layerId: null } },
   { id: 'Sprite', label: 'Sprite', defaults: { assetId: null, color: '#4ade80', width: 32, height: 32, frameAssetIds: [], fps: 8 } },
+  { id: 'LightingManager', label: 'Lighting Manager', defaults: { enabled: false, ambientColor: '#0b1220', ambientIntensity: 0.35, overlayOpacity: 0.82, fogColor: '#07111d', fogDensity: 0.65 } },
+  { id: 'Light', label: 'Light', defaults: { enabled: true, color: '#ffd27a', intensity: 1, radius: 180, falloff: 0.65, offsetX: 0, offsetY: 0, height: 18 } },
   { id: 'Sound', label: 'Sound', defaults: { assetId: null, category: 'sfx', autoplay: false, loop: false, volume: 1, maxDistance: 0 } },
   { id: 'Collider', label: 'Collider', defaults: { shape: 'rect', width: 32, height: 32 } },
   { id: 'Collision', label: 'Collision', defaults: { enabled: true, isTrigger: false } },
@@ -769,6 +771,150 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
               checked={!!components.Sound.loop}
               onChange={(e) => handleComponentChange('Sound', 'loop', e.target.checked)}
             />
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {components.LightingManager && (
+        <CollapsibleSection title="Lighting Manager" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'LightingManager') : undefined}>
+          <div className="field">
+            <label>Enabled</label>
+            <input
+              type="checkbox"
+              checked={components.LightingManager.enabled === true}
+              onChange={(e) => handleComponentChange('LightingManager', 'enabled', e.target.checked)}
+            />
+          </div>
+          <div className="field">
+            <label>Ambient</label>
+            <input
+              type="color"
+              value={components.LightingManager.ambientColor || '#0b1220'}
+              onChange={(e) => handleComponentChange('LightingManager', 'ambientColor', e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label>Ambient %</label>
+            <input
+              type="number"
+              min="0"
+              max="1"
+              step="0.05"
+              value={Number.isFinite(components.LightingManager.ambientIntensity) ? components.LightingManager.ambientIntensity : 0.35}
+              onChange={(e) => handleComponentChange('LightingManager', 'ambientIntensity', Math.max(0, Math.min(1, parseFloat(e.target.value) || 0)))}
+            />
+          </div>
+          <div className="field">
+            <label>Darkness %</label>
+            <input
+              type="number"
+              min="0"
+              max="1"
+              step="0.05"
+              value={Number.isFinite(components.LightingManager.overlayOpacity) ? components.LightingManager.overlayOpacity : 0.82}
+              onChange={(e) => handleComponentChange('LightingManager', 'overlayOpacity', Math.max(0, Math.min(1, parseFloat(e.target.value) || 0)))}
+            />
+          </div>
+          <div className="field">
+            <label>Fog</label>
+            <input
+              type="color"
+              value={components.LightingManager.fogColor || '#07111d'}
+              onChange={(e) => handleComponentChange('LightingManager', 'fogColor', e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label>Fog %</label>
+            <input
+              type="number"
+              min="0"
+              max="1"
+              step="0.05"
+              value={Number.isFinite(components.LightingManager.fogDensity) ? components.LightingManager.fogDensity : 0.65}
+              onChange={(e) => handleComponentChange('LightingManager', 'fogDensity', Math.max(0, Math.min(1, parseFloat(e.target.value) || 0)))}
+            />
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {components.Light && (
+        <CollapsibleSection title="Light" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'Light') : undefined}>
+          <div className="field">
+            <label>Enabled</label>
+            <input
+              type="checkbox"
+              checked={components.Light.enabled !== false}
+              onChange={(e) => handleComponentChange('Light', 'enabled', e.target.checked)}
+            />
+          </div>
+          <div className="field">
+            <label>Color</label>
+            <input
+              type="color"
+              value={components.Light.color || '#ffd27a'}
+              onChange={(e) => handleComponentChange('Light', 'color', e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label>Intensity</label>
+            <input
+              type="number"
+              min="0"
+              max="1"
+              step="0.05"
+              value={Number.isFinite(components.Light.intensity) ? components.Light.intensity : 1}
+              onChange={(e) => handleComponentChange('Light', 'intensity', Math.max(0, Math.min(1, parseFloat(e.target.value) || 0)))}
+            />
+          </div>
+          <div className="field">
+            <label>Radius</label>
+            <input
+              type="number"
+              min="1"
+              step="8"
+              value={Number.isFinite(components.Light.radius) ? components.Light.radius : 180}
+              onChange={(e) => handleComponentChange('Light', 'radius', Math.max(1, parseFloat(e.target.value) || 1))}
+            />
+          </div>
+          <div className="field">
+            <label>Falloff</label>
+            <input
+              type="number"
+              min="0"
+              max="1"
+              step="0.05"
+              value={Number.isFinite(components.Light.falloff) ? components.Light.falloff : 0.65}
+              onChange={(e) => handleComponentChange('Light', 'falloff', Math.max(0, Math.min(1, parseFloat(e.target.value) || 0)))}
+            />
+          </div>
+          <div className="field">
+            <label>Offset X</label>
+            <input
+              type="number"
+              step="1"
+              value={Number.isFinite(components.Light.offsetX) ? components.Light.offsetX : 0}
+              onChange={(e) => handleComponentChange('Light', 'offsetX', parseFloat(e.target.value) || 0)}
+            />
+          </div>
+          <div className="field">
+            <label>Offset Y</label>
+            <input
+              type="number"
+              step="1"
+              value={Number.isFinite(components.Light.offsetY) ? components.Light.offsetY : 0}
+              onChange={(e) => handleComponentChange('Light', 'offsetY', parseFloat(e.target.value) || 0)}
+            />
+          </div>
+          <div className="field">
+            <label>Height</label>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={Number.isFinite(components.Light.height) ? components.Light.height : 18}
+              onChange={(e) => handleComponentChange('Light', 'height', Math.max(0, parseFloat(e.target.value) || 0))}
+            />
+            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Used by 3D scenes</span>
           </div>
         </CollapsibleSection>
       )}

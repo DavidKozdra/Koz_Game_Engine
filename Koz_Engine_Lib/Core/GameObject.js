@@ -172,8 +172,41 @@
     return false;
   }
 
+  // --- Spatial hash for broadphase collision ---
+  const _bhCellSize = 128;
+  const _bhCells = new Map();
+
+  function _bhKey(x, y) {
+    return ((x >> 7) * 73856093) ^ ((y >> 7) * 19349669);
+  }
+
+  function _bhKeysForAABB(obj) {
+    let minX, minY, maxX, maxY;
+    if (obj.shape === "circle") {
+      minX = (obj.x - obj.radius) | 0;
+      minY = (obj.y - obj.radius) | 0;
+      maxX = (obj.x + obj.radius) | 0;
+      maxY = (obj.y + obj.radius) | 0;
+    } else {
+      minX = obj.x | 0;
+      minY = obj.y | 0;
+      maxX = (obj.x + (obj.width || 0)) | 0;
+      maxY = (obj.y + (obj.height || 0)) | 0;
+    }
+    const keys = [];
+    const cx0 = minX >> 7, cy0 = minY >> 7;
+    const cx1 = maxX >> 7, cy1 = maxY >> 7;
+    for (let cy = cy0; cy <= cy1; cy++) {
+      for (let cx = cx0; cx <= cx1; cx++) {
+        keys.push((cx * 73856093) ^ (cy * 19349669));
+      }
+    }
+    return keys;
+  }
+
   /**
    * Finds collisions in a list of objects and optionally filters by tag pairs.
+   * Uses spatial hashing for broadphase when object count exceeds threshold.
    * @param {Array<GameObject>} objects
    * @param {Object} [options]
    * @param {Array<{a:string,b:string}|[string,string]>} [options.tagPairs]
@@ -187,6 +220,52 @@
     const invokeCallbacks = opts.invokeCallbacks !== false;
     const collisions = [];
 
+    // Use spatial hash broadphase for large object counts
+    if (list.length > 64) {
+      _bhCells.clear();
+      const activeList = [];
+
+      // Insert into spatial hash
+      for (let i = 0; i < list.length; i++) {
+        const obj = list[i];
+        if (!obj || obj.active === false) continue;
+        obj._bhIdx = activeList.length;
+        activeList.push(obj);
+        const keys = _bhKeysForAABB(obj);
+        for (let k = 0; k < keys.length; k++) {
+          const key = keys[k];
+          let cell = _bhCells.get(key);
+          if (!cell) { cell = []; _bhCells.set(key, cell); }
+          cell.push(obj);
+        }
+      }
+
+      // Check only within same cells, deduplicate with index comparison
+      const checked = new Set();
+      for (const cell of _bhCells.values()) {
+        for (let i = 0; i < cell.length; i++) {
+          const a = cell[i];
+          for (let j = i + 1; j < cell.length; j++) {
+            const b = cell[j];
+            // Deduplicate: ensure lower index first
+            const ai = a._bhIdx, bi = b._bhIdx;
+            const pairKey = ai < bi ? (ai * 131072 + bi) : (bi * 131072 + ai);
+            if (checked.has(pairKey)) continue;
+            checked.add(pairKey);
+            if (!collides(a, b)) continue;
+            if (tagPairs.length > 0 && !tagPairs.some((pair) => hasTagPair(a, b, pair))) continue;
+            collisions.push({ a, b });
+            if (invokeCallbacks) {
+              if (typeof a.onCollision === "function") a.onCollision(b);
+              if (typeof b.onCollision === "function") b.onCollision(a);
+            }
+          }
+        }
+      }
+      return collisions;
+    }
+
+    // Small list: brute force (still fast for < 64 objects)
     for (let i = 0; i < list.length; i++) {
       const a = list[i];
       if (!a || a.active === false) continue;

@@ -6,6 +6,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createGameRuntimeApi() {
   function clone(value) {
     if (value === undefined) return undefined;
+    if (typeof structuredClone === "function") return structuredClone(value);
     return JSON.parse(JSON.stringify(value));
   }
 
@@ -30,6 +31,17 @@
     let audioService = null;
     let running = false;
     let elapsed = 0;
+    // --- Performance: object ID index for O(1) lookups ---
+    let _objectIndex = new Map();
+    let _cachedEngineApi = null;
+    let _engineApiDirty = true;
+
+    function _rebuildObjectIndex() {
+      _objectIndex.clear();
+      for (let i = 0; i < gameObjects.length; i++) {
+        _objectIndex.set(gameObjects[i].id, gameObjects[i]);
+      }
+    }
 
     function loadProject(projectData) {
       clearActiveCssStyles();
@@ -43,6 +55,8 @@
       }
       worldSpace = adapters.projectToWorldSpace(createWorldSpace, project.world);
       gameObjects = adapters.projectToGameObjects(GameObjectCtor, project.objects);
+      _rebuildObjectIndex();
+      _engineApiDirty = true;
       animationClips = project.animations || [];
       scripts = {};
       scriptInstances = [];
@@ -181,7 +195,7 @@
       const localTime = clip.loop ? (time % duration) : Math.min(time, duration);
 
       for (const track of clip.tracks) {
-        const obj = gameObjects.find(function byId(o) { return o.id === track.targetObjectId; });
+        const obj = _objectIndex.get(track.targetObjectId);
         if (!obj || !track.keyframes || track.keyframes.length === 0) continue;
 
         const value = sampleTrack(track, localTime);
@@ -215,7 +229,11 @@
     }
 
     function createEngineApi() {
-      return {
+      if (_cachedEngineApi && !_engineApiDirty) {
+        _cachedEngineApi.elapsed = elapsed;
+        return _cachedEngineApi;
+      }
+      _cachedEngineApi = {
         worldSpace: worldSpace,
         gameObjects: gameObjects,
         elapsed: elapsed,
@@ -224,12 +242,14 @@
         sceneName: activeScene ? activeScene.name : null,
         audio: audioService ? audioService.api : null,
         findObject: function findObject(id) {
-          return gameObjects.find(function byId(o) { return o.id === id; }) || null;
+          return _objectIndex.get(id) || null;
         },
         findObjectsByType: function findObjectsByType(type) {
           return gameObjects.filter(function byType(o) { return o.type === type; });
         },
       };
+      _engineApiDirty = false;
+      return _cachedEngineApi;
     }
 
     function resolveActiveScene(projectData) {
@@ -271,7 +291,7 @@
 
       function resolveObject(target) {
         if (!target) return null;
-        if (typeof target === "string") return objects.find((obj) => obj.id === target) || null;
+        if (typeof target === "string") return _objectIndex.get(target) || null;
         if (typeof target === "object" && target.id) return target;
         return null;
       }

@@ -43,6 +43,8 @@ const DEFAULT_CLASSES = [
   { id: 'sprite', name: 'Sprite Object', baseType: 'sprite' },
   { id: 'animator', name: 'Animator Object', baseType: 'animator' },
   { id: 'camera', name: 'Camera Object', baseType: 'camera' },
+  { id: 'lighting_manager', name: 'Lighting Manager', baseType: 'lighting_manager' },
+  { id: 'light', name: 'Light Object', baseType: 'light' },
   { id: 'audio_source', name: 'Audio Source', baseType: 'audio_source' },
   { id: 'music_source', name: 'Music Source', baseType: 'music_source' },
 ];
@@ -95,6 +97,35 @@ const DEFAULT_SOUND = {
   maxDistance: 0,
 };
 
+const DEFAULT_SCENE_LIGHTING = {
+  enabled: false,
+  ambientColor: '#0b1220',
+  ambientIntensity: 0.35,
+  overlayOpacity: 0.82,
+  fogColor: '#07111d',
+  fogDensity: 0.65,
+};
+
+const DEFAULT_LIGHT_COMPONENT = {
+  enabled: true,
+  color: '#ffd27a',
+  intensity: 1,
+  radius: 180,
+  falloff: 0.65,
+  offsetX: 0,
+  offsetY: 0,
+  height: 18,
+};
+
+const DEFAULT_LIGHTING_MANAGER_COMPONENT = {
+  enabled: false,
+  ambientColor: '#0b1220',
+  ambientIntensity: 0.35,
+  overlayOpacity: 0.82,
+  fogColor: '#07111d',
+  fogDensity: 0.65,
+};
+
 function normalizeRenderMode(value, fallback = '2d') {
   const mode = typeof value === 'string' ? value.trim().toLowerCase() : '';
   if (mode === '3d' || mode === 'webgl-3d') return 'webgl-3d';
@@ -104,6 +135,62 @@ function normalizeRenderMode(value, fallback = '2d') {
 
 function clone(v) {
   return JSON.parse(JSON.stringify(v));
+}
+
+function clamp01(value, fallback = 0) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(1, n));
+}
+
+function normalizeSceneLighting(lighting) {
+  const source = lighting && typeof lighting === 'object' ? lighting : {};
+  return {
+    enabled: source.enabled === true,
+    ambientColor: typeof source.ambientColor === 'string' && source.ambientColor ? source.ambientColor : DEFAULT_SCENE_LIGHTING.ambientColor,
+    ambientIntensity: clamp01(source.ambientIntensity, DEFAULT_SCENE_LIGHTING.ambientIntensity),
+    overlayOpacity: clamp01(source.overlayOpacity, DEFAULT_SCENE_LIGHTING.overlayOpacity),
+    fogColor: typeof source.fogColor === 'string' && source.fogColor ? source.fogColor : DEFAULT_SCENE_LIGHTING.fogColor,
+    fogDensity: clamp01(source.fogDensity, DEFAULT_SCENE_LIGHTING.fogDensity),
+  };
+}
+
+function normalizeLightingManagerComponent(component) {
+  const source = component && typeof component === 'object' ? component : {};
+  return {
+    enabled: source.enabled === true,
+    ambientColor: typeof source.ambientColor === 'string' && source.ambientColor ? source.ambientColor : DEFAULT_LIGHTING_MANAGER_COMPONENT.ambientColor,
+    ambientIntensity: clamp01(source.ambientIntensity, DEFAULT_LIGHTING_MANAGER_COMPONENT.ambientIntensity),
+    overlayOpacity: clamp01(source.overlayOpacity, DEFAULT_LIGHTING_MANAGER_COMPONENT.overlayOpacity),
+    fogColor: typeof source.fogColor === 'string' && source.fogColor ? source.fogColor : DEFAULT_LIGHTING_MANAGER_COMPONENT.fogColor,
+    fogDensity: clamp01(source.fogDensity, DEFAULT_LIGHTING_MANAGER_COMPONENT.fogDensity),
+  };
+}
+
+function hasLightingManagerObject(objects) {
+  return Array.isArray(objects) && objects.some((obj) => obj && obj.components && obj.components.LightingManager);
+}
+
+function createLightingManagerObject(sceneId, lighting) {
+  return {
+    id: `obj_${sceneId || 'scene_main'}_lighting_manager`,
+    name: 'Lighting Manager',
+    type: 'lighting_manager',
+    x: 0,
+    y: 0,
+    editorFolder: 'Root',
+    components: {
+      Transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+      Sprite: { assetId: null, color: '#60a5fa', width: 20, height: 20 },
+      Collider: { shape: 'rect', width: 20, height: 20 },
+      Collision: { enabled: false, isTrigger: false },
+      RigidBody: { enabled: false, weight: 1, friction: 0.4 },
+      Render: { layerId: 'obj-fx', visible: false, zIndex: 0 },
+      ScriptBindings: [],
+      Animator: { clipId: null, autoplay: false },
+      LightingManager: normalizeLightingManagerComponent(lighting),
+    },
+  };
 }
 
 function normalizeWorld(world) {
@@ -120,12 +207,16 @@ function normalizeWorld(world) {
 function defaultSceneFromProject(projectLike) {
   const base = projectLike || {};
   const fallbackRenderMode = normalizeRenderMode(base?.meta?.renderMode, '2d');
+  const objects = clone(base.objects || []);
+  if (base.lighting && !hasLightingManagerObject(objects)) {
+    objects.unshift(createLightingManagerObject('scene_main', base.lighting));
+  }
   return {
     id: 'scene_main',
     name: 'Main Scene',
     renderMode: fallbackRenderMode,
     world: normalizeWorld(base.world || { cols: 30, rows: 20, offsetX: 0, offsetY: 0, defaultCell: null, grid: [], elements: [], meta: {} }),
-    objects: clone(base.objects || []),
+    objects,
   };
 }
 
@@ -141,13 +232,20 @@ function ensureProjectShape(project) {
   if (!Array.isArray(next.scenes) || next.scenes.length === 0) next.scenes = [defaultSceneFromProject(next)];
   if (!next.meta || typeof next.meta !== 'object') next.meta = {};
   next.meta.renderMode = normalizeRenderMode(next.meta.renderMode, '2d');
-  next.scenes = next.scenes.map((scene, idx) => ({
-    id: scene.id || `scene_${idx}`,
-    name: scene.name || `Scene ${idx + 1}`,
-    renderMode: normalizeRenderMode(scene && scene.renderMode, next.meta.renderMode),
-    world: normalizeWorld(scene.world || next.world),
-    objects: clone(scene.objects || next.objects || []),
-  }));
+  next.scenes = next.scenes.map((scene, idx) => {
+    const sceneId = scene.id || `scene_${idx}`;
+    const objects = clone(scene.objects || next.objects || []);
+    if (scene && scene.lighting && !hasLightingManagerObject(objects)) {
+      objects.unshift(createLightingManagerObject(sceneId, scene.lighting));
+    }
+    return {
+      id: sceneId,
+      name: scene.name || `Scene ${idx + 1}`,
+      renderMode: normalizeRenderMode(scene && scene.renderMode, next.meta.renderMode),
+      world: normalizeWorld(scene.world || next.world),
+      objects,
+    };
+  });
   if (!next.activeSceneId) next.activeSceneId = next.scenes[0].id;
   const activeScene = next.scenes.find((s) => s.id === next.activeSceneId) || next.scenes[0];
   if (activeScene) {
@@ -250,6 +348,37 @@ function ensureProjectShape(project) {
               assetId: components.Sound.assetId || null,
             },
           } : {}),
+          ...((obj.type === 'light' || components.Light) ? {
+            Light: {
+              ...clone(DEFAULT_LIGHT_COMPONENT),
+              ...(components.Light || {}),
+              enabled: (components.Light && components.Light.enabled) !== false,
+              color: (components.Light && components.Light.color) || DEFAULT_LIGHT_COMPONENT.color,
+              intensity: clamp01(components.Light && components.Light.intensity, DEFAULT_LIGHT_COMPONENT.intensity),
+              radius: Number.isFinite(components.Light && components.Light.radius) ? Math.max(1, components.Light.radius) : DEFAULT_LIGHT_COMPONENT.radius,
+              falloff: clamp01(components.Light && components.Light.falloff, DEFAULT_LIGHT_COMPONENT.falloff),
+              offsetX: Number.isFinite(components.Light && components.Light.offsetX) ? components.Light.offsetX : DEFAULT_LIGHT_COMPONENT.offsetX,
+              offsetY: Number.isFinite(components.Light && components.Light.offsetY) ? components.Light.offsetY : DEFAULT_LIGHT_COMPONENT.offsetY,
+              height: Number.isFinite(components.Light && components.Light.height) ? Math.max(0, components.Light.height) : DEFAULT_LIGHT_COMPONENT.height,
+            },
+          } : {}),
+          ...((obj.type === 'lighting_manager' || components.LightingManager) ? {
+            LightingManager: normalizeLightingManagerComponent(components.LightingManager),
+            Render: {
+              layerId: (components.Render && components.Render.layerId) || obj.layerId || 'obj-fx',
+              visible: !!(components.Render && components.Render.visible),
+              zIndex: (components.Render && Number.isFinite(components.Render.zIndex)) ? components.Render.zIndex : 0,
+            },
+            Collision: {
+              enabled: false,
+              isTrigger: false,
+            },
+            RigidBody: {
+              enabled: false,
+              weight: (components.RigidBody && Number.isFinite(components.RigidBody.weight)) ? components.RigidBody.weight : 1,
+              friction: (components.RigidBody && Number.isFinite(components.RigidBody.friction)) ? components.RigidBody.friction : 0.4,
+            },
+          } : {}),
         },
       };
     });
@@ -299,6 +428,9 @@ export {
   DEFAULT_CLASSES,
   DEFAULT_BUILD,
   DEFAULT_CAMERA,
+  DEFAULT_SCENE_LIGHTING,
+  DEFAULT_LIGHTING_MANAGER_COMPONENT,
+  DEFAULT_LIGHT_COMPONENT,
   ensureProjectShape,
   normalizeCellTypeId,
   getCellType,

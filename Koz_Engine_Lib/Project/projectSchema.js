@@ -8,6 +8,32 @@
   const CURRENT_VERSION = 1;
   const DEFAULT_SCENE_ID = "scene_main";
   const DEFAULT_RENDER_MODE = "2d";
+  const DEFAULT_SCENE_LIGHTING = {
+    enabled: false,
+    ambientColor: "#0b1220",
+    ambientIntensity: 0.35,
+    overlayOpacity: 0.82,
+    fogColor: "#07111d",
+    fogDensity: 0.65,
+  };
+  const DEFAULT_LIGHTING_MANAGER_COMPONENT = {
+    enabled: false,
+    ambientColor: "#0b1220",
+    ambientIntensity: 0.35,
+    overlayOpacity: 0.82,
+    fogColor: "#07111d",
+    fogDensity: 0.65,
+  };
+  const DEFAULT_LIGHT_COMPONENT = {
+    enabled: true,
+    color: "#ffd27a",
+    intensity: 1,
+    radius: 180,
+    falloff: 0.65,
+    offsetX: 0,
+    offsetY: 0,
+    height: 18,
+  };
 
   function normalizeRenderMode(value, fallback) {
     const mode = typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -19,6 +45,65 @@
   function deepClone(value) {
     if (value === undefined) return undefined;
     return JSON.parse(JSON.stringify(value));
+  }
+
+  function clamp01(value, fallback) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(0, Math.min(1, n));
+  }
+
+  function normalizeSceneLighting(lighting) {
+    const source = lighting && typeof lighting === "object" ? lighting : {};
+    return {
+      enabled: source.enabled === true,
+      ambientColor: typeof source.ambientColor === "string" && source.ambientColor ? source.ambientColor : DEFAULT_SCENE_LIGHTING.ambientColor,
+      ambientIntensity: clamp01(source.ambientIntensity, DEFAULT_SCENE_LIGHTING.ambientIntensity),
+      overlayOpacity: clamp01(source.overlayOpacity, DEFAULT_SCENE_LIGHTING.overlayOpacity),
+      fogColor: typeof source.fogColor === "string" && source.fogColor ? source.fogColor : DEFAULT_SCENE_LIGHTING.fogColor,
+      fogDensity: clamp01(source.fogDensity, DEFAULT_SCENE_LIGHTING.fogDensity),
+    };
+  }
+
+  function normalizeLightingManagerComponent(component) {
+    const source = component && typeof component === "object" ? component : {};
+    return {
+      enabled: source.enabled === true,
+      ambientColor: typeof source.ambientColor === "string" && source.ambientColor ? source.ambientColor : DEFAULT_LIGHTING_MANAGER_COMPONENT.ambientColor,
+      ambientIntensity: clamp01(source.ambientIntensity, DEFAULT_LIGHTING_MANAGER_COMPONENT.ambientIntensity),
+      overlayOpacity: clamp01(source.overlayOpacity, DEFAULT_LIGHTING_MANAGER_COMPONENT.overlayOpacity),
+      fogColor: typeof source.fogColor === "string" && source.fogColor ? source.fogColor : DEFAULT_LIGHTING_MANAGER_COMPONENT.fogColor,
+      fogDensity: clamp01(source.fogDensity, DEFAULT_LIGHTING_MANAGER_COMPONENT.fogDensity),
+    };
+  }
+
+  function hasLightingManagerObject(objects) {
+    return Array.isArray(objects) && objects.some(function hasManager(obj) {
+      return obj && obj.components && obj.components.LightingManager;
+    });
+  }
+
+  function createLightingManagerObject(sceneId, lighting) {
+    const normalized = normalizeLightingManagerComponent(lighting);
+    return {
+      id: "obj_" + (sceneId || DEFAULT_SCENE_ID) + "_lighting_manager",
+      name: "Lighting Manager",
+      type: "lighting_manager",
+      x: 0,
+      y: 0,
+      components: {
+        Transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+        Sprite: { assetId: null, color: "#60a5fa", width: 20, height: 20 },
+        Collider: { shape: "rect", width: 20, height: 20 },
+        Collision: { enabled: false, isTrigger: false },
+        RigidBody: { enabled: false, weight: 1, friction: 0.4 },
+        Render: { layerId: "obj-fx", visible: false, zIndex: 0 },
+        ScriptBinding: { scriptId: null },
+        ScriptBindings: [],
+        Animator: { clipId: null, autoplay: false },
+        LightingManager: normalized,
+      },
+    };
   }
 
   function createDefaultWorld(cols, rows, defaultCell) {
@@ -36,29 +121,41 @@
 
   function createScene(id, name, world, objects, options) {
     const opts = options || {};
+    const sceneId = id || DEFAULT_SCENE_ID;
+    const sceneObjects = Array.isArray(objects) ? deepClone(objects) : [];
+    if (opts.lighting && !hasLightingManagerObject(sceneObjects)) {
+      sceneObjects.unshift(createLightingManagerObject(sceneId, opts.lighting));
+    }
     return {
-      id: id || DEFAULT_SCENE_ID,
+      id: sceneId,
       name: name || "Main Scene",
       renderMode: normalizeRenderMode(opts.renderMode, DEFAULT_RENDER_MODE),
       world: world || createDefaultWorld(30, 20, null),
-      objects: Array.isArray(objects) ? objects : [],
+      objects: sceneObjects,
     };
   }
 
   function normalizeScene(scene, index, fallbackWorld, fallbackObjects) {
     const source = scene && typeof scene === "object" ? scene : {};
-    return {
+    const sceneId = source.id || (index === 0 ? DEFAULT_SCENE_ID : "scene_" + index);
+    const sceneObjects = Array.isArray(source.objects)
+      ? deepClone(source.objects)
+      : (Array.isArray(fallbackObjects) ? deepClone(fallbackObjects) : []);
+    if (source.lighting && !hasLightingManagerObject(sceneObjects)) {
+      sceneObjects.unshift(createLightingManagerObject(sceneId, source.lighting));
+    }
+    const normalized = {
       ...deepClone(source),
-      id: source.id || (index === 0 ? DEFAULT_SCENE_ID : "scene_" + index),
+      id: sceneId,
       name: source.name || (index === 0 ? "Main Scene" : "Scene " + (index + 1)),
       renderMode: normalizeRenderMode(source.renderMode, DEFAULT_RENDER_MODE),
       world: source.world && typeof source.world === "object"
         ? source.world
         : (fallbackWorld && typeof fallbackWorld === "object" ? fallbackWorld : createDefaultWorld(30, 20, null)),
-      objects: Array.isArray(source.objects)
-        ? source.objects
-        : (Array.isArray(fallbackObjects) ? fallbackObjects : []),
+      objects: sceneObjects,
     };
+    delete normalized.lighting;
+    return normalized;
   }
 
   function normalizeProjectScenes(project) {
@@ -127,8 +224,8 @@
         engineVersion: "0.1.0",
         renderMode: defaultRenderMode,
       },
-      world: defaultWorld,
-      objects: defaultObjects,
+      world: defaultScene.world,
+      objects: defaultScene.objects,
       scenes: [defaultScene],
       activeSceneId: defaultScene.id,
       animations: [],
@@ -201,6 +298,9 @@
           errors.push("scenes[" + index + "].renderMode must be a non-empty string");
         } else if (scene.renderMode !== "2d" && scene.renderMode !== "webgl-3d") {
           errors.push("scenes[" + index + "].renderMode must be \"2d\" or \"webgl-3d\"");
+        }
+        if (scene.lighting !== undefined && (typeof scene.lighting !== "object" || scene.lighting === null || Array.isArray(scene.lighting))) {
+          errors.push("scenes[" + index + "].lighting must be an object when provided");
         }
         validateWorld(scene.world, "scenes[" + index + "].world", errors);
         if (!Array.isArray(scene.objects)) {
@@ -287,6 +387,8 @@
     const opts = options || {};
     const type = opts.type || "generic";
     const isAudioType = type === "audio_source" || type === "music_source";
+    const isLightType = type === "light";
+    const isLightingManagerType = type === "lighting_manager";
     return {
       id: opts.id || generateId("obj"),
       name: name || "Object",
@@ -296,11 +398,37 @@
       components: {
         Transform: { x: x || 0, y: y || 0, rotation: 0, scaleX: 1, scaleY: 1 },
         Grid: { cols: opts.cols || 10, rows: opts.rows || 10, cellSize: opts.cellSize || 24, visible: true, layerId: null },
-        Sprite: { assetId: null, color: opts.color || "#4ade80", width: opts.width || 32, height: opts.height || 32 },
-        Collider: { shape: "rect", width: opts.width || 32, height: opts.height || 32 },
+        Sprite: {
+          assetId: null,
+          color: opts.color || (isLightingManagerType ? "#60a5fa" : (isLightType ? "#fbbf24" : "#4ade80")),
+          width: opts.width || (isLightingManagerType ? 20 : (isLightType ? 18 : 32)),
+          height: opts.height || (isLightingManagerType ? 20 : (isLightType ? 18 : 32)),
+        },
+        Collider: {
+          shape: isLightType ? "circle" : "rect",
+          width: opts.width || (isLightingManagerType ? 20 : (isLightType ? 18 : 32)),
+          height: opts.height || (isLightingManagerType ? 20 : (isLightType ? 18 : 32)),
+        },
+        Collision: { enabled: !isLightType && !isLightingManagerType, isTrigger: false },
+        RigidBody: { enabled: false, weight: 1, friction: 0.4 },
+        Render: { layerId: isLightType || isLightingManagerType ? "obj-fx" : "obj-main", visible: !isLightingManagerType, zIndex: 0 },
         ScriptBinding: { scriptId: null },
         ScriptBindings: [],
-        Animator: { clipId: null },
+        Animator: { clipId: null, autoplay: false },
+        ...(isLightingManagerType ? {
+            LightingManager: {
+              ...deepClone(DEFAULT_LIGHTING_MANAGER_COMPONENT),
+              ...(opts.lightingManager && typeof opts.lightingManager === "object" ? deepClone(opts.lightingManager) : {}),
+            },
+          }
+          : {}),
+        ...(isLightType ? {
+            Light: {
+              ...deepClone(DEFAULT_LIGHT_COMPONENT),
+              ...(opts.light && typeof opts.light === "object" ? deepClone(opts.light) : {}),
+            },
+          }
+          : {}),
         ...(isAudioType
           ? {
               Sound: {
@@ -364,5 +492,8 @@
     createScript: createScript,
     getScriptFileName: getScriptFileName,
     createAnimationClip: createAnimationClip,
+    DEFAULT_SCENE_LIGHTING: DEFAULT_SCENE_LIGHTING,
+    DEFAULT_LIGHTING_MANAGER_COMPONENT: DEFAULT_LIGHTING_MANAGER_COMPONENT,
+    DEFAULT_LIGHT_COMPONENT: DEFAULT_LIGHT_COMPONENT,
   };
 });

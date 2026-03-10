@@ -186,11 +186,18 @@ if (typeof require === "function") {
     }
   };
 
+  // Color cache to avoid parsing hex strings every frame per particle
+  const _colorCache = new Map();
   function hexToRgbArray(hex) {
-    if (hex[0] === '#') hex = hex.substr(1);
-    if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
-    const num = parseInt(hex, 16);
-    return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+    let cached = _colorCache.get(hex);
+    if (cached) return cached;
+    let h = hex;
+    if (h[0] === '#') h = h.substr(1);
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    const num = parseInt(h, 16);
+    cached = [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+    _colorCache.set(hex, cached);
+    return cached;
   }
 
   if (typeof module !== "undefined" && module.exports) {
