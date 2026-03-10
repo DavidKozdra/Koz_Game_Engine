@@ -445,10 +445,12 @@ export function usePlayMode(project, onLog) {
         ctx.fillStyle = obj.color;
         ctx.fillRect(obj.x, obj.y, obj.width, obj.height);
       }
+      /*
       ctx.fillStyle = '#fff';
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(obj.name, obj.x + obj.width / 2, obj.y - 3);
+    //  ctx.fillText(obj.name, obj.x + obj.width / 2, obj.y - 3);
+    */
     });
 
     ctx.restore();
