@@ -42,16 +42,82 @@ function resolveProjectJsonPath(projectPath) {
   return projectPath.toLowerCase().endsWith('.json') ? projectPath : null;
 }
 
+function looksLikeProject(parsed) {
+  return !!(parsed
+    && typeof parsed === 'object'
+    && (
+      (parsed.meta && typeof parsed.meta === 'object')
+      || (parsed.world && typeof parsed.world === 'object')
+      || Array.isArray(parsed.scenes)
+      || Array.isArray(parsed.objects)
+    ));
+}
+
+async function readProjectInfo(jsonPath, fallbackName, keepInvalid = false) {
+  const stat = await fs.promises.stat(jsonPath);
+  let name = fallbackName || path.basename(jsonPath, '.json');
+  let valid = true;
+  try {
+    const raw = await fs.promises.readFile(jsonPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.meta && parsed.meta.name) name = String(parsed.meta.name);
+    if (!looksLikeProject(parsed)) valid = false;
+  } catch (_e) {
+    valid = false;
+  }
+  if (!keepInvalid && !valid) return null;
+  return {
+    id: jsonPath,
+    name,
+    folderPath: path.dirname(jsonPath),
+    projectPath: jsonPath,
+    updatedAt: stat.mtimeMs,
+  };
+}
+
+async function collectJsonCandidates(dirPath, maxDepth = 2) {
+  const skipDirs = new Set(['node_modules', '.git', 'dist', 'build', '.next', 'coverage']);
+  const out = [];
+  async function walk(current, depth) {
+    let entries = [];
+    try {
+      entries = await fs.promises.readdir(current, { withFileTypes: true });
+    } catch (_e) {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (skipDirs.has(entry.name)) continue;
+        if (depth < maxDepth) await walk(full, depth + 1);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (!entry.name.toLowerCase().endsWith('.json')) continue;
+      out.push(full);
+    }
+  }
+  await walk(dirPath, 0);
+  return out;
+}
+
 async function listProjects() {
   const root = getProjectsRoot();
   const entries = await fs.promises.readdir(root, { withFileTypes: true });
-  const projects = [];
+  const byPath = new Map();
+
+  async function addProject(jsonPath, fallbackName, keepInvalid = false) {
+    const resolved = path.resolve(jsonPath);
+    if (byPath.has(resolved)) return;
+    const item = await readProjectInfo(resolved, fallbackName, keepInvalid);
+    if (!item) return;
+    byPath.set(resolved, item);
+  }
+
   for (const entry of entries) {
-    let folderPath = root;
     let jsonPath = null;
     if (entry.isDirectory()) {
-      folderPath = path.join(root, entry.name);
-      const nested = path.join(folderPath, 'project.json');
+      const nested = path.join(root, entry.name, 'project.json');
       if (!fs.existsSync(nested)) continue;
       jsonPath = nested;
     } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.json')) {
@@ -59,23 +125,22 @@ async function listProjects() {
     } else {
       continue;
     }
-    const stat = await fs.promises.stat(jsonPath);
-    let metaName = entry.name.replace(/\.json$/i, '');
-    try {
-      const raw = await fs.promises.readFile(jsonPath, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.meta && parsed.meta.name) metaName = String(parsed.meta.name);
-    } catch (_e) {
-      // ignore parse errors in listing, keep file visible
-    }
-    projects.push({
-      id: jsonPath,
-      name: metaName,
-      folderPath,
-      projectPath: jsonPath,
-      updatedAt: stat.mtimeMs,
-    });
+    const fallbackName = entry.name.replace(/\.json$/i, '');
+    await addProject(jsonPath, fallbackName, true);
   }
+
+  // Also discover projects from workspace locations (for sample projects and user-managed files).
+  const workspaceRoot = path.resolve(__dirname, '../../..');
+  const discoverRoots = [path.join(workspaceRoot, 'samples'), path.join(workspaceRoot, 'projects')];
+  for (const dirPath of discoverRoots) {
+    if (!fs.existsSync(dirPath)) continue;
+    const candidates = await collectJsonCandidates(dirPath, 3);
+    for (const jsonPath of candidates) {
+      await addProject(jsonPath, path.basename(jsonPath, '.json'), false);
+    }
+  }
+
+  const projects = Array.from(byPath.values());
   projects.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   return { ok: true, root, projects };
 }
