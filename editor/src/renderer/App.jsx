@@ -674,10 +674,28 @@ function buildExportHtml(project, projectJson, target, options = {}) {
       }
 
       var scripts = {};
+      var cssScripts = {};
+      var activeCssNodes = new Map();
       (Array.isArray(project.scripts) ? project.scripts : []).forEach(function(s) {
-        if (!s || !s.id || (s.language && s.language !== 'javascript')) return;
+        if (!s || !s.id) return;
+        if (s.language === 'css') {
+          cssScripts[s.id] = s;
+          return;
+        }
+        if (s.language && s.language !== 'javascript') return;
         scripts[s.id] = s;
       });
+      function applyCssScript(script) {
+        if (!script || !script.id || activeCssNodes.has(script.id)) return;
+        var target = document.head || document.documentElement || document.body;
+        if (!target) return;
+        var styleNode = document.createElement('style');
+        styleNode.type = 'text/css';
+        styleNode.setAttribute('data-koz-script-id', script.id);
+        styleNode.textContent = String(script.source || '');
+        target.appendChild(styleNode);
+        activeCssNodes.set(script.id, styleNode);
+      }
       var engine = {
         elapsed: 0,
         gameObjects: gameObjects,
@@ -695,7 +713,12 @@ function buildExportHtml(project, projectJson, target, options = {}) {
         if (Array.isArray(obj.components && obj.components.ScriptBindings)) bindings = bindings.concat(obj.components.ScriptBindings);
         if (obj.components && obj.components.ScriptBinding) bindings.push(Object.assign({ active: true, properties: {} }, obj.components.ScriptBinding));
         bindings.forEach(function(binding) {
-          if (!binding || binding.active === false || !binding.scriptId || !scripts[binding.scriptId]) return;
+          if (!binding || binding.active === false || !binding.scriptId) return;
+          if (cssScripts[binding.scriptId]) {
+            applyCssScript(cssScripts[binding.scriptId]);
+            return;
+          }
+          if (!scripts[binding.scriptId]) return;
           try {
             var src = scripts[binding.scriptId].source || '';
             var factory = new Function('return (function(self, props, console, keyIsDown, LEFT_ARROW, RIGHT_ARROW, UP_ARROW, DOWN_ARROW, SPACE){' + src + '; return { onInit: typeof onInit === \"function\" ? onInit : null, onUpdate: typeof onUpdate === \"function\" ? onUpdate : null }; })')();
@@ -878,6 +901,12 @@ function buildExportHtml(project, projectJson, target, options = {}) {
 
       window.addEventListener('keydown', function(e) { keys.add(e.keyCode); });
       window.addEventListener('keyup', function(e) { keys.delete(e.keyCode); });
+      window.addEventListener('beforeunload', function() {
+        activeCssNodes.forEach(function(node) {
+          if (node && node.parentNode) node.parentNode.removeChild(node);
+        });
+        activeCssNodes.clear();
+      });
       var initialCamera = resolvePlayCamera(cameraConfig, gameObjects);
       var initialView = resolveDesiredView(initialCamera, gameObjects, 0, 0, true, canvas.width, canvas.height);
       viewX = initialView.x;
@@ -1489,6 +1518,11 @@ function onUpdate(self, engine, dt) {
   // Use engine.keyIsDown(keyCode) for input
 }
 `,
+      css: `/* Loaded when this script is bound to an active component */
+#ui-root {
+  pointer-events: none;
+}
+`,
       ui: `// UI Screen using KozUIManager / uiManager
 // Visibility can be filtered by game state and active scene
 
@@ -1551,7 +1585,7 @@ def on_update(self, engine, dt):
     pass
 `,
     };
-    const ext = language === 'javascript' ? 'js' : language === 'typescript' ? 'ts' : language === 'lua' ? 'lua' : language === 'python' ? 'py' : 'js';
+    const ext = language === 'javascript' ? 'js' : language === 'typescript' ? 'ts' : language === 'lua' ? 'lua' : language === 'python' ? 'py' : language === 'css' ? 'css' : 'js';
     const safeName = name.toLowerCase().replace(/[^a-z0-9]/g, '_');
     const filePath = `${safeName}.${ext}`;
     const source = templates[language] || templates.javascript;

@@ -35,6 +35,7 @@ export function usePlayMode(project, onLog) {
     const gameObjects = [];
     const scripts = {};
     const scriptInstances = [];
+    const cssStyleElements = new Map();
     const animClips = snapshot.animations || [];
 
     // Load objects
@@ -73,6 +74,18 @@ export function usePlayMode(project, onLog) {
       error: (...args) => onLog({ type: 'error', message: args.map(String).join(' '), time: new Date().toLocaleTimeString() }),
     });
     const sandboxConsole = makeConsole();
+    const applyCssScript = (script) => {
+      if (!script || !script.id || cssStyleElements.has(script.id)) return;
+      if (typeof document === 'undefined') return;
+      const target = document.head || document.documentElement || document.body;
+      if (!target) return;
+      const styleNode = document.createElement('style');
+      styleNode.type = 'text/css';
+      styleNode.setAttribute('data-koz-play-css-script', script.id);
+      styleNode.textContent = String(script.source || '');
+      target.appendChild(styleNode);
+      cssStyleElements.set(script.id, styleNode);
+    };
 
     // Bind scripts to objects (supports multiple bindings per object)
     gameObjects.forEach(obj => {
@@ -86,6 +99,10 @@ export function usePlayMode(project, onLog) {
         try {
           const src = scripts[binding.scriptId].source;
           const language = scripts[binding.scriptId].language || 'javascript';
+          if (language === 'css') {
+            applyCssScript(scripts[binding.scriptId]);
+            return;
+          }
           const enabled = language === 'javascript' || !!(scriptingConfig.engines && scriptingConfig.engines[language]);
           if (!enabled || language !== 'javascript') {
             onLog({ type: 'warn', message: `Script "${scripts[binding.scriptId].name}" skipped (${language} runtime unavailable in play mode).`, time: new Date().toLocaleTimeString() });
@@ -131,6 +148,7 @@ export function usePlayMode(project, onLog) {
       viewX: 0,
       viewY: 0,
       worldSparse: null,
+      cssStyleElements,
     };
 
     const uiManager = createKozUIManager({
@@ -207,6 +225,12 @@ export function usePlayMode(project, onLog) {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
     if (state && state.uiManager && typeof state.uiManager.destroy === 'function') state.uiManager.destroy();
+    if (state && state.cssStyleElements) {
+      state.cssStyleElements.forEach((node) => {
+        if (node && node.parentNode) node.parentNode.removeChild(node);
+      });
+      state.cssStyleElements.clear();
+    }
     const saved = globalsRef.current;
     if (saved.hasKozUIManager) window.KozUIManager = saved.prevKozUIManager;
     else delete window.KozUIManager;

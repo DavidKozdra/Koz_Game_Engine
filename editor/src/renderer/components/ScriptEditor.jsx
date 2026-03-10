@@ -7,6 +7,7 @@ import Modal from './Modal.jsx';
 
 const LANGUAGES = [
   { id: 'javascript', label: 'JavaScript' },
+  { id: 'css', label: 'CSS Stylesheet' },
   { id: 'ui', label: 'UI Screen' },
   { id: 'typescript', label: 'TypeScript (planned)' },
   { id: 'lua', label: 'Lua (planned)' },
@@ -21,6 +22,11 @@ const TEMPLATES = {
 function onUpdate(self, engine, dt) {
   // Called every frame
   // Use engine.keyIsDown(keyCode) for input
+}
+`,
+  css: `/* Loaded when this script is bound to an active component */
+#ui-root {
+  pointer-events: none;
 }
 `,
   ui: `// UI Screen using KozUIManager / uiManager
@@ -70,6 +76,7 @@ end
 
 const EXT_BY_LANGUAGE = {
   javascript: 'js',
+  css: 'css',
   ui: 'ui.js',
   typescript: 'ts',
   lua: 'lua',

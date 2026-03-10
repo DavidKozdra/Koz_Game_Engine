@@ -455,7 +455,7 @@ ipcMain.handle('scripts:list', async (_event, payload) => {
     }
     const entries = await fs.promises.readdir(scriptsDir);
     const files = entries
-      .filter(f => f.endsWith('.js') || f.endsWith('.ts') || f.endsWith('.lua') || f.endsWith('.py'))
+      .filter(f => f.endsWith('.js') || f.endsWith('.ts') || f.endsWith('.lua') || f.endsWith('.py') || f.endsWith('.css'))
       .map(f => ({ name: f, path: path.join(scriptsDir, f) }));
     return { ok: true, files };
   } catch (error) {
