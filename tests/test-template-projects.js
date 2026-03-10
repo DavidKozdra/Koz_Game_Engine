@@ -41,6 +41,9 @@ entries.forEach((filePath) => {
   assert(typeof project.activeSceneId === 'string' && project.activeSceneId.length > 0, `${name} has an active scene`);
   assert(Array.isArray(project.objects) && project.objects.length > 0, `${name} exposes active-scene objects at top level`);
   assert(Array.isArray(project.scripts) && project.scripts.length > 0, `${name} includes script assets`);
+  if (name === 'Template - 3D FPS Shell') {
+    assert(project.meta && project.meta.renderMode === 'webgl-3d', `${name} opts into WebGL 3D play mode`);
+  }
 });
 
 console.log('\n=== Results ===\n');

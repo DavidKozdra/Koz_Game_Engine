@@ -13,9 +13,49 @@ import KozLogo from './components/KozLogo.jsx';
 import Modal from './components/Modal.jsx';
 import Icon from './components/Icon.jsx';
 import { ensureProjectShape, normalizeCellTypeId, getBrushValue } from './state/projectModel.js';
+import template2dPlatformer from '../../../projects/template-2d-platformer/project.json';
+import template2dClicker from '../../../projects/template-2d-clicker/project.json';
+import template3dFpsShell from '../../../projects/template-3d-fps-shell/project.json';
 import './editor.css';
 
 // ---- Project helpers ----
+const PROJECT_TEMPLATES = [
+  {
+    id: 'blank',
+    label: 'Blank Project',
+    badge: 'Core',
+    description: 'Single empty scene with the default editor setup.',
+    note: 'Use this to build a test case from scratch.',
+  },
+  {
+    id: 'platformer',
+    label: '2D Platformer',
+    badge: '2D',
+    description: 'Main menu plus a playable side-view test level.',
+    note: 'Movement, HUD, and a second scene are already wired in.',
+  },
+  {
+    id: 'clicker',
+    label: '2D Clicker',
+    badge: '2D',
+    description: 'Main menu plus a mouse-driven target arena.',
+    note: 'Good for testing UI, scripts, and pointer input together.',
+  },
+  {
+    id: 'fps-shell',
+    label: '3D FPS Shell',
+    badge: '3D Shell',
+    description: 'Main menu plus a pseudo-first-person prototype lab.',
+    note: 'This is still a 2D-canvas bridge until native WebGL rendering lands.',
+  },
+];
+
+const PROJECT_TEMPLATE_SOURCES = {
+  platformer: template2dPlatformer,
+  clicker: template2dClicker,
+  'fps-shell': template3dFpsShell,
+};
+
 function createDefaultProject(opts = {}) {
   const cols = opts.cols || 30;
   const rows = opts.rows || 20;
@@ -38,6 +78,16 @@ function createDefaultProject(opts = {}) {
     assets: [],
     build: { profile: 'web-prod', pwa: false },
   });
+}
+
+function createProjectFromTemplate(templateId, opts = {}) {
+  const name = opts.name || 'Untitled Project';
+  if (!templateId || templateId === 'blank') return createDefaultProject({ name });
+  const source = PROJECT_TEMPLATE_SOURCES[templateId];
+  if (!source) return createDefaultProject({ name });
+  const next = JSON.parse(JSON.stringify(source));
+  next.meta = { ...(next.meta || {}), name };
+  return ensureProjectShape(next);
 }
 
 function worldOffsets(world) {
@@ -1162,6 +1212,7 @@ function App() {
   const [availableProjects, setAvailableProjects] = useState([]);
   const [projectsRoot, setProjectsRoot] = useState(null);
   const [newProjectName, setNewProjectName] = useState('Untitled Project');
+  const [newProjectTemplate, setNewProjectTemplate] = useState('blank');
   const [projectSearch, setProjectSearch] = useState('');
   const [editorState, setEditorState] = useState({
     mode: 'EDIT', activeTool: 'brush', brushValue: 'solid', gizmoMode: 'move',
@@ -1209,6 +1260,9 @@ function App() {
       ? ['dmg', 'zip']
       : ['AppImage', 'deb', 'zip'];
   const projectView = withActiveSceneView(project);
+  const selectedProjectTemplate = useMemo(() => {
+    return PROJECT_TEMPLATES.find((template) => template.id === newProjectTemplate) || PROJECT_TEMPLATES[0];
+  }, [newProjectTemplate]);
   const sortedProjects = useMemo(() => {
     return [...(availableProjects || [])].sort((a, b) => {
       const tA = Number(a && a.updatedAt) || 0;
@@ -2036,7 +2090,7 @@ def on_update(self, engine, dt):
 
   const handleNew = useCallback(() => {
     const name = (newProjectName || 'Untitled Project').trim() || 'Untitled Project';
-    const nextProject = createDefaultProject({ name });
+    const nextProject = createProjectFromTemplate(newProjectTemplate, { name });
     setProject(nextProject);
     setShowProjectSelector(false);
     setProjectFile({ projectPath: null, folderPath: null, name });
@@ -2059,7 +2113,7 @@ def on_update(self, engine, dt):
         refreshProjects();
       });
     }
-  }, [updateEditor, newProjectName, refreshProjects]);
+  }, [updateEditor, newProjectName, newProjectTemplate, refreshProjects]);
 
   const handlePatchProject = useCallback((patch) => {
     setProject(prev => {
@@ -2326,16 +2380,56 @@ def on_update(self, engine, dt):
                   placeholder="Project name"
                   style={{ width: '100%', padding: '9px 10px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6 }}
                 />
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {PROJECT_TEMPLATES.map((template) => {
+                    const selected = template.id === newProjectTemplate;
+                    return (
+                      <button
+                        key={template.id}
+                        type="button"
+                        onClick={() => setNewProjectTemplate(template.id)}
+                        aria-pressed={selected}
+                        style={{
+                          width: '100%',
+                          textAlign: 'left',
+                          borderRadius: 8,
+                          border: selected ? '1px solid rgba(56,189,248,0.9)' : '1px solid var(--border)',
+                          background: selected ? 'rgba(8,47,73,0.9)' : 'rgba(15,23,42,0.75)',
+                          color: 'var(--text)',
+                          padding: '10px 12px',
+                          cursor: 'pointer',
+                          display: 'grid',
+                          gap: 4,
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700 }}>{template.label}</div>
+                          <span style={{ marginLeft: 'auto', fontSize: 10, letterSpacing: 0.4, textTransform: 'uppercase', color: selected ? '#bae6fd' : 'var(--text-muted)' }}>
+                            {template.badge}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 12, color: selected ? '#e0f2fe' : 'var(--text-muted)', lineHeight: 1.35 }}>
+                          {template.description}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.35 }}>
+                          {template.note}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
                 <button className="btn btn-lg" style={{ width: '100%', justifyContent: 'center' }} onClick={handleNew} aria-label="Create new project">
                   <Icon name="new" />
-                  Create New Project
+                  {selectedProjectTemplate && selectedProjectTemplate.id === 'blank'
+                    ? 'Create Blank Project'
+                    : `Create ${selectedProjectTemplate.label}`}
                 </button>
                 <button className="btn btn-lg" style={{ width: '100%', justifyContent: 'center' }} onClick={handleLoadFromFile} aria-label="Load project from file dialog">
                   <Icon name="load" />
                   Load From File
                 </button>
                 <div style={{ color: 'var(--text-muted)', fontSize: 11, lineHeight: 1.35 }}>
-                  Save uses the projects folder directly, so creating a project here is instant.
+                  Save uses the projects folder directly, so template creation is an instant clone.
                 </div>
               </div>
 

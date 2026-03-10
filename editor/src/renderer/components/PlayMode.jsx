@@ -9,6 +9,7 @@ import { buildWorldSparseIndex, queryWorldSparseIndex } from '../lib/worldSparse
  */
 
 const CELL_SIZE = 24;
+const PLAY_RENDER_MODE_WEBGL_3D = 'webgl-3d';
 
 export function usePlayMode(project, onLog) {
   const stateRef = useRef(null);
@@ -138,6 +139,7 @@ export function usePlayMode(project, onLog) {
       elapsed: 0,
       projectSnapshot: snapshot,
       activeSceneId: snapshot.activeSceneId || (((snapshot.scenes || [])[0] || {}).id) || 'scene_main',
+      renderMode: resolvePlayRenderMode(snapshot),
       world: snapshot.world,
       gameObjects,
       assetById,
@@ -150,6 +152,8 @@ export function usePlayMode(project, onLog) {
       worldSparse: null,
       cssStyleElements,
     };
+    state.render3D = createInitialPlay3DState(state);
+    stateRef.current = state;
     state.audioSystem = createPlayAudioSystem({
       assetById,
       gameObjects,
@@ -179,6 +183,9 @@ export function usePlayMode(project, onLog) {
     };
     window.KozUIManager = uiManager;
     window.uiManager = uiManager;
+    const renderer3d = createPlay3DController({ stateRef, canvasRef });
+    state.renderer3dController = renderer3d;
+    const initialWorldMetrics = resolveWorldMetrics(state.world, CELL_SIZE);
 
     // Engine API for scripts
     const engine = {
@@ -187,10 +194,16 @@ export function usePlayMode(project, onLog) {
       sceneId: state.activeSceneId,
       uiManager,
       audio: state.audioSystem.api,
+      renderer3d,
       findObject: (id) => gameObjects.find(o => o.id === id) || null,
       findObjectsByType: (type) => gameObjects.filter(o => o.type === type),
       keyIsDown: (code) => keysRef.current.has(code),
+      viewport: {
+        width: canvasRef.current ? canvasRef.current.width : 960,
+        height: canvasRef.current ? canvasRef.current.height : 540,
+      },
     };
+    if (initialWorldMetrics) engine.world = createPlayWorldApi(snapshot, state, initialWorldMetrics);
 
     state.audioSystem.autoplayFromComponents();
 
@@ -224,8 +237,6 @@ export function usePlayMode(project, onLog) {
     );
     state.viewX = initialView.x;
     state.viewY = initialView.y;
-
-    stateRef.current = state;
     startLoop();
   }, [project, onLog]);
 
@@ -242,6 +253,13 @@ export function usePlayMode(project, onLog) {
     }
     if (state && state.audioSystem) {
       state.audioSystem.destroy();
+    }
+    if (state && state.render3D && state.render3D.runtime) {
+      destroyPlayWebGLRuntime(state.render3D.runtime);
+      state.render3D.runtime = null;
+    }
+    if (typeof document !== 'undefined' && document.pointerLockElement && document.exitPointerLock) {
+      document.exitPointerLock();
     }
     const saved = globalsRef.current;
     if (saved.hasKozUIManager) window.KozUIManager = saved.prevKozUIManager;
@@ -306,13 +324,19 @@ export function usePlayMode(project, onLog) {
         sceneId: state.activeSceneId,
         uiManager: state.uiManager || null,
         audio: state.audioSystem ? state.audioSystem.api : null,
+        renderer3d: state.renderer3dController || null,
         findObject: (id) => state.gameObjects.find(o => o.id === id) || null,
+        findObjectsByType: (type) => state.gameObjects.filter((o) => o.type === type),
         keyIsDown: (code) => keysRef.current.has(code),
+        viewport: {
+          width: canvasRef.current ? canvasRef.current.width : 960,
+          height: canvasRef.current ? canvasRef.current.height : 540,
+        },
       };
 
       const worldMetrics = resolveWorldMetrics(state.world, CELL_SIZE);
       if (worldMetrics) {
-        engine.world = worldMetrics;
+        engine.world = createPlayWorldApi(state.projectSnapshot || {}, state, worldMetrics);
         state.gameObjects.forEach((obj) => {
           if (Object.prototype.hasOwnProperty.call(obj, 'worldWidth')) obj.worldWidth = worldMetrics.width;
           if (Object.prototype.hasOwnProperty.call(obj, 'worldHeight')) obj.worldHeight = worldMetrics.height;
@@ -378,6 +402,10 @@ export function usePlayMode(project, onLog) {
   }
 
   function renderFrame(state) {
+    if (state && state.renderMode === PLAY_RENDER_MODE_WEBGL_3D) {
+      renderFrame3D(state);
+      return;
+    }
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -536,6 +564,55 @@ export function usePlayMode(project, onLog) {
     ctx.fillText(`PLAY MODE | ${state.elapsed.toFixed(1)}s`, 8, 16);
   }
 
+  function renderFrame3D(state) {
+    const canvas = canvasRef.current;
+    if (!canvas || !state || !state.render3D) return;
+    let runtime = state.render3D.runtime;
+    if (!runtime || runtime.canvas !== canvas || state.render3D.meshDirty) {
+      if (runtime) destroyPlayWebGLRuntime(runtime);
+      runtime = createPlayWebGLRuntime(canvas, state, onLog);
+      state.render3D.runtime = runtime;
+      state.render3D.meshDirty = false;
+    }
+    if (!runtime || !runtime.gl) return;
+
+    const gl = runtime.gl;
+    const w = canvas.width || 960;
+    const h = canvas.height || 540;
+    const camera = state.render3D.camera || {};
+    const clear = parseHexColor((state.render3D.options && state.render3D.options.clearColor) || '#07111d', [7, 17, 29]);
+    const eye = [
+      Number.isFinite(camera.x) ? camera.x : CELL_SIZE * 1.5,
+      Number.isFinite(camera.y) ? camera.y : CELL_SIZE * 0.72,
+      Number.isFinite(camera.z) ? camera.z : CELL_SIZE * 1.5,
+    ];
+    const yaw = Number.isFinite(camera.yaw) ? camera.yaw : 0;
+    const pitch = Number.isFinite(camera.pitch) ? camera.pitch : 0;
+    const look = [
+      eye[0] + Math.cos(pitch) * Math.cos(yaw),
+      eye[1] + Math.sin(pitch),
+      eye[2] + Math.cos(pitch) * Math.sin(yaw),
+    ];
+    const near = 0.1;
+    const far = Math.max(runtime.farPlane || 600, 600);
+    const projection = createPerspectiveMatrix((Number.isFinite(camera.fov) ? camera.fov : 72) * Math.PI / 180, w / Math.max(1, h), near, far);
+    const view = createLookAtMatrix(eye, look, [0, 1, 0]);
+
+    gl.viewport(0, 0, w, h);
+    gl.clearColor(clear[0] / 255, clear[1] / 255, clear[2] / 255, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(runtime.program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, runtime.buffers.position);
+    gl.enableVertexAttribArray(runtime.attributes.position);
+    gl.vertexAttribPointer(runtime.attributes.position, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, runtime.buffers.color);
+    gl.enableVertexAttribArray(runtime.attributes.color);
+    gl.vertexAttribPointer(runtime.attributes.color, 3, gl.FLOAT, false, 0, 0);
+    gl.uniformMatrix4fv(runtime.uniforms.projection, false, projection);
+    gl.uniformMatrix4fv(runtime.uniforms.view, false, view);
+    gl.drawArrays(gl.TRIANGLES, 0, runtime.vertexCount);
+  }
+
   // Key tracking
   useEffect(() => {
     const handleDown = (e) => keysRef.current.add(e.keyCode);
@@ -549,6 +626,351 @@ export function usePlayMode(project, onLog) {
   }, []);
 
   return { canvasRef, uiRootRef, isPlaying, start, stop, execute };
+}
+
+function resolvePlayRenderMode(project) {
+  const mode = project && project.meta && project.meta.renderMode;
+  return mode === '3d' || mode === PLAY_RENDER_MODE_WEBGL_3D ? PLAY_RENDER_MODE_WEBGL_3D : '2d';
+}
+
+function createInitialPlay3DState(state) {
+  const enabled = state && state.renderMode === PLAY_RENDER_MODE_WEBGL_3D;
+  return {
+    enabled,
+    meshDirty: enabled,
+    runtime: null,
+    camera: {
+      x: CELL_SIZE * 1.5,
+      y: CELL_SIZE * 0.72,
+      z: CELL_SIZE * 1.5,
+      yaw: 0,
+      pitch: -0.08,
+      fov: 72,
+    },
+    options: {
+      clearColor: '#07111d',
+      floorColor: '#111827',
+      ceilingColor: '#1e3a5f',
+      wallColor: '#fb923c',
+      wallHeight: CELL_SIZE * 2.2,
+      eyeHeight: CELL_SIZE * 0.72,
+    },
+  };
+}
+
+function createPlayWorldApi(projectSnapshot, state, metrics) {
+  const world = state && state.world;
+  return {
+    ...metrics,
+    sampleCell(cellX, cellY) {
+      return readWorldCell(world, cellX, cellY);
+    },
+    isSolidCell(cellX, cellY) {
+      return isCollidableCell(projectSnapshot, readWorldCell(world, cellX, cellY));
+    },
+    worldToCell(worldX, worldY) {
+      return {
+        x: Math.floor((Number(worldX) || 0) / metrics.cellSize),
+        y: Math.floor((Number(worldY) || 0) / metrics.cellSize),
+      };
+    },
+  };
+}
+
+function createPlay3DController({ stateRef, canvasRef }) {
+  function readState() {
+    return stateRef && stateRef.current;
+  }
+
+  return {
+    isEnabled() {
+      const state = readState();
+      return !!(state && state.renderMode === PLAY_RENDER_MODE_WEBGL_3D && state.render3D);
+    },
+    getCamera() {
+      const state = readState();
+      return state && state.render3D ? { ...(state.render3D.camera || {}) } : null;
+    },
+    setCamera(patch = {}) {
+      const state = readState();
+      if (!state || !state.render3D) return null;
+      const next = { ...(state.render3D.camera || {}) };
+      ['x', 'y', 'z', 'yaw', 'pitch', 'fov'].forEach((key) => {
+        const value = patch[key];
+        if (Number.isFinite(value)) next[key] = value;
+      });
+      state.render3D.camera = next;
+      return { ...next };
+    },
+    setOptions(patch = {}) {
+      const state = readState();
+      if (!state || !state.render3D) return null;
+      const prev = state.render3D.options || {};
+      const next = { ...prev, ...patch };
+      const changed = Object.keys(patch).some((key) => next[key] !== prev[key]);
+      state.render3D.options = next;
+      if (changed) state.render3D.meshDirty = true;
+      return { ...state.render3D.options };
+    },
+    getOptions() {
+      const state = readState();
+      return state && state.render3D ? { ...(state.render3D.options || {}) } : null;
+    },
+    requestPointerLock() {
+      if (typeof document === 'undefined') return;
+      const canvas = canvasRef && canvasRef.current;
+      if (canvas && typeof canvas.requestPointerLock === 'function') canvas.requestPointerLock();
+    },
+    exitPointerLock() {
+      if (typeof document !== 'undefined' && document.exitPointerLock) document.exitPointerLock();
+    },
+  };
+}
+
+function readWorldCell(world, cellX, cellY) {
+  if (!world || !Array.isArray(world.grid)) return null;
+  const offsetX = Number.isFinite(world.offsetX) ? world.offsetX : 0;
+  const offsetY = Number.isFinite(world.offsetY) ? world.offsetY : 0;
+  const lx = Math.floor(cellX) - offsetX;
+  const ly = Math.floor(cellY) - offsetY;
+  if (ly < 0 || lx < 0) return null;
+  if (!world.grid[ly] || lx >= world.grid[ly].length) return null;
+  return world.grid[ly][lx];
+}
+
+function parseHexColor(color, fallback = [255, 255, 255]) {
+  if (typeof color !== 'string') return fallback.slice();
+  const value = color.trim();
+  if (!value.startsWith('#')) return fallback.slice();
+  let hex = value.slice(1);
+  if (hex.length === 3) hex = hex.split('').map((part) => part + part).join('');
+  if (hex.length !== 6) return fallback.slice();
+  const r = Number.parseInt(hex.slice(0, 2), 16);
+  const g = Number.parseInt(hex.slice(2, 4), 16);
+  const b = Number.parseInt(hex.slice(4, 6), 16);
+  if (![r, g, b].every(Number.isFinite)) return fallback.slice();
+  return [r, g, b];
+}
+
+function shadeRgb(rgb, factor) {
+  return rgb.map((value) => Math.max(0, Math.min(255, Math.round(value * factor))));
+}
+
+function pushColoredQuad(positions, colors, a, b, c, d, rgb) {
+  positions.push(
+    a[0], a[1], a[2],
+    b[0], b[1], b[2],
+    c[0], c[1], c[2],
+    a[0], a[1], a[2],
+    c[0], c[1], c[2],
+    d[0], d[1], d[2],
+  );
+  for (let i = 0; i < 6; i += 1) {
+    colors.push(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255);
+  }
+}
+
+function buildPlay3DMesh(state) {
+  const positions = [];
+  const colors = [];
+  const world = state && state.world;
+  const project = (state && state.projectSnapshot) || {};
+  const render3D = state && state.render3D;
+  const options = (render3D && render3D.options) || {};
+  const metrics = resolveWorldMetrics(world, CELL_SIZE);
+  if (!metrics) return { positions: new Float32Array(0), colors: new Float32Array(0), farPlane: 600 };
+
+  const wallHeight = Number.isFinite(options.wallHeight) ? options.wallHeight : CELL_SIZE * 2.2;
+  const floorColor = parseHexColor(options.floorColor || '#111827', [17, 24, 39]);
+  const ceilingColor = parseHexColor(options.ceilingColor || '#1e3a5f', [30, 58, 95]);
+  const defaultWall = parseHexColor(options.wallColor || '#fb923c', [251, 146, 60]);
+  const minX = metrics.minX;
+  const minZ = metrics.minY;
+  const maxX = metrics.maxX;
+  const maxZ = metrics.maxY;
+
+  pushColoredQuad(positions, colors, [minX, 0, minZ], [maxX, 0, minZ], [maxX, 0, maxZ], [minX, 0, maxZ], floorColor);
+  pushColoredQuad(positions, colors, [minX, wallHeight, maxZ], [maxX, wallHeight, maxZ], [maxX, wallHeight, minZ], [minX, wallHeight, minZ], ceilingColor);
+
+  for (let y = metrics.offsetY; y < metrics.offsetY + metrics.rows; y += 1) {
+    for (let x = metrics.offsetX; x < metrics.offsetX + metrics.cols; x += 1) {
+      const cell = readWorldCell(world, x, y);
+      if (!isCollidableCell(project, cell)) continue;
+      const type = getCellType(project, cell);
+      const baseColor = parseHexColor((type && type.color) || options.wallColor || '#fb923c', defaultWall);
+      const x0 = x * metrics.cellSize;
+      const x1 = x0 + metrics.cellSize;
+      const z0 = y * metrics.cellSize;
+      const z1 = z0 + metrics.cellSize;
+      if (!isCollidableCell(project, readWorldCell(world, x, y - 1))) {
+        pushColoredQuad(positions, colors, [x0, 0, z0], [x1, 0, z0], [x1, wallHeight, z0], [x0, wallHeight, z0], shadeRgb(baseColor, 1));
+      }
+      if (!isCollidableCell(project, readWorldCell(world, x, y + 1))) {
+        pushColoredQuad(positions, colors, [x1, 0, z1], [x0, 0, z1], [x0, wallHeight, z1], [x1, wallHeight, z1], shadeRgb(baseColor, 0.82));
+      }
+      if (!isCollidableCell(project, readWorldCell(world, x - 1, y))) {
+        pushColoredQuad(positions, colors, [x0, 0, z1], [x0, 0, z0], [x0, wallHeight, z0], [x0, wallHeight, z1], shadeRgb(baseColor, 0.7));
+      }
+      if (!isCollidableCell(project, readWorldCell(world, x + 1, y))) {
+        pushColoredQuad(positions, colors, [x1, 0, z0], [x1, 0, z1], [x1, wallHeight, z1], [x1, wallHeight, z0], shadeRgb(baseColor, 0.9));
+      }
+    }
+  }
+
+  return {
+    positions: new Float32Array(positions),
+    colors: new Float32Array(colors),
+    farPlane: Math.max(metrics.width, metrics.height, wallHeight) * 3,
+  };
+}
+
+function compilePlayShader(gl, type, source) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    const error = gl.getShaderInfoLog(shader) || 'Unknown shader compile error';
+    gl.deleteShader(shader);
+    throw new Error(error);
+  }
+  return shader;
+}
+
+function createPlayProgram(gl, vertexSource, fragmentSource) {
+  const vertex = compilePlayShader(gl, gl.VERTEX_SHADER, vertexSource);
+  const fragment = compilePlayShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
+  const program = gl.createProgram();
+  gl.attachShader(program, vertex);
+  gl.attachShader(program, fragment);
+  gl.linkProgram(program);
+  gl.deleteShader(vertex);
+  gl.deleteShader(fragment);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const error = gl.getProgramInfoLog(program) || 'Unknown program link error';
+    gl.deleteProgram(program);
+    throw new Error(error);
+  }
+  return program;
+}
+
+function createPlayWebGLRuntime(canvas, state, onLog) {
+  const gl = canvas.getContext('webgl', { alpha: false, antialias: true, depth: true });
+  if (!gl) {
+    if (onLog) onLog({ type: 'warn', message: 'WebGL is unavailable in play mode; falling back to 2D render.', time: new Date().toLocaleTimeString() });
+    if (state) state.renderMode = '2d';
+    return null;
+  }
+
+  const vertexSource = `
+    attribute vec3 aPosition;
+    attribute vec3 aColor;
+    uniform mat4 uProjection;
+    uniform mat4 uView;
+    varying vec3 vColor;
+    varying float vFogDepth;
+    void main() {
+      vec4 clip = uProjection * uView * vec4(aPosition, 1.0);
+      gl_Position = clip;
+      vColor = aColor;
+      vFogDepth = clip.z / clip.w;
+    }
+  `;
+  const fragmentSource = `
+    precision mediump float;
+    varying vec3 vColor;
+    varying float vFogDepth;
+    void main() {
+      vec3 fogColor = vec3(0.03, 0.06, 0.11);
+      float fog = smoothstep(0.15, 0.95, clamp((vFogDepth + 1.0) * 0.5, 0.0, 1.0));
+      vec3 color = mix(vColor, fogColor, fog * 0.65);
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `;
+
+  try {
+    const program = createPlayProgram(gl, vertexSource, fragmentSource);
+    const mesh = buildPlay3DMesh(state);
+    const position = gl.createBuffer();
+    const color = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, position);
+    gl.bufferData(gl.ARRAY_BUFFER, mesh.positions, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, color);
+    gl.bufferData(gl.ARRAY_BUFFER, mesh.colors, gl.STATIC_DRAW);
+    gl.enable(gl.DEPTH_TEST);
+    gl.disable(gl.CULL_FACE);
+    return {
+      canvas,
+      gl,
+      program,
+      farPlane: mesh.farPlane,
+      vertexCount: mesh.positions.length / 3,
+      attributes: {
+        position: gl.getAttribLocation(program, 'aPosition'),
+        color: gl.getAttribLocation(program, 'aColor'),
+      },
+      uniforms: {
+        projection: gl.getUniformLocation(program, 'uProjection'),
+        view: gl.getUniformLocation(program, 'uView'),
+      },
+      buffers: { position, color },
+    };
+  } catch (error) {
+    if (onLog) onLog({ type: 'error', message: `WebGL init error: ${error.message}`, time: new Date().toLocaleTimeString() });
+    return null;
+  }
+}
+
+function destroyPlayWebGLRuntime(runtime) {
+  if (!runtime || !runtime.gl) return;
+  const gl = runtime.gl;
+  if (runtime.buffers) {
+    if (runtime.buffers.position) gl.deleteBuffer(runtime.buffers.position);
+    if (runtime.buffers.color) gl.deleteBuffer(runtime.buffers.color);
+  }
+  if (runtime.program) gl.deleteProgram(runtime.program);
+}
+
+function createPerspectiveMatrix(fovRadians, aspect, near, far) {
+  const f = 1 / Math.tan(fovRadians / 2);
+  const nf = 1 / (near - far);
+  return new Float32Array([
+    f / Math.max(0.0001, aspect), 0, 0, 0,
+    0, f, 0, 0,
+    0, 0, (far + near) * nf, -1,
+    0, 0, (2 * far * near) * nf, 0,
+  ]);
+}
+
+function createLookAtMatrix(eye, target, up) {
+  let zx = eye[0] - target[0];
+  let zy = eye[1] - target[1];
+  let zz = eye[2] - target[2];
+  let len = Math.hypot(zx, zy, zz) || 1;
+  zx /= len;
+  zy /= len;
+  zz /= len;
+
+  let xx = up[1] * zz - up[2] * zy;
+  let xy = up[2] * zx - up[0] * zz;
+  let xz = up[0] * zy - up[1] * zx;
+  len = Math.hypot(xx, xy, xz) || 1;
+  xx /= len;
+  xy /= len;
+  xz /= len;
+
+  const yx = zy * xz - zz * xy;
+  const yy = zz * xx - zx * xz;
+  const yz = zx * xy - zy * xx;
+  const tx = -(xx * eye[0] + xy * eye[1] + xz * eye[2]);
+  const ty = -(yx * eye[0] + yy * eye[1] + yz * eye[2]);
+  const tz = -(zx * eye[0] + zy * eye[1] + zz * eye[2]);
+
+  return new Float32Array([
+    xx, xy, xz, 0,
+    yx, yy, yz, 0,
+    zx, zy, zz, 0,
+    tx, ty, tz, 1,
+  ]);
 }
 
 function clamp01(value) {
@@ -970,6 +1392,7 @@ function resolveWorldMetrics(world, cellSize = CELL_SIZE) {
   const width = cols * cellSize;
   const height = rows * cellSize;
   return {
+    cellSize,
     rows,
     cols,
     offsetX,
