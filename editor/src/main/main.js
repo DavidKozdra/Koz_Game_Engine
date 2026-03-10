@@ -209,6 +209,44 @@ function runStreamingCommand(cmd, args, cwd, onLine) {
   });
 }
 
+async function createZipArchive(zipPath, cwd) {
+  try {
+    await runCommand('zip', ['-rq', zipPath, '.'], cwd);
+    return { method: 'zip' };
+  } catch (zipError) {
+    try {
+      await runCommand('python3', ['-m', 'zipfile', '-c', zipPath, '.'], cwd);
+      return { method: 'python3' };
+    } catch (pythonError) {
+      throw new Error(`ZIP tooling unavailable (zip: ${zipError.message}; python3 zipfile: ${pythonError.message})`);
+    }
+  }
+}
+
+async function createTarArchive(tarPath, cwd, gzip = true) {
+  try {
+    const args = gzip ? ['-czf', tarPath, '-C', cwd, '.'] : ['-cf', tarPath, '-C', cwd, '.'];
+    await runCommand('tar', args, cwd);
+    return { method: 'tar' };
+  } catch (tarError) {
+    const mode = gzip ? 'w:gz' : 'w';
+    const script = [
+      'import os,sys,tarfile',
+      'out_path=sys.argv[1]',
+      'src_dir=sys.argv[2]',
+      `mode='${mode}'`,
+      "with tarfile.open(out_path, mode) as tf:",
+      "  tf.add(src_dir, arcname='.')",
+    ].join(';');
+    try {
+      await runCommand('python3', ['-c', script, tarPath, cwd], cwd);
+      return { method: 'python3' };
+    } catch (pythonError) {
+      throw new Error(`Tar tooling unavailable (tar: ${tarError.message}; python3 tarfile: ${pythonError.message})`);
+    }
+  }
+}
+
 async function writeExportWorkspace(tmpDir, payload) {
   const htmlPath = path.join(tmpDir, 'index.html');
   await fs.promises.writeFile(htmlPath, payload.html || '', 'utf8');
@@ -226,12 +264,15 @@ async function writeExportWorkspace(tmpDir, payload) {
       icons: [],
     };
     await fs.promises.writeFile(path.join(tmpDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
-    await fs.promises.writeFile(path.join(tmpDir, 'sw.js'), "self.addEventListener('install', () => self.skipWaiting()); self.addEventListener('fetch', () => {});", 'utf8');
+    if (!payload.options || payload.options.pwaOfflineCache !== false) {
+      await fs.promises.writeFile(path.join(tmpDir, 'sw.js'), "self.addEventListener('install', () => self.skipWaiting()); self.addEventListener('fetch', () => {});", 'utf8');
+    }
   }
 }
 
 function extensionForTarget(target, options) {
   if (target === 'tarball') return options && options.tarGzip ? 'tar.gz' : 'tar';
+  if (target === 'single-html') return 'html';
   if (target === 'electron-exe') return 'desktop';
   return 'zip';
 }
@@ -254,7 +295,10 @@ async function exportDesktopBuild(event, payload) {
   const opts = payload.options || {};
   const currentPlatform = process.platform === 'win32' ? 'win' : process.platform === 'darwin' ? 'mac' : 'linux';
   const platform = !opts.desktopPlatform || opts.desktopPlatform === 'auto' ? currentPlatform : opts.desktopPlatform;
-  const format = opts.desktopFormat || (platform === 'win' ? 'portable' : platform === 'linux' ? 'AppImage' : 'dmg');
+  const singleFileFormat = platform === 'win' ? 'portable' : platform === 'linux' ? 'AppImage' : 'zip';
+  const format = opts.electronSingleFile
+    ? singleFileFormat
+    : (opts.desktopFormat || (platform === 'win' ? 'portable' : platform === 'linux' ? 'AppImage' : 'dmg'));
   const editorRoot = path.resolve(__dirname, '../..');
   const outDir = path.join(editorRoot, 'dist-desktop', `${payload.fileName || 'game'}-${platform}-${Date.now().toString(36)}`);
   await fs.promises.mkdir(outDir, { recursive: true });
@@ -299,19 +343,24 @@ ipcMain.handle('export:build', async (event, payload) => {
   const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'koz-export-'));
   try {
     event.sender.send('export:progress', { stage: target, message: `Preparing ${target} package...` });
-    await writeExportWorkspace(tmpDir, payload || {});
-
-    if (target === 'tarball') {
-      const args = payload.options && payload.options.tarGzip
-        ? ['-czf', save.filePath, '-C', tmpDir, '.']
-        : ['-cf', save.filePath, '-C', tmpDir, '.'];
-      await runCommand('tar', args, tmpDir);
+    if (target === 'single-html') {
+      await fs.promises.writeFile(save.filePath, payload && payload.html ? payload.html : '', 'utf8');
       event.sender.send('export:progress', { stage: target, message: `Created ${path.basename(save.filePath)}` });
       return { ok: true, path: save.filePath };
     }
 
-    await runCommand('zip', ['-rq', save.filePath, '.'], tmpDir);
-    event.sender.send('export:progress', { stage: target, message: `Created ${path.basename(save.filePath)}` });
+    await writeExportWorkspace(tmpDir, payload || {});
+
+    if (target === 'tarball') {
+      const archive = await createTarArchive(save.filePath, tmpDir, !!(payload.options && payload.options.tarGzip));
+      const extra = archive.method === 'python3' ? ' using python3 tarfile fallback' : '';
+      event.sender.send('export:progress', { stage: target, message: `Created ${path.basename(save.filePath)}${extra}` });
+      return { ok: true, path: save.filePath };
+    }
+
+    const archive = await createZipArchive(save.filePath, tmpDir);
+    const extra = archive.method === 'python3' ? ' using python3 zipfile fallback' : '';
+    event.sender.send('export:progress', { stage: target, message: `Created ${path.basename(save.filePath)}${extra}` });
 
     return { ok: true, path: save.filePath };
   } catch (error) {
