@@ -1,7 +1,6 @@
 
 # Koz web-based Game Engine 
-
-> Simple starter boilerplate for projects using **Koz_Engine_Lib**.
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/f9717574-a6a6-4905-9dd9-0068e470cb53" />
 
 ![Koz Engine Screenshot](https://github.com/user-attachments/assets/318e290a-3179-47c0-a9d8-8174d07526c6)
 
