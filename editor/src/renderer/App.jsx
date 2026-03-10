@@ -953,6 +953,24 @@ def on_update(self, engine, dt):
     setShowProjectSelector(true);
   }, [refreshProjects]);
 
+  const handleLoadFromFile = useCallback(() => {
+    const api = window.api;
+    if (api && typeof api.openProjectDialog === 'function') {
+      api.openProjectDialog().then((result) => {
+        if (!result || !result.ok) {
+          if (!(result && result.canceled)) alert(`Load failed: ${(result && result.error) || 'Unknown error'}`);
+          return;
+        }
+        openProjectFromContent(result.content, {
+          projectPath: result.projectPath || null,
+          folderPath: result.folderPath || null,
+          name: null,
+        });
+      });
+      return;
+    }
+  }, [openProjectFromContent]);
+
   const handleLoadProjectFromList = useCallback((item) => {
     const api = window.api;
     if (!item) return;
@@ -1191,7 +1209,7 @@ def on_update(self, engine, dt):
                 style={{ width: '100%', padding: '8px 10px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4 }}
               />
               <button className="btn btn-lg" style={{ width: '100%' }} onClick={handleNew}>New Project</button>
-              <button className="btn btn-lg" style={{ width: '100%' }} onClick={handleLoad}>Load Project</button>
+              <button className="btn btn-lg" style={{ width: '100%' }} onClick={handleLoadFromFile}>Load Project</button>
               {!!project && (
                 <button className="btn btn-lg" style={{ width: '100%' }} onClick={() => setShowProjectSelector(false)}>Cancel</button>
               )}
@@ -1210,7 +1228,10 @@ def on_update(self, engine, dt):
                     onClick={() => handleLoadProjectFromList(item)}
                     style={{ width: '100%', justifyContent: 'space-between', border: 'none', borderBottom: '1px solid var(--border)', borderRadius: 0, background: 'transparent' }}
                   >
-                    <span style={{ textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
+                    <span style={{ textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.folderPath || ''}</span>
+                    </span>
                     <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>{new Date(item.updatedAt).toLocaleDateString()}</span>
                   </button>
                 ))}
@@ -1226,7 +1247,7 @@ def on_update(self, engine, dt):
             onToolChange={(tool) => updateEditor({ activeTool: tool })}
             onBrushChange={(val) => updateEditor({ brushValue: getBrushValue({ brushValue: val }) })}
             onUndo={handleUndo} onRedo={handleRedo}
-            onNewProject={handleNew} onSaveProject={handleSave} onSaveAsProject={handleSaveAs} onLoadProject={handleLoad}
+            onNewProject={handleNew} onSaveProject={handleSave} onSaveAsProject={handleSaveAs} onLoadProject={handleLoadFromFile}
             onExport={openExportModal} onPlayToggle={handlePlayToggle}
             undoCount={undoStackRef.current.length} redoCount={redoStackRef.current.length} />
 
