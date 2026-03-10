@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 
 function isImageAsset(asset) {
   if (!asset || typeof asset !== 'object') return false;
@@ -33,6 +33,8 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
   const [sheetCols, setSheetCols] = useState(4);
   const [sheetRows, setSheetRows] = useState(4);
   const [sheetPrefix, setSheetPrefix] = useState('frame');
+  const imageFileInputRef = useRef(null);
+  const audioFileInputRef = useRef(null);
 
   const scenes = useMemo(() => {
     const list = Array.isArray(project.scenes) ? project.scenes : [];
@@ -214,8 +216,16 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
   }
 
   return (
-    <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
+    <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 8, background: 'linear-gradient(180deg, rgba(15,23,42,0.75), rgba(15,23,42,0.4))' }}>
       <h3>{title}</h3>
+      <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          <span>Images: {allImages.length}</span>
+          <span>Audio: {allAudios.length}</span>
+          <span>Prefabs: {prefabs.length}</span>
+          <span>Scenes: {scenes.length}</span>
+        </div>
+      </div>
       {(allImages.length + allAudios.length) > 5 && (
         <input
           type="text"
@@ -226,7 +236,7 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
         />
       )}
       <div
-        style={{ border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden', background: '#0b1220' }}
+        style={{ border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden', background: '#0b1220' }}
         onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
         onDrop={(e) => {
           e.preventDefault();
@@ -239,6 +249,9 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
           }
         }}
       >
+        <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: 11, background: 'rgba(2,6,23,0.5)' }}>
+          Drop image/audio files anywhere in this panel to import
+        </div>
         {showScenes && (
           <button type="button" className="btn btn-sm" style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent' }} onClick={() => toggle('scenes')}>
           {expanded.scenes ? 'v' : '>'} [DIR] Scenes ({scenes.length})
@@ -273,23 +286,28 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
         )}
         {showImages && expanded.images && (
           <div style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto', gap: 6, marginBottom: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 1fr) minmax(180px, 2fr) auto', gap: 6, marginBottom: 8 }}>
               <input value={newImageName} onChange={(e) => setNewImageName(e.target.value)} placeholder="Image name" style={{ padding: '3px 6px', background: '#111827', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3 }} />
               <input value={newImageUrl} onChange={(e) => setNewImageUrl(e.target.value)} placeholder="Image URL or path" style={{ padding: '3px 6px', background: '#111827', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3 }} />
               <button className="btn btn-sm" onClick={addImage}>Add</button>
             </div>
-            <div style={{ marginBottom: 8 }}>
+            <div style={{ marginBottom: 8, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+              <button className="btn btn-sm" onClick={() => imageFileInputRef.current && imageFileInputRef.current.click()}>
+                Import Images
+              </button>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>PNG, JPG, GIF, WEBP, SVG</span>
               <input
+                ref={imageFileInputRef}
                 type="file"
                 accept={IMAGE_ACCEPT}
                 multiple
                 onChange={(e) => { importImageFiles(e.target.files); e.target.value = ''; }}
-                style={{ width: '100%', fontSize: 11 }}
+                style={{ display: 'none' }}
               />
             </div>
             <div style={{ border: '1px solid var(--border)', borderRadius: 4, padding: 6, marginBottom: 8 }}>
               <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Sprite Sheet Slicer</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr auto', gap: 4 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 4 }}>
                 <select value={sheetAssetId} onChange={(e) => setSheetAssetId(e.target.value)} style={{ padding: '3px 4px', background: '#111827', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3 }}>
                   <option value="">Sheet</option>
                   {images.map((img) => <option key={`sheet-${img.id}`} value={img.id}>{img.name}</option>)}
@@ -300,7 +318,7 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
                 <button className="btn btn-sm" onClick={sliceSpriteSheet}>Slice</button>
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(138px, 1fr))', gap: 8 }}>
               {images.map((img) => (
                 <div
                   key={img.id}
@@ -317,6 +335,9 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
                   </div>
                 </div>
               ))}
+              {images.length === 0 && (
+                <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>No images yet. Use “Import Images” or drag files here.</div>
+              )}
             </div>
           </div>
         )}
@@ -340,27 +361,39 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
         )}
 
         {showAudio && (
-          <button type="button" className="btn btn-sm" style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent' }} onClick={() => toggle('audio')}>
+          <button type="button" className="btn btn-sm" style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', background: 'transparent' }} onClick={() => toggle('audio')}>
           {expanded.audio ? 'v' : '>'} [DIR] Audio ({allAudios.length})
           </button>
         )}
         {showAudio && expanded.audio && (
           <div style={{ padding: 8 }}>
-            <div style={{ marginBottom: 8 }}>
+            <div style={{ marginBottom: 8, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+              <button className="btn btn-sm" onClick={() => audioFileInputRef.current && audioFileInputRef.current.click()}>
+                Import Audio
+              </button>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>MP3, OGG, WAV, M4A, FLAC, AAC</span>
               <input
+                ref={audioFileInputRef}
                 type="file"
                 accept={AUDIO_ACCEPT}
                 multiple
                 onChange={(e) => { importAudioFiles(e.target.files); e.target.value = ''; }}
-                style={{ width: '100%', fontSize: 11 }}
+                style={{ display: 'none' }}
               />
             </div>
-            <div style={{ display: 'grid', gap: 4 }}>
+            <div style={{ display: 'grid', gap: 6 }}>
               {audios.length === 0 && <div style={{ color: '#94a3b8', fontSize: 11 }}>No audio files. Drop or import MP3, OGG, WAV.</div>}
               {audios.map((aud) => (
-                <div key={aud.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', border: '1px solid var(--border)', borderRadius: 4, background: '#111827' }}>
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>[AUD]</span>
-                  <span style={{ flex: 1, fontSize: 11, color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{aud.name || aud.id}</span>
+                <div key={aud.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 4, background: '#111827' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 11, color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{aud.name || aud.id}</div>
+                    <div style={{ fontSize: 10, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{aud.id}</div>
+                    {(aud.previewUrl || aud.url || aud.src) && (
+                      <audio controls preload="none" style={{ width: '100%', marginTop: 4 }}>
+                        <source src={aud.previewUrl || aud.url || aud.src} />
+                      </audio>
+                    )}
+                  </div>
                   <button className="btn btn-sm btn-danger" onClick={() => onPatchProject({ assets: (project.assets || []).filter(a => a.id !== aud.id) })}>x</button>
                 </div>
               ))}

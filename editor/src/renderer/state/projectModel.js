@@ -43,6 +43,8 @@ const DEFAULT_CLASSES = [
   { id: 'sprite', name: 'Sprite Object', baseType: 'sprite' },
   { id: 'animator', name: 'Animator Object', baseType: 'animator' },
   { id: 'camera', name: 'Camera Object', baseType: 'camera' },
+  { id: 'audio_source', name: 'Audio Source', baseType: 'audio_source' },
+  { id: 'music_source', name: 'Music Source', baseType: 'music_source' },
 ];
 
 const DEFAULT_BUILD = {
@@ -82,6 +84,15 @@ const DEFAULT_CAMERA = {
   followY: true,
   clampToWorld: true,
   maxSpeed: 2000,
+};
+
+const DEFAULT_SOUND = {
+  assetId: null,
+  category: 'sfx',
+  autoplay: false,
+  loop: false,
+  volume: 1,
+  maxDistance: 0,
 };
 
 function clone(v) {
@@ -215,6 +226,18 @@ function ensureProjectShape(project) {
             weight: (components.RigidBody && Number.isFinite(components.RigidBody.weight)) ? components.RigidBody.weight : 1,
             friction: (components.RigidBody && Number.isFinite(components.RigidBody.friction)) ? components.RigidBody.friction : 0.4,
           },
+          ...(components.Sound ? {
+            Sound: {
+              ...clone(DEFAULT_SOUND),
+              ...components.Sound,
+              category: components.Sound.category === 'music' ? 'music' : 'sfx',
+              volume: Number.isFinite(components.Sound.volume) ? Math.max(0, Math.min(1, components.Sound.volume)) : 1,
+              maxDistance: Number.isFinite(components.Sound.maxDistance) ? Math.max(0, components.Sound.maxDistance) : 0,
+              loop: !!components.Sound.loop,
+              autoplay: !!components.Sound.autoplay,
+              assetId: components.Sound.assetId || null,
+            },
+          } : {}),
         },
       };
     });

@@ -146,6 +146,7 @@ function createGameObject(name, x, y, opts = {}) {
       },
     };
   }
+  const isAudioType = type === 'audio_source' || type === 'music_source';
   const next = {
     id: genId('obj'), name: name || 'Object', type, x, y,
     parentId: null,
@@ -158,8 +159,21 @@ function createGameObject(name, x, y, opts = {}) {
       Render: { layerId: opts.layerId || 'obj-main', visible: true, zIndex: 0 },
       ScriptBindings: [],
       Animator: { clipId: null, autoplay: type === 'animator' },
+      ...(isAudioType ? {
+        Sound: {
+          assetId: null,
+          category: type === 'music_source' ? 'music' : 'sfx',
+          autoplay: type === 'music_source',
+          loop: type === 'music_source',
+          volume: 1,
+          maxDistance: type === 'music_source' ? 0 : 320,
+        },
+      } : {}),
     },
   };
+  if (isAudioType) {
+    next.components.Render.visible = false;
+  }
   return next;
 }
 
@@ -696,9 +710,168 @@ function buildExportHtml(project, projectJson, target, options = {}) {
         target.appendChild(styleNode);
         activeCssNodes.set(script.id, styleNode);
       }
+      function createAudioSystem(assetMap, objects) {
+        var masterVolume = 1;
+        var listenerX = 0;
+        var listenerY = 0;
+        var currentMusic = null;
+        var handles = [];
+
+        function clamp01(value) {
+          var n = Number(value);
+          if (!Number.isFinite(n)) return 1;
+          return Math.max(0, Math.min(1, n));
+        }
+        function computePositionalVolume(distance, maxDistance) {
+          var dist = Math.max(0, Number(distance) || 0);
+          var maxDist = Math.max(0.0001, Number(maxDistance) || 0.0001);
+          return Math.max(0, Math.min(1, 1 - (dist / maxDist)));
+        }
+        function resolveAudioSrc(assetId) {
+          if (!assetId) return null;
+          var asset = assetMap.get(assetId);
+          if (!asset) return null;
+          return asset.previewUrl || asset.url || asset.src || null;
+        }
+        function resolveObject(target) {
+          if (!target) return null;
+          if (typeof target === 'string') return objects.find(function(obj) { return obj.id === target; }) || null;
+          if (typeof target === 'object' && target.id) return target;
+          return null;
+        }
+        function applyHandleVolume(handle) {
+          if (!handle || !handle.audio) return;
+          var positional = 1;
+          if (handle.maxDistance > 0 && handle.sourceObjectId) {
+            var source = objects.find(function(obj) { return obj.id === handle.sourceObjectId; });
+            if (source) {
+              var dx = (Number(source.x) || 0) - listenerX;
+              var dy = (Number(source.y) || 0) - listenerY;
+              var dist = Math.sqrt(dx * dx + dy * dy);
+              positional = computePositionalVolume(dist, handle.maxDistance);
+            }
+          }
+          handle.audio.volume = clamp01(handle.baseVolume * masterVolume * positional);
+        }
+        function removeHandle(handle) {
+          handles = handles.filter(function(entry) { return entry !== handle; });
+          if (currentMusic === handle) currentMusic = null;
+        }
+        function stopHandle(handle) {
+          if (!handle || !handle.audio) return;
+          try {
+            handle.audio.pause();
+            handle.audio.currentTime = 0;
+          } catch (_err) {}
+          removeHandle(handle);
+        }
+        function play(assetId, options) {
+          options = options || {};
+          if (typeof Audio === 'undefined') return null;
+          var src = resolveAudioSrc(assetId);
+          if (!src) return null;
+          var audio = new Audio(src);
+          var handle = {
+            audio: audio,
+            sourceObjectId: options.sourceObjectId || null,
+            baseVolume: clamp01(options.volume != null ? options.volume : 1),
+            maxDistance: Number.isFinite(options.maxDistance) ? Math.max(0, options.maxDistance) : 0,
+            category: options.category === 'music' ? 'music' : 'sfx',
+          };
+          audio.loop = !!options.loop;
+          audio.preload = 'auto';
+          audio.addEventListener('ended', function() {
+            if (!audio.loop) removeHandle(handle);
+          });
+          handles.push(handle);
+          applyHandleVolume(handle);
+          var p = audio.play();
+          if (p && typeof p.catch === 'function') p.catch(function() {});
+          return handle;
+        }
+
+        var api = {
+          play: function(assetId, options) {
+            return play(assetId, options || {});
+          },
+          playMusic: function(assetId, options) {
+            if (currentMusic) stopHandle(currentMusic);
+            options = options || {};
+            currentMusic = play(assetId, Object.assign({}, options, { loop: options.loop !== false, category: 'music' }));
+            return currentMusic;
+          },
+          stopMusic: function() {
+            if (currentMusic) stopHandle(currentMusic);
+            currentMusic = null;
+          },
+          playObjectSound: function(target, overrides) {
+            var obj = resolveObject(target);
+            if (!obj) return null;
+            var sound = (obj.components && obj.components.Sound) || null;
+            if (!sound || !sound.assetId) return null;
+            overrides = overrides || {};
+            var opts = {
+              loop: overrides.loop !== undefined ? overrides.loop : !!sound.loop,
+              volume: overrides.volume !== undefined ? overrides.volume : (Number.isFinite(sound.volume) ? sound.volume : 1),
+              maxDistance: overrides.maxDistance !== undefined ? overrides.maxDistance : (Number.isFinite(sound.maxDistance) ? sound.maxDistance : 0),
+              category: overrides.category || (sound.category === 'music' ? 'music' : 'sfx'),
+              sourceObjectId: obj.id,
+            };
+            if (opts.category === 'music') return api.playMusic(sound.assetId, opts);
+            return play(sound.assetId, opts);
+          },
+          stopObjectSound: function(target) {
+            var obj = resolveObject(target);
+            if (!obj) return;
+            handles.slice().forEach(function(handle) {
+              if (handle.sourceObjectId === obj.id) stopHandle(handle);
+            });
+          },
+          stop: function(handle) {
+            stopHandle(handle);
+          },
+          stopAll: function() {
+            handles.slice().forEach(function(handle) { stopHandle(handle); });
+            currentMusic = null;
+          },
+          setMasterVolume: function(value) {
+            masterVolume = clamp01(value);
+            handles.forEach(function(handle) { applyHandleVolume(handle); });
+            return masterVolume;
+          },
+          getMasterVolume: function() {
+            return masterVolume;
+          },
+        };
+
+        return {
+          api: api,
+          autoplayFromComponents: function() {
+            objects.forEach(function(obj) {
+              var sound = (obj.components && obj.components.Sound) || null;
+              if (!sound || !sound.assetId || !sound.autoplay) return;
+              api.playObjectSound(obj);
+            });
+          },
+          updateListener: function(camera, runtimeObjects) {
+            var target = null;
+            if (camera && camera.targetObjectId) {
+              target = (runtimeObjects || objects).find(function(obj) { return obj.id === camera.targetObjectId; }) || null;
+            }
+            listenerX = target ? (Number(target.x) || 0) : ((camera && Number(camera.originX)) || 0);
+            listenerY = target ? (Number(target.y) || 0) : ((camera && Number(camera.originY)) || 0);
+            handles.forEach(function(handle) { applyHandleVolume(handle); });
+          },
+          stopAll: function() {
+            api.stopAll();
+          },
+        };
+      }
+      var audioSystem = createAudioSystem(assetById, gameObjects);
       var engine = {
         elapsed: 0,
         gameObjects: gameObjects,
+        audio: audioSystem.api,
         findObject: function(id) { return gameObjects.find(function(o) { return o.id === id; }) || null; },
         findObjectsByType: function(type) { return gameObjects.filter(function(o) { return o.type === type; }); },
         keyIsDown: function(code) { return keys.has(code); }
@@ -733,6 +906,7 @@ function buildExportHtml(project, projectJson, target, options = {}) {
           try { inst.hooks.onInit(inst.obj, engine); } catch (err) { console.error('onInit error', err); }
         }
       });
+      audioSystem.autoplayFromComponents();
 
       function drawWorld(viewX, viewY) {
         var grid = Array.isArray(world.grid) ? world.grid : [];
@@ -883,6 +1057,7 @@ function buildExportHtml(project, projectJson, target, options = {}) {
         });
 
         var camera = resolvePlayCamera(cameraConfig, gameObjects);
+        audioSystem.updateListener(camera, gameObjects);
         var desired = resolveDesiredView(camera, gameObjects, viewX, viewY, false, canvas.width, canvas.height);
         var speed = Number.isFinite(camera.speed) ? Math.max(0.1, camera.speed) : 8;
         var maxSpeed = Number.isFinite(camera.maxSpeed) ? Math.max(60, camera.maxSpeed) : Infinity;
@@ -906,6 +1081,7 @@ function buildExportHtml(project, projectJson, target, options = {}) {
           if (node && node.parentNode) node.parentNode.removeChild(node);
         });
         activeCssNodes.clear();
+        audioSystem.stopAll();
       });
       var initialCamera = resolvePlayCamera(cameraConfig, gameObjects);
       var initialView = resolveDesiredView(initialCamera, gameObjects, 0, 0, true, canvas.width, canvas.height);

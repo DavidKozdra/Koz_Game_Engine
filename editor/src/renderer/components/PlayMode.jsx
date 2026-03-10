@@ -150,6 +150,12 @@ export function usePlayMode(project, onLog) {
       worldSparse: null,
       cssStyleElements,
     };
+    state.audioSystem = createPlayAudioSystem({
+      assetById,
+      gameObjects,
+      onLog,
+      getNow: () => new Date().toLocaleTimeString(),
+    });
 
     const uiManager = createKozUIManager({
       rootRef: uiRootRef,
@@ -180,10 +186,13 @@ export function usePlayMode(project, onLog) {
       elapsed: 0,
       sceneId: state.activeSceneId,
       uiManager,
+      audio: state.audioSystem.api,
       findObject: (id) => gameObjects.find(o => o.id === id) || null,
       findObjectsByType: (type) => gameObjects.filter(o => o.type === type),
       keyIsDown: (code) => keysRef.current.has(code),
     };
+
+    state.audioSystem.autoplayFromComponents();
 
     // Run onInit
     scriptInstances.forEach(inst => {
@@ -220,7 +229,7 @@ export function usePlayMode(project, onLog) {
     startLoop();
   }, [project, onLog]);
 
-  const stop = useCallback(() => {
+    const stop = useCallback(() => {
     const state = stateRef.current;
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
@@ -230,6 +239,9 @@ export function usePlayMode(project, onLog) {
         if (node && node.parentNode) node.parentNode.removeChild(node);
       });
       state.cssStyleElements.clear();
+    }
+    if (state && state.audioSystem) {
+      state.audioSystem.destroy();
     }
     const saved = globalsRef.current;
     if (saved.hasKozUIManager) window.KozUIManager = saved.prevKozUIManager;
@@ -293,6 +305,7 @@ export function usePlayMode(project, onLog) {
         elapsed: state.elapsed,
         sceneId: state.activeSceneId,
         uiManager: state.uiManager || null,
+        audio: state.audioSystem ? state.audioSystem.api : null,
         findObject: (id) => state.gameObjects.find(o => o.id === id) || null,
         keyIsDown: (code) => keysRef.current.has(code),
       };
@@ -349,6 +362,7 @@ export function usePlayMode(project, onLog) {
 
       // Render
       const camera = resolvePlayCamera(state);
+      if (state.audioSystem) state.audioSystem.updateListener(camera, state.gameObjects);
       const viewW = canvasRef.current ? canvasRef.current.width : 960;
       const viewH = canvasRef.current ? canvasRef.current.height : 540;
       const desired = resolveDesiredView(state, camera, dt, false, viewW, viewH);
@@ -535,6 +549,172 @@ export function usePlayMode(project, onLog) {
   }, []);
 
   return { canvasRef, uiRootRef, isPlaying, start, stop, execute };
+}
+
+function clamp01(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 1;
+  return Math.max(0, Math.min(1, n));
+}
+
+function computePositionalVolume(distance, maxDistance) {
+  const dist = Math.max(0, Number(distance) || 0);
+  const maxDist = Math.max(0.0001, Number(maxDistance) || 0.0001);
+  return Math.max(0, Math.min(1, 1 - (dist / maxDist)));
+}
+
+function createPlayAudioSystem({ assetById, gameObjects, onLog, getNow }) {
+  let masterVolume = 1;
+  let listenerX = 0;
+  let listenerY = 0;
+  let currentMusic = null;
+  const handles = new Set();
+
+  function resolveAudioSrc(assetId) {
+    if (!assetId) return null;
+    const asset = assetById.get(assetId);
+    if (!asset) return null;
+    return asset.previewUrl || asset.url || asset.src || null;
+  }
+
+  function resolveTarget(target) {
+    if (!target) return null;
+    if (typeof target === 'string') return gameObjects.find((obj) => obj.id === target) || null;
+    if (typeof target === 'object' && target.id) return target;
+    return null;
+  }
+
+  function applyHandleVolume(handle) {
+    if (!handle || !handle.audio) return;
+    let positional = 1;
+    if (handle.maxDistance > 0 && handle.sourceObjectId) {
+      const obj = gameObjects.find((entry) => entry.id === handle.sourceObjectId);
+      if (obj) {
+        const dx = (Number(obj.x) || 0) - listenerX;
+        const dy = (Number(obj.y) || 0) - listenerY;
+        const dist = Math.hypot(dx, dy);
+        positional = computePositionalVolume(dist, handle.maxDistance);
+      }
+    }
+    handle.audio.volume = clamp01(handle.baseVolume * masterVolume * positional);
+  }
+
+  function stopHandle(handle) {
+    if (!handle) return;
+    try {
+      handle.audio.pause();
+      handle.audio.currentTime = 0;
+    } catch (_err) {
+      // Ignore source stop errors.
+    }
+    handles.delete(handle);
+    if (currentMusic === handle) currentMusic = null;
+  }
+
+  function play(assetId, options = {}) {
+    if (typeof Audio === 'undefined') return null;
+    const src = resolveAudioSrc(assetId);
+    if (!src) {
+      onLog({ type: 'warn', message: `Missing audio asset: ${assetId}`, time: getNow() });
+      return null;
+    }
+    const handle = {
+      audio: new Audio(src),
+      assetId,
+      baseVolume: clamp01(options.volume ?? 1),
+      sourceObjectId: options.sourceObjectId || null,
+      maxDistance: Number.isFinite(options.maxDistance) ? Math.max(0, options.maxDistance) : 0,
+      category: options.category === 'music' ? 'music' : 'sfx',
+    };
+    handle.audio.loop = !!options.loop;
+    handle.audio.preload = 'auto';
+    handle.audio.addEventListener('ended', () => {
+      if (!handle.audio.loop) handles.delete(handle);
+      if (currentMusic === handle && !handle.audio.loop) currentMusic = null;
+    });
+    handles.add(handle);
+    applyHandleVolume(handle);
+    const playPromise = handle.audio.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch((err) => {
+        onLog({ type: 'warn', message: `Audio play blocked: ${err.message}`, time: getNow() });
+      });
+    }
+    return handle;
+  }
+
+  const api = {
+    play(assetId, options = {}) {
+      return play(assetId, options);
+    },
+    playMusic(assetId, options = {}) {
+      if (currentMusic) stopHandle(currentMusic);
+      currentMusic = play(assetId, { ...options, loop: options.loop !== false, category: 'music' });
+      return currentMusic;
+    },
+    stopMusic() {
+      if (currentMusic) stopHandle(currentMusic);
+      currentMusic = null;
+    },
+    playObjectSound(target, overrides = {}) {
+      const obj = resolveTarget(target);
+      if (!obj) return null;
+      const sound = (obj.components && obj.components.Sound) || null;
+      if (!sound || !sound.assetId) return null;
+      const opts = {
+        loop: overrides.loop !== undefined ? overrides.loop : !!sound.loop,
+        volume: overrides.volume !== undefined ? overrides.volume : (Number.isFinite(sound.volume) ? sound.volume : 1),
+        maxDistance: overrides.maxDistance !== undefined ? overrides.maxDistance : (Number.isFinite(sound.maxDistance) ? sound.maxDistance : 0),
+        category: overrides.category || (sound.category === 'music' ? 'music' : 'sfx'),
+        sourceObjectId: obj.id,
+      };
+      if (opts.category === 'music') return api.playMusic(sound.assetId, opts);
+      return play(sound.assetId, opts);
+    },
+    stopObjectSound(target) {
+      const obj = resolveTarget(target);
+      if (!obj) return;
+      Array.from(handles).forEach((handle) => {
+        if (handle.sourceObjectId === obj.id) stopHandle(handle);
+      });
+    },
+    stop(handle) {
+      stopHandle(handle);
+    },
+    stopAll() {
+      Array.from(handles).forEach((handle) => stopHandle(handle));
+      currentMusic = null;
+    },
+    setMasterVolume(nextVolume) {
+      masterVolume = clamp01(nextVolume);
+      handles.forEach((handle) => applyHandleVolume(handle));
+      return masterVolume;
+    },
+    getMasterVolume() {
+      return masterVolume;
+    },
+  };
+
+  return {
+    api,
+    autoplayFromComponents() {
+      gameObjects.forEach((obj) => {
+        const sound = (obj.components && obj.components.Sound) || null;
+        if (!sound || !sound.assetId || !sound.autoplay) return;
+        api.playObjectSound(obj);
+      });
+    },
+    updateListener(camera, objects) {
+      const targetId = camera && camera.targetObjectId;
+      const target = targetId ? (objects || gameObjects).find((obj) => obj.id === targetId) : null;
+      listenerX = target ? (Number(target.x) || 0) : (camera && Number(camera.originX)) || 0;
+      listenerY = target ? (Number(target.y) || 0) : (camera && Number(camera.originY)) || 0;
+      handles.forEach((handle) => applyHandleVolume(handle));
+    },
+    destroy() {
+      api.stopAll();
+    },
+  };
 }
 
 function createKozUIManager({ rootRef, onLog, getContext }) {

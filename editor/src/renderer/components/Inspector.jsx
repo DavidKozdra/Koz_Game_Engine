@@ -4,6 +4,7 @@ import Modal from './Modal.jsx';
 const AVAILABLE_COMPONENTS = [
   { id: 'Grid', label: 'Grid', defaults: { cols: 10, rows: 10, cellSize: 24, visible: true, layerId: null } },
   { id: 'Sprite', label: 'Sprite', defaults: { assetId: null, color: '#4ade80', width: 32, height: 32, frameAssetIds: [], fps: 8 } },
+  { id: 'Sound', label: 'Sound', defaults: { assetId: null, category: 'sfx', autoplay: false, loop: false, volume: 1, maxDistance: 0 } },
   { id: 'Collider', label: 'Collider', defaults: { shape: 'rect', width: 32, height: 32 } },
   { id: 'Collision', label: 'Collision', defaults: { enabled: true, isTrigger: false } },
   { id: 'RigidBody', label: 'RigidBody', defaults: { enabled: false, weight: 1, friction: 0.4 } },
@@ -29,14 +30,21 @@ function CollapsibleSection({ title, defaultOpen = true, onRemove, children }) {
 export default function Inspector({ project, editorState, onUpdateObject, onUpdateComponent, onRemoveComponent, onCreatePrefabFromObject, onUnlinkPrefab }) {
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [imageQuery, setImageQuery] = useState('');
+  const [showAudioPicker, setShowAudioPicker] = useState(false);
+  const [audioQuery, setAudioQuery] = useState('');
+  const [showComponentPicker, setShowComponentPicker] = useState(false);
+  const [componentQuery, setComponentQuery] = useState('');
   const selectedId = editorState.selectedObjectId;
   const obj = selectedId && project ? project.objects.find(o => o.id === selectedId) : null;
   const components = obj?.components || {};
   const bindings = components.ScriptBindings || [];
   const imageAssets = (project.assets || []).filter((a) => a && a.kind === 'image' && a.mime === 'image/png');
+  const audioAssets = (project.assets || []).filter((a) => a && (a.kind === 'audio' || String(a.mime || '').startsWith('audio/')));
   const sceneObjects = (project && project.objects) || [];
   const imageAssetById = new Map(imageAssets.map((a) => [a.id, a]));
+  const audioAssetById = new Map(audioAssets.map((a) => [a.id, a]));
   const selectedImageAsset = components.Sprite && components.Sprite.assetId ? imageAssetById.get(components.Sprite.assetId) : null;
+  const selectedAudioAsset = components.Sound && components.Sound.assetId ? audioAssetById.get(components.Sound.assetId) : null;
   const linkedPrefab = obj && obj.prefabId ? (project.prefabs || []).find((p) => p.id === obj.prefabId) : null;
   const filteredImages = useMemo(() => {
     const q = imageQuery.trim().toLowerCase();
@@ -47,6 +55,22 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
       return id.includes(q) || name.includes(q);
     });
   }, [imageAssets, imageQuery]);
+  const filteredAudios = useMemo(() => {
+    const q = audioQuery.trim().toLowerCase();
+    if (!q) return audioAssets;
+    return audioAssets.filter((asset) => {
+      const id = String(asset.id || '').toLowerCase();
+      const name = String(asset.name || '').toLowerCase();
+      return id.includes(q) || name.includes(q);
+    });
+  }, [audioAssets, audioQuery]);
+  const filteredComponents = useMemo(() => {
+    const existing = Object.keys(components).filter((k) => k !== 'Transform' && k !== 'Render' && k !== 'ScriptBindings');
+    const available = AVAILABLE_COMPONENTS.filter((c) => !existing.includes(c.id) && c.id !== 'Transform' && c.id !== 'Render');
+    const q = componentQuery.trim().toLowerCase();
+    if (!q) return available;
+    return available.filter((c) => c.label.toLowerCase().includes(q) || c.id.toLowerCase().includes(q));
+  }, [components, componentQuery]);
 
   if (!obj) {
     return (
@@ -357,6 +381,67 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
           </div>
         </div>
       </Modal>
+      <Modal open={showAudioPicker} title="Select Audio File" onClose={() => setShowAudioPicker(false)} maxWidth={920} minWidth={620}>
+        <div style={{ display: 'grid', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="text"
+              value={audioQuery}
+              onChange={(e) => setAudioQuery(e.target.value)}
+              placeholder={`Search ${audioAssets.length} audio files...`}
+              style={{ flex: 1, padding: '9px 12px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6 }}
+            />
+            <button className="btn btn-sm" onClick={() => setAudioQuery('')} disabled={!audioQuery}>Clear</button>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            {filteredAudios.length} result{filteredAudios.length === 1 ? '' : 's'}
+          </div>
+          <div style={{ maxHeight: '56vh', overflow: 'auto', border: '1px solid var(--border)', borderRadius: 6, padding: 10, background: '#0b1220' }}>
+            {filteredAudios.length === 0 && (
+              <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>No audio files match.</div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+              {filteredAudios.map((asset) => {
+                const src = asset.previewUrl || asset.url || asset.src || null;
+                const active = components.Sound && components.Sound.assetId === asset.id;
+                return (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    onClick={() => {
+                      handleComponentChange('Sound', 'assetId', asset.id);
+                      setShowAudioPicker(false);
+                    }}
+                    style={{
+                      border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
+                      borderRadius: 6,
+                      background: active ? 'rgba(59,130,246,0.12)' : '#111827',
+                      color: 'var(--text)',
+                      padding: 8,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <div style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 6 }}>
+                      {asset.name || asset.id}
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {asset.id}
+                    </div>
+                    {src ? (
+                      <audio controls preload="none" style={{ width: '100%' }} onClick={(e) => e.stopPropagation()}>
+                        <source src={src} />
+                      </audio>
+                    ) : (
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>No preview source</div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </Modal>
 
       {/* Collider */}
       {components.Collider && (
@@ -611,6 +696,83 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
         </CollapsibleSection>
       )}
 
+      {/* Sound */}
+      {components.Sound && (
+        <CollapsibleSection title="Sound" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'Sound') : undefined}>
+          {components.Sound.assetId && !audioAssetById.has(components.Sound.assetId) && (
+            <div style={{ color: '#fca5a5', fontSize: 11, marginBottom: 6 }}>
+              Missing audio reference: {components.Sound.assetId}
+            </div>
+          )}
+          <div className="field">
+            <label>File</label>
+            <div style={{ display: 'flex', flex: 1, gap: 6, alignItems: 'center' }}>
+              <button className="btn btn-sm" onClick={() => setShowAudioPicker(true)}>Select Audio</button>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {selectedAudioAsset ? selectedAudioAsset.name : (components.Sound.assetId || 'None')}
+              </span>
+              {components.Sound.assetId && (
+                <button
+                  className="btn btn-sm btn-danger"
+                  onClick={() => handleComponentChange('Sound', 'assetId', null)}
+                  title="Clear Audio"
+                >
+                  x
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="field">
+            <label>Category</label>
+            <select
+              value={components.Sound.category === 'music' ? 'music' : 'sfx'}
+              onChange={(e) => handleComponentChange('Sound', 'category', e.target.value === 'music' ? 'music' : 'sfx')}
+            >
+              <option value="sfx">SFX</option>
+              <option value="music">Music</option>
+            </select>
+          </div>
+          <div className="field">
+            <label>Volume</label>
+            <input
+              type="number"
+              min="0"
+              max="1"
+              step="0.05"
+              value={Number.isFinite(components.Sound.volume) ? components.Sound.volume : 1}
+              onChange={(e) => handleComponentChange('Sound', 'volume', Math.max(0, Math.min(1, parseFloat(e.target.value) || 0)))}
+            />
+          </div>
+          <div className="field">
+            <label>Max Dist</label>
+            <input
+              type="number"
+              min="0"
+              step="10"
+              value={Number.isFinite(components.Sound.maxDistance) ? components.Sound.maxDistance : 0}
+              onChange={(e) => handleComponentChange('Sound', 'maxDistance', Math.max(0, parseFloat(e.target.value) || 0))}
+            />
+            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>0 = global</span>
+          </div>
+          <div className="field">
+            <label>Autoplay</label>
+            <input
+              type="checkbox"
+              checked={!!components.Sound.autoplay}
+              onChange={(e) => handleComponentChange('Sound', 'autoplay', e.target.checked)}
+            />
+          </div>
+          <div className="field">
+            <label>Loop</label>
+            <input
+              type="checkbox"
+              checked={!!components.Sound.loop}
+              onChange={(e) => handleComponentChange('Sound', 'loop', e.target.checked)}
+            />
+          </div>
+        </CollapsibleSection>
+      )}
+
       {/* Script Bindings (multiple) */}
       <div className="panel-section">
         <h3 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -689,27 +851,63 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
 
       {/* Add Component */}
       {(() => {
-        const existing = Object.keys(components).filter(k => k !== 'Transform' && k !== 'Render' && k !== 'ScriptBindings');
-        const available = AVAILABLE_COMPONENTS.filter(c => !existing.includes(c.id) && c.id !== 'Transform' && c.id !== 'Render');
-        if (available.length === 0) return null;
+        if (filteredComponents.length === 0 && !componentQuery.trim()) return null;
         return (
           <div className="panel-section">
-            <select
-              value=""
-              onChange={(e) => {
-                const comp = AVAILABLE_COMPONENTS.find(c => c.id === e.target.value);
-                if (comp && onUpdateComponent) {
-                  onUpdateComponent(obj.id, comp.id, { ...comp.defaults });
-                }
-              }}
-              style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 11 }}
+            <button
+              className="btn btn-sm"
+              style={{ width: '100%' }}
+              onClick={() => { setComponentQuery(''); setShowComponentPicker(true); }}
             >
-              <option value="">+ Add Component...</option>
-              {available.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-            </select>
+              + Add Component
+            </button>
           </div>
         );
       })()}
+      <Modal open={showComponentPicker} title="Add Component" onClose={() => setShowComponentPicker(false)} maxWidth={700} minWidth={520}>
+        <div style={{ display: 'grid', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="text"
+              value={componentQuery}
+              onChange={(e) => setComponentQuery(e.target.value)}
+              placeholder={`Search ${AVAILABLE_COMPONENTS.length} components...`}
+              style={{ flex: 1, padding: '9px 12px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6 }}
+            />
+            <button className="btn btn-sm" onClick={() => setComponentQuery('')} disabled={!componentQuery}>Clear</button>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            {filteredComponents.length} result{filteredComponents.length === 1 ? '' : 's'}
+          </div>
+          <div style={{ maxHeight: '56vh', overflow: 'auto', border: '1px solid var(--border)', borderRadius: 6, padding: 10, background: '#0b1220', display: 'grid', gap: 8 }}>
+            {filteredComponents.length === 0 && (
+              <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>No matching components available.</div>
+            )}
+            {filteredComponents.map((comp) => (
+              <button
+                key={comp.id}
+                type="button"
+                onClick={() => {
+                  if (onUpdateComponent) onUpdateComponent(obj.id, comp.id, { ...comp.defaults });
+                  setShowComponentPicker(false);
+                }}
+                style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: 6,
+                  background: '#111827',
+                  color: 'var(--text)',
+                  padding: '10px 12px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{comp.label}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{comp.id}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
