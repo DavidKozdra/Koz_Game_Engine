@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import Toolbar from './components/Toolbar.jsx';
 import Viewport from './components/Viewport.jsx';
 import ObjectList from './components/ObjectList.jsx';
@@ -11,6 +11,7 @@ import ConsolePanel from './components/Console.jsx';
 import { usePlayMode } from './components/PlayMode.jsx';
 import KozLogo from './components/KozLogo.jsx';
 import Modal from './components/Modal.jsx';
+import Icon from './components/Icon.jsx';
 import { ensureProjectShape, normalizeCellTypeId, getBrushValue } from './state/projectModel.js';
 import './editor.css';
 
@@ -1141,6 +1142,18 @@ function withActiveSceneView(project) {
 
 const MAX_UNDO = 100;
 
+function formatProjectTimestamp(ts) {
+  const value = Number(ts);
+  if (!Number.isFinite(value) || value <= 0) return 'Unknown';
+  const date = new Date(value);
+  const now = Date.now();
+  const diffMs = Math.max(0, now - value);
+  const dayMs = 24 * 60 * 60 * 1000;
+  if (diffMs < dayMs) return `Today, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  if (diffMs < dayMs * 2) return `Yesterday, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  return date.toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 function App() {
   // All hooks must be called unconditionally and in the same order
   const [project, setProject] = useState(null);
@@ -1149,6 +1162,7 @@ function App() {
   const [availableProjects, setAvailableProjects] = useState([]);
   const [projectsRoot, setProjectsRoot] = useState(null);
   const [newProjectName, setNewProjectName] = useState('Untitled Project');
+  const [projectSearch, setProjectSearch] = useState('');
   const [editorState, setEditorState] = useState({
     mode: 'EDIT', activeTool: 'brush', brushValue: 'solid', gizmoMode: 'move',
     selectedObjectId: null, selectedObjectIds: [], selectedScriptId: null, camera: { x: -240, y: -140, zoom: 1 }, gridVisible: true,
@@ -1195,6 +1209,22 @@ function App() {
       ? ['dmg', 'zip']
       : ['AppImage', 'deb', 'zip'];
   const projectView = withActiveSceneView(project);
+  const sortedProjects = useMemo(() => {
+    return [...(availableProjects || [])].sort((a, b) => {
+      const tA = Number(a && a.updatedAt) || 0;
+      const tB = Number(b && b.updatedAt) || 0;
+      return tB - tA;
+    });
+  }, [availableProjects]);
+  const filteredProjects = useMemo(() => {
+    const q = String(projectSearch || '').trim().toLowerCase();
+    if (!q) return sortedProjects;
+    return sortedProjects.filter((item) => {
+      const name = String(item && item.name || '').toLowerCase();
+      const folder = String(item && item.folderPath || '').toLowerCase();
+      return name.includes(q) || folder.includes(q);
+    });
+  }, [sortedProjects, projectSearch]);
 
   // ...existing callbacks and logic...
 
@@ -2248,43 +2278,126 @@ def on_update(self, engine, dt):
   return (
     <>
       {(showProjectSelector || !project) && (
-        <Modal open={true} title={null} onClose={() => { if (project) setShowProjectSelector(false); }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, minWidth: 360, maxHeight: '72vh' }}>
-            <KozLogo size={80} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
-              <input
-                value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value)}
-                placeholder="Project name"
-                style={{ width: '100%', padding: '8px 10px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4 }}
-              />
-              <button className="btn btn-lg" style={{ width: '100%' }} onClick={handleNew}>New Project</button>
-              <button className="btn btn-lg" style={{ width: '100%' }} onClick={handleLoadFromFile}>Load Project</button>
-              {!!project && (
-                <button className="btn btn-lg" style={{ width: '100%' }} onClick={() => setShowProjectSelector(false)}>Cancel</button>
-              )}
-              <div style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center', marginTop: 4 }}>
-                Save uses {projectsRoot || 'the current projects folder'} and does not open the file system.
+        <Modal
+          open={true}
+          title={null}
+          onClose={() => { if (project) setShowProjectSelector(false); }}
+          maxWidth={980}
+          minWidth={760}
+          showHeader={false}
+          resizable={false}
+        >
+          <div style={{ display: 'grid', gap: 14, minWidth: 360, width: 'min(920px, 90vw)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', background: 'linear-gradient(145deg, rgba(14,23,37,0.95), rgba(8,15,28,0.95))' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                <KozLogo size={52} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.1 }}>Project Hub</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {projectsRoot || 'Using current projects folder'}
+                  </div>
+                </div>
               </div>
-              <div style={{ border: '1px solid var(--border)', borderRadius: 6, background: '#0b1220', maxHeight: '32vh', overflow: 'auto' }}>
-                {(availableProjects || []).length === 0 && (
-                  <div style={{ color: 'var(--text-muted)', fontSize: 12, padding: 10 }}>No projects found yet.</div>
-                )}
-                {(availableProjects || []).map((item) => (
-                  <button
-                    key={item.projectPath}
-                    type="button"
-                    className="btn btn-sm"
-                    onClick={() => handleLoadProjectFromList(item)}
-                    style={{ width: '100%', justifyContent: 'space-between', border: 'none', borderBottom: '1px solid var(--border)', borderRadius: 0, background: 'transparent' }}
-                  >
-                    <span style={{ textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
-                      <span style={{ color: 'var(--text-muted)', fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.folderPath || ''}</span>
-                    </span>
-                    <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>{new Date(item.updatedAt).toLocaleDateString()}</span>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <span style={{ fontSize: 11, border: '1px solid var(--border)', borderRadius: 999, padding: '3px 8px', color: 'var(--text-muted)' }}>
+                  {availableProjects.length} project{availableProjects.length === 1 ? '' : 's'}
+                </span>
+                {!!project && (
+                  <button className="btn btn-sm" onClick={() => setShowProjectSelector(false)} aria-label="Close project hub">
+                    <Icon name="close" />
+                    Close
                   </button>
-                ))}
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 320px) minmax(0, 1fr)', gap: 12 }}>
+              <div style={{ display: 'grid', gap: 10, border: '1px solid var(--border)', borderRadius: 10, padding: 12, background: 'rgba(15,23,42,0.65)' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Quick Start</div>
+                <input
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleNew();
+                    }
+                  }}
+                  placeholder="Project name"
+                  style={{ width: '100%', padding: '9px 10px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6 }}
+                />
+                <button className="btn btn-lg" style={{ width: '100%', justifyContent: 'center' }} onClick={handleNew} aria-label="Create new project">
+                  <Icon name="new" />
+                  Create New Project
+                </button>
+                <button className="btn btn-lg" style={{ width: '100%', justifyContent: 'center' }} onClick={handleLoadFromFile} aria-label="Load project from file dialog">
+                  <Icon name="load" />
+                  Load From File
+                </button>
+                <div style={{ color: 'var(--text-muted)', fontSize: 11, lineHeight: 1.35 }}>
+                  Save uses the projects folder directly, so creating a project here is instant.
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gap: 8, border: '1px solid var(--border)', borderRadius: 10, padding: 12, background: 'rgba(2,8,23,0.65)', minHeight: 320 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Recent Projects</div>
+                  <div style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: 11 }}>
+                    {filteredProjects.length} visible
+                  </div>
+                </div>
+                <input
+                  value={projectSearch}
+                  onChange={(e) => setProjectSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && filteredProjects.length > 0) {
+                      e.preventDefault();
+                      handleLoadProjectFromList(filteredProjects[0]);
+                    }
+                  }}
+                  placeholder="Search by project or folder..."
+                  aria-label="Search projects"
+                  style={{ width: '100%', padding: '8px 10px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6 }}
+                />
+                <div style={{ border: '1px solid var(--border)', borderRadius: 8, background: '#0b1220', maxHeight: '42vh', overflow: 'auto' }}>
+                  {filteredProjects.length === 0 && (
+                    <div style={{ color: 'var(--text-muted)', fontSize: 12, padding: 12 }}>
+                      {availableProjects.length === 0 ? 'No projects found yet.' : 'No projects match your search.'}
+                    </div>
+                  )}
+                  {filteredProjects.map((item) => {
+                    const isCurrent = !!(projectFile && projectFile.projectPath && projectFile.projectPath === item.projectPath);
+                    return (
+                      <button
+                        key={item.projectPath}
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() => handleLoadProjectFromList(item)}
+                        style={{
+                          width: '100%',
+                          justifyContent: 'space-between',
+                          border: 'none',
+                          borderBottom: '1px solid var(--border)',
+                          borderRadius: 0,
+                          background: isCurrent ? 'rgba(59,130,246,0.12)' : 'transparent',
+                          paddingTop: 7,
+                          paddingBottom: 7,
+                        }}
+                        aria-label={`Open ${item.name || 'project'}`}
+                      >
+                        <span style={{ textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <Icon name="folder" />
+                            {item.name}
+                            {isCurrent && <span style={{ fontSize: 10, color: '#93c5fd' }}>CURRENT</span>}
+                          </span>
+                          <span style={{ color: 'var(--text-muted)', fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.folderPath || ''}</span>
+                        </span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: 10, marginLeft: 10 }}>{formatProjectTimestamp(item.updatedAt)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>
