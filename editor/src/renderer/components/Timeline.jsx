@@ -182,6 +182,21 @@ export default function Timeline({ project, onUpdateAnimation, onAddAnimation, o
     onAddKeyframe(clip.id, trackIdx, scrubTime, value);
   }, [clip, scrubTime, onAddKeyframe]);
 
+  const handleDeleteTrack = useCallback((trackIdx) => {
+    if (!clip) return;
+    const tracks = (clip.tracks || []).filter((_, i) => i !== trackIdx);
+    onUpdateAnimation(clip.id, { tracks });
+  }, [clip, onUpdateAnimation]);
+
+  const handleDeleteKeyframe = useCallback((trackIdx, kfIdx) => {
+    if (!clip || !clip.tracks) return;
+    const tracks = clip.tracks.map((t, i) => {
+      if (i !== trackIdx) return t;
+      return { ...t, keyframes: (t.keyframes || []).filter((_, ki) => ki !== kfIdx) };
+    });
+    onUpdateAnimation(clip.id, { tracks });
+  }, [clip, onUpdateAnimation]);
+
   const handleDurationChange = useCallback((e) => {
     if (!clip) return;
     const dur = parseFloat(e.target.value);
@@ -221,8 +236,30 @@ export default function Timeline({ project, onUpdateAnimation, onAddAnimation, o
 
       {/* Timeline canvas */}
       {clip ? (
-        <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
-          <canvas ref={canvasRef} style={{ display: 'block', cursor: 'pointer', minWidth: (clip.duration || 1) * PX_PER_SEC + 50 }} onClick={handleCanvasClick} />
+        <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+          {/* Track list sidebar */}
+          <div style={{ width: 180, flexShrink: 0, borderRight: '1px solid var(--border)', overflow: 'auto' }}>
+            <div style={{ height: HEADER_HEIGHT, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', padding: '0 6px', fontSize: 10, color: 'var(--text-muted)' }}>
+              Tracks ({(clip.tracks || []).length})
+            </div>
+            {(clip.tracks || []).map((track, i) => {
+              const obj = objects.find(o => o.id === track.targetObjectId);
+              const kfs = track.keyframes || [];
+              return (
+                <div key={i} style={{ height: TRACK_HEIGHT, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', borderBottom: '1px solid #1e293b', background: i % 2 === 0 ? '#0f172a' : '#111827' }}>
+                  <span style={{ flex: 1, fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {(obj ? obj.name : '?')}.{track.property}
+                  </span>
+                  <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{kfs.length}kf</span>
+                  <button className="btn btn-sm btn-danger" onClick={() => handleDeleteTrack(i)} style={{ fontSize: 9, padding: '0 3px', lineHeight: 1.2 }} title="Delete track">x</button>
+                </div>
+              );
+            })}
+          </div>
+          {/* Timeline canvas */}
+          <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+            <canvas ref={canvasRef} style={{ display: 'block', cursor: 'pointer', minWidth: (clip.duration || 1) * PX_PER_SEC + 50 }} onClick={handleCanvasClick} />
+          </div>
         </div>
       ) : (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>

@@ -502,6 +502,25 @@ function App() {
     handleAddObject({ kind: 'class', baseType: 'camera', name: 'Camera' });
   }, [handleAddObject]);
 
+  const handleDuplicateObject = useCallback((id) => {
+    const source = (projectView && projectView.objects || []).find((o) => o.id === id);
+    if (!source) return;
+    const clone = JSON.parse(JSON.stringify(source));
+    clone.id = genId('obj');
+    clone.name = (source.name || 'Object') + ' Copy';
+    clone.x = (source.x || 0) + 24;
+    clone.y = (source.y || 0) + 24;
+    if (clone.components && clone.components.Transform) {
+      clone.components.Transform.x = clone.x;
+      clone.components.Transform.y = clone.y;
+    }
+    setProject((prev) => {
+      pushUndo(prev);
+      return mutateActiveScene(prev, ({ world, objects }) => ({ world, objects: [...objects, clone] }));
+    });
+    updateEditor({ selectedObjectId: clone.id, selectedObjectIds: [clone.id] });
+  }, [projectView, pushUndo, mutateActiveScene, updateEditor]);
+
   const handleRemoveObject = useCallback((id) => {
     setProject(prev => {
       pushUndo(prev);
@@ -557,23 +576,29 @@ function App() {
   }, [updateEditor, editorState.activeTool]);
 
   const handleUpdateObject = useCallback((id, patch) => {
-    setProject(prev => mutateActiveScene(prev, ({
-      world,
-      objects,
-    }) => ({ world, objects: objects.map((o) => (o.id === id ? { ...o, ...patch } : o)) })));
-  }, [mutateActiveScene]);
+    setProject(prev => {
+      pushUndo(prev);
+      return mutateActiveScene(prev, ({
+        world,
+        objects,
+      }) => ({ world, objects: objects.map((o) => (o.id === id ? { ...o, ...patch } : o)) }));
+    });
+  }, [pushUndo, mutateActiveScene]);
 
   const handleUpdateComponent = useCallback((objId, compName, compData) => {
-    setProject(prev => mutateActiveScene(prev, ({ world, objects }) => ({
-      world,
-      objects: objects.map(o => {
-        if (o.id !== objId) return o;
-        const updated = { ...o, components: { ...o.components, [compName]: compData } };
-        if (compName === 'Transform') { updated.x = compData.x; updated.y = compData.y; }
-        return updated;
-      }),
-    })));
-  }, [mutateActiveScene]);
+    setProject(prev => {
+      pushUndo(prev);
+      return mutateActiveScene(prev, ({ world, objects }) => ({
+        world,
+        objects: objects.map(o => {
+          if (o.id !== objId) return o;
+          const updated = { ...o, components: { ...o.components, [compName]: compData } };
+          if (compName === 'Transform') { updated.x = compData.x; updated.y = compData.y; }
+          return updated;
+        }),
+      }));
+    });
+  }, [pushUndo, mutateActiveScene]);
 
   const handleMoveObject = useCallback((id, x, y) => {
     setProject(prev => mutateActiveScene(prev, ({ world, objects }) => ({
@@ -1090,10 +1115,12 @@ def on_update(self, engine, dt):
     function handleKey(e) {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
       if (e.target.closest('.cm-editor')) return;
-      if (e.ctrlKey && e.key === 'z') { e.preventDefault(); handleUndo(); }
-      if (e.ctrlKey && e.key === 'y') { e.preventDefault(); handleRedo(); }
-      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's') { e.preventDefault(); handleSaveAs(); }
-      if (e.ctrlKey && e.key === 's') { e.preventDefault(); handleSave(); }
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key === 'z') { e.preventDefault(); handleUndo(); }
+      if (mod && e.key === 'y') { e.preventDefault(); handleRedo(); }
+      if (mod && e.shiftKey && e.key.toLowerCase() === 's') { e.preventDefault(); handleSaveAs(); }
+      if (mod && e.key === 's') { e.preventDefault(); handleSave(); }
+      if (mod && e.key === 'd') { e.preventDefault(); if (editorState.selectedObjectId) handleDuplicateObject(editorState.selectedObjectId); }
       if (e.key === 'F5') { e.preventDefault(); handlePlayToggle(); }
       if (!isPlaying) {
         if (e.key === 'b') updateEditor({ activeTool: 'brush' });
@@ -1133,7 +1160,7 @@ def on_update(self, engine, dt):
     }
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [handleUndo, handleRedo, handleSave, handleSaveAs, handlePlayToggle, updateEditor, editorState.camera, editorState.selectedObjectId, editorState.selectedObjectIds, handleRemoveObject, isPlaying, pushUndo, mutateActiveScene]);
+  }, [handleUndo, handleRedo, handleSave, handleSaveAs, handlePlayToggle, updateEditor, editorState.camera, editorState.selectedObjectId, editorState.selectedObjectIds, handleRemoveObject, handleDuplicateObject, isPlaying, pushUndo, mutateActiveScene]);
 
   useEffect(() => {
     if (!window.api || typeof window.api.onMenuEvent !== 'function') return;
@@ -1236,6 +1263,7 @@ def on_update(self, engine, dt):
               onAddObject={handleAddObject}
               onAddCameraObject={handleAddCameraObject}
               onRemoveObject={handleRemoveObject}
+              onDuplicateObject={handleDuplicateObject}
             />
           </div>
 

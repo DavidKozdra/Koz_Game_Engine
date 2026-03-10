@@ -13,12 +13,13 @@ function getObjectType(obj) {
   return base;
 }
 
-export default function ObjectList({ project, editorState, onSelectObject, onAddObject, onAddCameraObject, onRemoveObject }) {
+export default function ObjectList({ project, editorState, onSelectObject, onAddObject, onAddCameraObject, onRemoveObject, onDuplicateObject }) {
   const objects = (project && project.objects) || [];
   const prefabs = (project && project.prefabs) || [];
   const classes = (project && project.defaultClasses) || [];
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [hierarchyFilter, setHierarchyFilter] = useState('');
   const [pickerTab, setPickerTab] = useState('custom');
   const [page, setPage] = useState(1);
   const imageAssetById = useMemo(() => new Map(((project && project.assets) || []).map((a) => [a.id, a])), [project]);
@@ -123,26 +124,58 @@ export default function ObjectList({ project, editorState, onSelectObject, onAdd
             )}
             <span>{obj.name || obj.id}</span>
           </span>
-          <button
-            className="btn btn-sm btn-danger"
-            onClick={(e) => { e.stopPropagation(); onRemoveObject(obj.id); }}
-            title="Delete"
-          >
-            x
-          </button>
+          <span style={{ display: 'inline-flex', gap: 2 }}>
+            {onDuplicateObject && (
+              <button
+                className="btn btn-sm"
+                onClick={(e) => { e.stopPropagation(); onDuplicateObject(obj.id); }}
+                title="Duplicate (Ctrl+D)"
+                style={{ fontSize: 10, padding: '0 3px' }}
+              >
+                dup
+              </button>
+            )}
+            <button
+              className="btn btn-sm btn-danger"
+              onClick={(e) => { e.stopPropagation(); onRemoveObject(obj.id); }}
+              title="Delete"
+            >
+              x
+            </button>
+          </span>
         </div>
-        {children.map((child) => renderNode(child, depth + 1))}
+        {children.filter(hasMatchingDescendant).map((child) => renderNode(child, depth + 1))}
       </React.Fragment>
     );
+  }
+
+  const filterLower = hierarchyFilter.trim().toLowerCase();
+  function matchesFilter(obj) {
+    if (!filterLower) return true;
+    return (obj.name || obj.id).toLowerCase().includes(filterLower);
+  }
+  function hasMatchingDescendant(obj) {
+    if (matchesFilter(obj)) return true;
+    const children = hierarchyRoots.childMap.get(obj.id) || [];
+    return children.some(hasMatchingDescendant);
   }
 
   return (
     <div className="panel-section" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
       <h3>Scene Hierarchy</h3>
-      <div style={{ marginBottom: 6 }}>
+      <div style={{ marginBottom: 6, display: 'flex', gap: 6 }}>
         <button className="btn btn-sm" onClick={() => setPickerOpen(true)}>+ Add Object</button>
-        <button className="btn btn-sm" style={{ marginLeft: 6 }} onClick={onAddCameraObject}>+ Camera</button>
+        <button className="btn btn-sm" onClick={onAddCameraObject}>+ Camera</button>
       </div>
+      {objects.length > 5 && (
+        <input
+          type="text"
+          value={hierarchyFilter}
+          onChange={(e) => setHierarchyFilter(e.target.value)}
+          placeholder={`Filter ${objects.length} objects...`}
+          style={{ width: '100%', padding: '4px 8px', marginBottom: 6, background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 11 }}
+        />
+      )}
       <div style={{ display: 'grid', gap: 3 }}>
         <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 4, background: '#0b1220' }}>
           World Grid
@@ -150,7 +183,7 @@ export default function ObjectList({ project, editorState, onSelectObject, onAdd
         {objects.length === 0 && (
           <div style={{ color: 'var(--text-muted)', fontSize: 11, padding: '4px 0' }}>No objects yet</div>
         )}
-        {hierarchyRoots.roots.map((obj) => renderNode(obj, 0))}
+        {hierarchyRoots.roots.filter(hasMatchingDescendant).map((obj) => renderNode(obj, 0))}
       </div>
       <Modal open={pickerOpen} title="Add Object" onClose={() => setPickerOpen(false)} maxWidth={980} minWidth={700}>
         <div style={{ display: 'grid', gap: 10 }}>
