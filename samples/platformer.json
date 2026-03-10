@@ -605,14 +605,14 @@
       "id": "obj_coin",
       "name": "Coin",
       "type": "coin",
-      "x": 350,
-      "y": 300,
+      "x": 306,
+      "y": 222,
       "components": {
         "Transform": {
-          "x": 350,
-          "y": 300,
-          "rotation": 0,
-          "scaleX": 1,
+          "x": 306,
+          "y": 222,
+          "rotation": -116.06027814092486,
+          "scaleX": 2.0337337139367335,
           "scaleY": 1
         },
         "Sprite": {
@@ -706,7 +706,7 @@
       "id": "script_platformer",
       "name": "PlatformerPlayer",
       "language": "javascript",
-      "source": "function onInit(self, engine) {\n  // Physics properties\n  self.vx = 0;\n  self.vy = 0;\n  self.speed = 200;\n  self.jumpForce = -350;\n  self.gravity = 800;\n  self.grounded = false;\n  \n  // World bounds\n  self.worldWidth = 800;\n  self.worldHeight = 450;\n  self.cellSize = 32;\n  self.groundY = 11 * self.cellSize; // Row 11 is ground\n  \n  // Score\n  self.score = 0;\n}\n\nfunction onUpdate(self, engine, dt) {\n  // Horizontal movement\n  var moveLeft = keyIsDown(65) || keyIsDown(LEFT_ARROW);\n  var moveRight = keyIsDown(68) || keyIsDown(RIGHT_ARROW);\n  var jump = keyIsDown(87) || keyIsDown(UP_ARROW) || keyIsDown(32);\n  \n  // Apply horizontal acceleration\n  if (moveLeft) {\n    self.vx = -self.speed;\n  } else if (moveRight) {\n    self.vx = self.speed;\n  } else {\n    self.vx = self.vx * 0.8; // Friction\n    if (Math.abs(self.vx) < 1) self.vx = 0;\n  }\n  \n  // Jump\n  if (jump && self.grounded) {\n    self.vy = self.jumpForce;\n    self.grounded = false;\n  }\n  \n  // Apply gravity\n  self.vy = self.vy + self.gravity * dt;\n  \n  // Move and check collision\n  var newX = self.x + self.vx * dt;\n  var newY = self.y + self.vy * dt;\n  \n  // World bounds\n  if (newX < 0) { newX = 0; self.vx = 0; }\n  if (newX + self.width > self.worldWidth) { newX = self.worldWidth - self.width; self.vx = 0; }\n  \n  // Ground collision (simple - just check ground level)\n  if (newY >= self.groundY - self.height) {\n    newY = self.groundY - self.height;\n    self.vy = 0;\n    self.grounded = true;\n  } else {\n    self.grounded = false;\n  }\n  \n  // Death (fall off screen)\n  if (newY > self.worldHeight) {\n    // Reset position\n    newX = 64;\n    newY = 200;\n    self.vx = 0;\n    self.vy = 0;\n    self.score = 0;\n  }\n  \n  // Coin collection\n  var coins = engine.gameObjects.filter(function(o) { return o.type === 'coin'; });\n  for (var i = 0; i < coins.length; i++) {\n    var coin = coins[i];\n    if (coin.active !== false && rectsOverlap(self.x, self.y, self.width, self.height, coin.x, coin.y, coin.width, coin.height)) {\n      coin.active = false;\n      coin.x = -100;\n      coin.y = -100;\n      self.score = (self.score || 0) + 10;\n    }\n  }\n  \n  self.x = newX;\n  self.y = newY;\n}\n\nfunction rectsOverlap(x1, y1, w1, h1, x2, y2, w2, h2) {\n  return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;\n}\n"
+      "source": "function onInit(self, engine) {\n  // Physics properties\n  self.vx = 0;\n  self.vy = 0;\n  self.speed = 200;\n  self.jumpForce = -350;\n  self.gravity = 800;\n  self.grounded = false;\n  \n  self.cellSize = 32;\n  self.groundY = 11 * self.cellSize; // Row 11 is ground\n  \n  // Score\n  self.score = 0;\n}\n\nfunction onUpdate(self, engine, dt) {\n  // Horizontal movement\n  var moveLeft = keyIsDown(65) || keyIsDown(LEFT_ARROW);\n  var moveRight = keyIsDown(68) || keyIsDown(RIGHT_ARROW);\n  var jump = keyIsDown(87) || keyIsDown(UP_ARROW) || keyIsDown(32);\n  \n  // Apply horizontal acceleration\n  if (moveLeft) {\n    self.vx = -self.speed;\n  } else if (moveRight) {\n    self.vx = self.speed;\n  } else {\n    self.vx = self.vx * 0.8; // Friction\n    if (Math.abs(self.vx) < 1) self.vx = 0;\n  }\n  \n  // Jump\n  if (jump && self.grounded) {\n    self.vy = self.jumpForce;\n    self.grounded = false;\n  }\n  \n  // Apply gravity\n  self.vy = self.vy + self.gravity * dt;\n  \n  // Move and check collision\n  var newX = self.x + self.vx * dt;\n  var newY = self.y + self.vy * dt;\n  \n\n\n  \n  // Coin collection\n  var coins = engine.gameObjects.filter(function(o) { return o.type === 'coin'; });\n  for (var i = 0; i < coins.length; i++) {\n    var coin = coins[i];\n    if (coin.active !== false && rectsOverlap(self.x, self.y, self.width, self.height, coin.x, coin.y, coin.width, coin.height)) {\n      coin.active = false;\n      coin.x = -100;\n      coin.y = -100;\n      self.score = (self.score || 0) + 10;\n    }\n  }\n  \n  self.x = newX;\n  self.y = newY;\n}\n\nfunction rectsOverlap(x1, y1, w1, h1, x2, y2, w2, h2) {\n  return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;\n}\n"
     },
     {
       "id": "script_coin",
@@ -1418,14 +1418,14 @@
           "id": "obj_coin",
           "name": "Coin",
           "type": "coin",
-          "x": 350,
-          "y": 300,
+          "x": 306,
+          "y": 222,
           "components": {
             "Transform": {
-              "x": 350,
-              "y": 300,
-              "rotation": 0,
-              "scaleX": 1,
+              "x": 306,
+              "y": 222,
+              "rotation": -116.06027814092486,
+              "scaleX": 2.0337337139367335,
               "scaleY": 1
             },
             "Sprite": {

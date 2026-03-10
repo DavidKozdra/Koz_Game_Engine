@@ -4,6 +4,10 @@
     module.exports = api;
   }
 })(typeof globalThis !== "undefined" ? globalThis : this, function createGameRuntimeApi() {
+  function clone(value) {
+    if (value === undefined) return undefined;
+    return JSON.parse(JSON.stringify(value));
+  }
 
   /**
    * Creates a game runtime that loads and runs a project.
@@ -16,6 +20,7 @@
     const adapters = opts.adapters;
 
     let project = null;
+    let activeScene = null;
     let worldSpace = null;
     let gameObjects = [];
     let scripts = {};
@@ -28,7 +33,14 @@
 
     function loadProject(projectData) {
       clearActiveCssStyles();
-      project = projectData;
+      project = clone(projectData || {});
+      activeScene = resolveActiveScene(project);
+      if (activeScene) {
+        if (!Array.isArray(project.scenes) || project.scenes.length === 0) project.scenes = [activeScene];
+        project.activeSceneId = activeScene.id;
+        project.world = activeScene.world;
+        project.objects = activeScene.objects;
+      }
       worldSpace = adapters.projectToWorldSpace(createWorldSpace, project.world);
       gameObjects = adapters.projectToGameObjects(GameObjectCtor, project.objects);
       animationClips = project.animations || [];
@@ -207,6 +219,9 @@
         worldSpace: worldSpace,
         gameObjects: gameObjects,
         elapsed: elapsed,
+        scene: activeScene,
+        sceneId: activeScene ? activeScene.id : (project && project.activeSceneId) || null,
+        sceneName: activeScene ? activeScene.name : null,
         audio: audioService ? audioService.api : null,
         findObject: function findObject(id) {
           return gameObjects.find(function byId(o) { return o.id === id; }) || null;
@@ -215,6 +230,25 @@
           return gameObjects.filter(function byType(o) { return o.type === type; });
         },
       };
+    }
+
+    function resolveActiveScene(projectData) {
+      if (adapters && typeof adapters.resolveActiveScene === "function") {
+        return adapters.resolveActiveScene(projectData);
+      }
+      if (!projectData || typeof projectData !== "object") return null;
+      const scenes = Array.isArray(projectData.scenes) ? projectData.scenes : [];
+      if (scenes.length === 0) {
+        return {
+          id: projectData.activeSceneId || "scene_main",
+          name: "Main Scene",
+          world: projectData.world || { cols: 30, rows: 20, defaultCell: null, grid: [], elements: [], meta: {} },
+          objects: Array.isArray(projectData.objects) ? projectData.objects : [],
+        };
+      }
+      return scenes.find(function byId(scene) {
+        return scene && scene.id === projectData.activeSceneId;
+      }) || scenes[0];
     }
 
     function createRuntimeAudioService(assets, objects) {
@@ -355,6 +389,8 @@
       update: update,
       stop: stop,
       get project() { return project; },
+      get activeScene() { return activeScene; },
+      get activeSceneId() { return activeScene ? activeScene.id : null; },
       get worldSpace() { return worldSpace; },
       get gameObjects() { return gameObjects; },
       get running() { return running; },

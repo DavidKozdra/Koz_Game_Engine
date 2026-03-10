@@ -4,6 +4,38 @@
     module.exports = api;
   }
 })(typeof globalThis !== "undefined" ? globalThis : this, function createProjectAdaptersApi() {
+  const DEFAULT_SCENE_ID = "scene_main";
+
+  function createFallbackScene(project) {
+    const source = project && typeof project === "object" ? project : {};
+    return {
+      id: source.activeSceneId || DEFAULT_SCENE_ID,
+      name: "Main Scene",
+      world: source.world && typeof source.world === "object" ? source.world : { cols: 30, rows: 20, defaultCell: null, grid: [], elements: [], meta: {} },
+      objects: Array.isArray(source.objects) ? source.objects : [],
+    };
+  }
+
+  function resolveActiveScene(project) {
+    if (!project || typeof project !== "object") return null;
+    const scenes = Array.isArray(project.scenes) ? project.scenes : [];
+    if (scenes.length === 0) return createFallbackScene(project);
+    return scenes.find(function byId(scene) {
+      return scene && scene.id === project.activeSceneId;
+    }) || scenes[0];
+  }
+
+  function getActiveWorldData(project) {
+    const scene = resolveActiveScene(project);
+    if (scene && scene.world && typeof scene.world === "object") return scene.world;
+    return project && project.world && typeof project.world === "object" ? project.world : { cols: 30, rows: 20, defaultCell: null, grid: [], elements: [], meta: {} };
+  }
+
+  function getActiveObjects(project) {
+    const scene = resolveActiveScene(project);
+    if (scene && Array.isArray(scene.objects)) return scene.objects;
+    return project && Array.isArray(project.objects) ? project.objects : [];
+  }
 
   /**
    * Convert a worldSpace instance to the project.world format.
@@ -21,14 +53,15 @@
    * @returns {Object} A live worldSpace instance
    */
   function projectToWorldSpace(createWorldSpace, worldData) {
+    const source = worldData && typeof worldData === "object" ? worldData : { cols: 30, rows: 20, defaultCell: null, grid: [], elements: [], meta: {} };
     const ws = createWorldSpace({
-      cols: worldData.cols,
-      rows: worldData.rows,
-      offsetX: worldData.offsetX || 0,
-      offsetY: worldData.offsetY || 0,
-      defaultCell: worldData.defaultCell,
+      cols: source.cols,
+      rows: source.rows,
+      offsetX: source.offsetX || 0,
+      offsetY: source.offsetY || 0,
+      defaultCell: source.defaultCell,
     });
-    ws.replaceState(worldData);
+    ws.replaceState(source);
     return ws;
   }
 
@@ -90,6 +123,9 @@
 
   return {
     worldSpaceToProject: worldSpaceToProject,
+    resolveActiveScene: resolveActiveScene,
+    getActiveWorldData: getActiveWorldData,
+    getActiveObjects: getActiveObjects,
     projectToWorldSpace: projectToWorldSpace,
     projectToGameObjects: projectToGameObjects,
     gameObjectToProject: gameObjectToProject,

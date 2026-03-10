@@ -6,9 +6,101 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createProjectSchemaApi() {
 
   const CURRENT_VERSION = 1;
+  const DEFAULT_SCENE_ID = "scene_main";
+
+  function deepClone(value) {
+    if (value === undefined) return undefined;
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function createDefaultWorld(cols, rows, defaultCell) {
+    const safeCols = cols || 30;
+    const safeRows = rows || 20;
+    return {
+      cols: safeCols,
+      rows: safeRows,
+      defaultCell: defaultCell !== undefined ? defaultCell : null,
+      grid: createDefaultGrid(safeCols, safeRows, defaultCell !== undefined ? defaultCell : null),
+      elements: [],
+      meta: {},
+    };
+  }
+
+  function createScene(id, name, world, objects) {
+    return {
+      id: id || DEFAULT_SCENE_ID,
+      name: name || "Main Scene",
+      world: world || createDefaultWorld(30, 20, null),
+      objects: Array.isArray(objects) ? objects : [],
+    };
+  }
+
+  function normalizeScene(scene, index, fallbackWorld, fallbackObjects) {
+    const source = scene && typeof scene === "object" ? scene : {};
+    return {
+      ...deepClone(source),
+      id: source.id || (index === 0 ? DEFAULT_SCENE_ID : "scene_" + index),
+      name: source.name || (index === 0 ? "Main Scene" : "Scene " + (index + 1)),
+      world: source.world && typeof source.world === "object"
+        ? source.world
+        : (fallbackWorld && typeof fallbackWorld === "object" ? fallbackWorld : createDefaultWorld(30, 20, null)),
+      objects: Array.isArray(source.objects)
+        ? source.objects
+        : (Array.isArray(fallbackObjects) ? fallbackObjects : []),
+    };
+  }
+
+  function normalizeProjectScenes(project) {
+    const source = project && typeof project === "object" ? project : {};
+    const fallbackWorld = source.world && typeof source.world === "object"
+      ? source.world
+      : createDefaultWorld(30, 20, null);
+    const fallbackObjects = Array.isArray(source.objects) ? source.objects : [];
+    let scenes = [];
+
+    if (Array.isArray(source.scenes) && source.scenes.length > 0) {
+      scenes = source.scenes.map(function mapScene(scene, index) {
+        return normalizeScene(scene, index, fallbackWorld, fallbackObjects);
+      });
+    } else {
+      scenes = [
+        createScene(source.activeSceneId || DEFAULT_SCENE_ID, "Main Scene", fallbackWorld, fallbackObjects),
+      ];
+    }
+
+    const activeScene = scenes.find(function findScene(scene) {
+      return scene && scene.id === source.activeSceneId;
+    }) || scenes[0];
+
+    source.scenes = scenes;
+    source.activeSceneId = activeScene ? activeScene.id : DEFAULT_SCENE_ID;
+    source.world = activeScene ? activeScene.world : fallbackWorld;
+    source.objects = activeScene ? activeScene.objects : fallbackObjects;
+
+    return source;
+  }
+
+  function validateWorld(world, prefix, errors) {
+    if (!world || typeof world !== "object") {
+      errors.push(prefix + " must be an object");
+      return;
+    }
+    if (typeof world.cols !== "number" || world.cols < 1) {
+      errors.push(prefix + ".cols must be a positive number");
+    }
+    if (typeof world.rows !== "number" || world.rows < 1) {
+      errors.push(prefix + ".rows must be a positive number");
+    }
+    if (!Array.isArray(world.grid)) {
+      errors.push(prefix + ".grid must be an array");
+    }
+  }
 
   function createDefaultProject(options) {
     const opts = options || {};
+    const defaultWorld = createDefaultWorld(opts.cols || 30, opts.rows || 20, opts.defaultCell);
+    const defaultObjects = [];
+    const defaultScene = createScene(opts.sceneId || DEFAULT_SCENE_ID, opts.sceneName || "Main Scene", defaultWorld, defaultObjects);
     return {
       schemaVersion: CURRENT_VERSION,
       meta: {
@@ -17,15 +109,10 @@
         resolution: { width: opts.width || 960, height: opts.height || 540 },
         engineVersion: "0.1.0",
       },
-      world: {
-        cols: opts.cols || 30,
-        rows: opts.rows || 20,
-        defaultCell: opts.defaultCell !== undefined ? opts.defaultCell : null,
-        grid: createDefaultGrid(opts.cols || 30, opts.rows || 20, opts.defaultCell !== undefined ? opts.defaultCell : null),
-        elements: [],
-        meta: {},
-      },
-      objects: [],
+      world: defaultWorld,
+      objects: defaultObjects,
+      scenes: [defaultScene],
+      activeSceneId: defaultScene.id,
       animations: [],
       scripts: [],
       assets: [],
@@ -75,19 +162,35 @@
         errors.push("meta.resolution.height must be a number");
       }
     }
-    if (!project.world || typeof project.world !== "object") {
-      errors.push("world is required and must be an object");
+
+    validateWorld(project.world, "world", errors);
+
+    if (!Array.isArray(project.scenes) || project.scenes.length === 0) {
+      errors.push("scenes must be a non-empty array");
     } else {
-      if (typeof project.world.cols !== "number" || project.world.cols < 1) {
-        errors.push("world.cols must be a positive number");
-      }
-      if (typeof project.world.rows !== "number" || project.world.rows < 1) {
-        errors.push("world.rows must be a positive number");
-      }
-      if (!Array.isArray(project.world.grid)) {
-        errors.push("world.grid must be an array");
+      project.scenes.forEach(function validateScene(scene, index) {
+        if (!scene || typeof scene !== "object") {
+          errors.push("scenes[" + index + "] must be an object");
+          return;
+        }
+        if (typeof scene.id !== "string" || !scene.id) {
+          errors.push("scenes[" + index + "].id must be a non-empty string");
+        }
+        if (typeof scene.name !== "string" || !scene.name) {
+          errors.push("scenes[" + index + "].name must be a non-empty string");
+        }
+        validateWorld(scene.world, "scenes[" + index + "].world", errors);
+        if (!Array.isArray(scene.objects)) {
+          errors.push("scenes[" + index + "].objects must be an array");
+        }
+      });
+      if (typeof project.activeSceneId !== "string" || !project.activeSceneId) {
+        errors.push("activeSceneId must be a non-empty string");
+      } else if (!project.scenes.some(function hasActiveScene(scene) { return scene && scene.id === project.activeSceneId; })) {
+        errors.push("activeSceneId must reference an existing scene");
       }
     }
+
     if (!Array.isArray(project.objects)) errors.push("objects must be an array");
     if (!Array.isArray(project.animations)) errors.push("animations must be an array");
     if (!Array.isArray(project.scripts)) errors.push("scripts must be an array");
@@ -103,7 +206,7 @@
       return createDefaultProject();
     }
     if (data.schemaVersion === CURRENT_VERSION) {
-      return JSON.parse(JSON.stringify(data));
+      return normalizeProjectScenes(deepClone(data));
     }
 
     // Wrap legacy or missing-version data into v1
@@ -113,7 +216,7 @@
 
     // Preserve world data if it looks like serialized worldSpace
     if (data.world && typeof data.world.cols === "number") {
-      project.world = JSON.parse(JSON.stringify(data.world));
+      project.world = deepClone(data.world);
     } else if (data.cols && data.grid) {
       // Raw worldSpace serialization at top level
       project.world = {
@@ -126,20 +229,26 @@
       };
     }
 
-    if (Array.isArray(data.objects)) project.objects = data.objects;
-    if (Array.isArray(data.animations)) project.animations = data.animations;
-    if (Array.isArray(data.scripts)) project.scripts = data.scripts;
-    if (Array.isArray(data.assets)) project.assets = data.assets;
-    if (data.build && typeof data.build === "object") project.build = data.build;
+    if (typeof data.activeSceneId === "string" && data.activeSceneId) project.activeSceneId = data.activeSceneId;
+    if (Array.isArray(data.objects)) project.objects = deepClone(data.objects);
+    if (Array.isArray(data.scenes) && data.scenes.length > 0) {
+      project.scenes = deepClone(data.scenes);
+    } else {
+      project.scenes = [createScene(project.activeSceneId || DEFAULT_SCENE_ID, "Main Scene", project.world, project.objects)];
+    }
+    if (Array.isArray(data.animations)) project.animations = deepClone(data.animations);
+    if (Array.isArray(data.scripts)) project.scripts = deepClone(data.scripts);
+    if (Array.isArray(data.assets)) project.assets = deepClone(data.assets);
+    if (data.build && typeof data.build === "object") project.build = deepClone(data.build);
     if (data.settings && typeof data.settings === "object") {
       project.settings = {
         ...project.settings,
-        ...data.settings,
+        ...deepClone(data.settings),
       };
     }
 
     project.schemaVersion = CURRENT_VERSION;
-    return project;
+    return normalizeProjectScenes(project);
   }
 
   // Generate a unique ID for objects, scripts, animations
@@ -224,6 +333,7 @@
     createDefaultProject: createDefaultProject,
     validate: validate,
     migrate: migrate,
+    createScene: createScene,
     generateId: generateId,
     createGameObject: createGameObject,
     createScript: createScript,
