@@ -14,6 +14,8 @@ const PLAY_RENDER_MODE_WEBGL_3D = 'webgl-3d';
 export function usePlayMode(project, onLog) {
   const stateRef = useRef(null);
   const canvasRef = useRef(null);
+  const canvas2dRef = useRef(null);
+  const canvas3dRef = useRef(null);
   const uiRootRef = useRef(null);
   const rafRef = useRef(null);
   const keysRef = useRef(new Set());
@@ -23,9 +25,28 @@ export function usePlayMode(project, onLog) {
     prevKozUIManager: undefined,
     hasUiManager: false,
     prevUiManager: undefined,
+    hasSceneManager: false,
+    prevSceneManager: undefined,
   });
 
   const isPlaying = stateRef.current !== null && stateRef.current.running;
+
+  const syncCanvasMode = useCallback((renderMode) => {
+    const use3d = renderMode === PLAY_RENDER_MODE_WEBGL_3D;
+    const canvas2d = canvas2dRef.current;
+    const canvas3d = canvas3dRef.current;
+    if (canvas2d) {
+      canvas2d.style.display = use3d ? 'none' : 'block';
+      canvas2d.dataset.kozPlayCanvas = '2d';
+      canvas2d.dataset.kozPlayActive = use3d ? 'false' : 'true';
+    }
+    if (canvas3d) {
+      canvas3d.style.display = use3d ? 'block' : 'none';
+      canvas3d.dataset.kozPlayCanvas = '3d';
+      canvas3d.dataset.kozPlayActive = use3d ? 'true' : 'false';
+    }
+    canvasRef.current = use3d ? (canvas3d || canvas2d) : (canvas2d || canvas3d);
+  }, []);
 
   const start = useCallback(() => {
     if (!project) return;
@@ -33,34 +54,9 @@ export function usePlayMode(project, onLog) {
     // Deep clone project as runtime snapshot (isolate from editor)
     const snapshot = JSON.parse(JSON.stringify(project));
 
-    const gameObjects = [];
     const scripts = {};
-    const scriptInstances = [];
     const cssStyleElements = new Map();
     const animClips = snapshot.animations || [];
-
-    // Load objects
-    (snapshot.objects || []).forEach(obj => {
-      const t = (obj.components && obj.components.Transform) || {};
-      const tx = Number.isFinite(t.x) ? t.x : (Number.isFinite(obj.x) ? obj.x : 0);
-      const ty = Number.isFinite(t.y) ? t.y : (Number.isFinite(obj.y) ? obj.y : 0);
-      const tro = Number.isFinite(t.rotation) ? t.rotation : 0;
-      const tsx = Number.isFinite(t.scaleX) ? t.scaleX : 1;
-      const tsy = Number.isFinite(t.scaleY) ? t.scaleY : 1;
-      const sw = (obj.components && obj.components.Sprite && obj.components.Sprite.width) || 32;
-      const sh = (obj.components && obj.components.Sprite && obj.components.Sprite.height) || 32;
-      gameObjects.push({
-        id: obj.id, name: obj.name, type: obj.type,
-        x: tx, y: ty,
-        rotation: tro,
-        scaleX: tsx,
-        scaleY: tsy,
-        width: sw * tsx,
-        height: sh * tsy,
-        color: (obj.components && obj.components.Sprite && obj.components.Sprite.color) || '#4ade80',
-        components: obj.components || {},
-      });
-    });
 
     // Index scripts
     (snapshot.scripts || []).forEach(s => { scripts[s.id] = s; });
@@ -87,63 +83,62 @@ export function usePlayMode(project, onLog) {
       target.appendChild(styleNode);
       cssStyleElements.set(script.id, styleNode);
     };
-
-    // Bind scripts to objects (supports multiple bindings per object)
-    gameObjects.forEach(obj => {
-      const bindings = obj.components.ScriptBindings || [];
-      // Legacy single binding support
-      const legacy = obj.components.ScriptBinding;
-      if (legacy && legacy.scriptId) bindings.push({ scriptId: legacy.scriptId, active: true, properties: {} });
-
-      bindings.forEach(binding => {
-        if (!binding.active || !binding.scriptId || !scripts[binding.scriptId]) return;
-        try {
-          const src = scripts[binding.scriptId].source;
-          const language = scripts[binding.scriptId].language || 'javascript';
-          if (language === 'css') {
-            applyCssScript(scripts[binding.scriptId]);
-            return;
-          }
-          const enabled = language === 'javascript' || !!(scriptingConfig.engines && scriptingConfig.engines[language]);
-          if (!enabled || language !== 'javascript') {
-            onLog({ type: 'warn', message: `Script "${scripts[binding.scriptId].name}" skipped (${language} runtime unavailable in play mode).`, time: new Date().toLocaleTimeString() });
-            return;
-          }
-          const factory = new Function('return (function(self, props, console, keyIsDown, LEFT_ARROW, RIGHT_ARROW, UP_ARROW, DOWN_ARROW, SPACE) { ' + src + ' return { onInit: typeof onInit==="function"?onInit:null, onUpdate: typeof onUpdate==="function"?onUpdate:null }; })')();
-          const props = binding.properties ? JSON.parse(JSON.stringify(binding.properties)) : {};
-          const hooks = factory(obj, props, sandboxConsole, (code) => keysRef.current.has(code), 37, 39, 38, 40, 32);
-          scriptInstances.push({ obj, hooks, props });
-        } catch (e) {
-          onLog({ type: 'error', message: `Script compile error: ${e.message}`, time: new Date().toLocaleTimeString() });
-        }
+    const buildRuntimeObject = (obj) => {
+      const t = (obj.components && obj.components.Transform) || {};
+      const tx = Number.isFinite(t.x) ? t.x : (Number.isFinite(obj.x) ? obj.x : 0);
+      const ty = Number.isFinite(t.y) ? t.y : (Number.isFinite(obj.y) ? obj.y : 0);
+      const tro = Number.isFinite(t.rotation) ? t.rotation : 0;
+      const tsx = Number.isFinite(t.scaleX) ? t.scaleX : 1;
+      const tsy = Number.isFinite(t.scaleY) ? t.scaleY : 1;
+      const sw = (obj.components && obj.components.Sprite && obj.components.Sprite.width) || 32;
+      const sh = (obj.components && obj.components.Sprite && obj.components.Sprite.height) || 32;
+      return {
+        id: obj.id, name: obj.name, type: obj.type,
+        x: tx, y: ty,
+        rotation: tro,
+        scaleX: tsx,
+        scaleY: tsy,
+        width: sw * tsx,
+        height: sh * tsy,
+        color: (obj.components && obj.components.Sprite && obj.components.Sprite.color) || '#4ade80',
+        components: obj.components || {},
+      };
+    };
+    const clearSceneCss = () => {
+      cssStyleElements.forEach((node) => {
+        if (node && node.parentNode) node.parentNode.removeChild(node);
       });
-    });
-
-    gameObjects.forEach((obj) => {
-      const sprite = (obj.components && obj.components.Sprite) || {};
-      const ids = [];
-      if (sprite.assetId) ids.push(sprite.assetId);
-      if (Array.isArray(sprite.frameAssetIds)) ids.push(...sprite.frameAssetIds);
-      ids.forEach((id) => {
-        if (!id || warnedMissingAssets.has(id)) return;
-        const asset = assetById.get(id);
-        if (!asset) {
-          warnedMissingAssets.add(id);
-          onLog({ type: 'warn', message: `Missing sprite asset: ${id}`, time: new Date().toLocaleTimeString() });
-        }
+      cssStyleElements.clear();
+    };
+    const warnMissingSpriteAssets = (objects) => {
+      (objects || []).forEach((obj) => {
+        const sprite = (obj.components && obj.components.Sprite) || {};
+        const ids = [];
+        if (sprite.assetId) ids.push(sprite.assetId);
+        if (Array.isArray(sprite.frameAssetIds)) ids.push(...sprite.frameAssetIds);
+        ids.forEach((id) => {
+          if (!id || warnedMissingAssets.has(id)) return;
+          const asset = assetById.get(id);
+          if (!asset) {
+            warnedMissingAssets.add(id);
+            onLog({ type: 'warn', message: `Missing sprite asset: ${id}`, time: new Date().toLocaleTimeString() });
+          }
+        });
       });
-    });
+    };
 
     const state = {
       running: true,
       elapsed: 0,
       projectSnapshot: snapshot,
       activeSceneId: snapshot.activeSceneId || (((snapshot.scenes || [])[0] || {}).id) || 'scene_main',
-      renderMode: resolvePlayRenderMode(snapshot),
+      scene: null,
+      pendingSceneId: null,
+      renderMode: resolvePlayRenderMode(snapshot, snapshot.activeSceneId),
       world: snapshot.world,
-      gameObjects,
+      gameObjects: [],
       assetById,
-      scriptInstances,
+      scriptInstances: [],
       animClips,
       keys: keysRef.current,
       cameraConfig: snapshot.camera || {},
@@ -154,12 +149,7 @@ export function usePlayMode(project, onLog) {
     };
     state.render3D = createInitialPlay3DState(state);
     stateRef.current = state;
-    state.audioSystem = createPlayAudioSystem({
-      assetById,
-      gameObjects,
-      onLog,
-      getNow: () => new Date().toLocaleTimeString(),
-    });
+    syncCanvasMode(state.renderMode);
 
     const uiManager = createKozUIManager({
       rootRef: uiRootRef,
@@ -180,67 +170,197 @@ export function usePlayMode(project, onLog) {
       prevKozUIManager: window.KozUIManager,
       hasUiManager: Object.prototype.hasOwnProperty.call(window, 'uiManager'),
       prevUiManager: window.uiManager,
+      hasSceneManager: Object.prototype.hasOwnProperty.call(window, 'sceneManager'),
+      prevSceneManager: window.sceneManager,
     };
     window.KozUIManager = uiManager;
     window.uiManager = uiManager;
     const renderer3d = createPlay3DController({ stateRef, canvasRef });
     state.renderer3dController = renderer3d;
-    const initialWorldMetrics = resolveWorldMetrics(state.world, CELL_SIZE);
+    const createEngineForState = (runtimeState) => {
+      const engine = {
+        gameObjects: runtimeState.gameObjects,
+        elapsed: runtimeState.elapsed,
+        sceneId: runtimeState.activeSceneId,
+        uiManager: runtimeState.uiManager || null,
+        audio: runtimeState.audioSystem ? runtimeState.audioSystem.api : null,
+        renderer3d: runtimeState.renderer3dController || null,
+        sceneManager: runtimeState.sceneManager || null,
+        findObject: (id) => runtimeState.gameObjects.find((o) => o.id === id) || null,
+        findObjectsByType: (type) => runtimeState.gameObjects.filter((o) => o.type === type),
+        keyIsDown: (code) => keysRef.current.has(code),
+        viewport: {
+          width: canvasRef.current ? canvasRef.current.width : 960,
+          height: canvasRef.current ? canvasRef.current.height : 540,
+        },
+      };
+      const worldMetrics = resolveWorldMetrics(runtimeState.world, CELL_SIZE);
+      if (worldMetrics) engine.world = createPlayWorldApi(runtimeState.projectSnapshot || {}, runtimeState, worldMetrics);
+      return engine;
+    };
+    const updateSceneManagerState = (runtimeState) => {
+      if (!runtimeState || !runtimeState.sceneManager) return;
+      runtimeState.sceneManager.activeSceneId = runtimeState.activeSceneId;
+      runtimeState.sceneManager.currentSceneId = runtimeState.activeSceneId;
+      runtimeState.sceneManager.activeScene = runtimeState.scene
+        ? { id: runtimeState.scene.id, name: runtimeState.scene.name, renderMode: runtimeState.renderMode }
+        : null;
+    };
+    const hydrateScene = (runtimeState, sceneId, runInit = true) => {
+      if (!runtimeState || !runtimeState.projectSnapshot) return false;
+      const scenes = Array.isArray(runtimeState.projectSnapshot.scenes) ? runtimeState.projectSnapshot.scenes : [];
+      const nextScene = scenes.find((entry) => entry && entry.id === sceneId) || scenes[0] || {
+        id: sceneId || runtimeState.activeSceneId || 'scene_main',
+        name: 'Main Scene',
+        renderMode: resolvePlayRenderMode(runtimeState.projectSnapshot, sceneId),
+        world: runtimeState.projectSnapshot.world || {},
+        objects: runtimeState.projectSnapshot.objects || [],
+      };
 
-    // Engine API for scripts
-    const engine = {
-      gameObjects,
-      elapsed: 0,
-      sceneId: state.activeSceneId,
-      uiManager,
-      audio: state.audioSystem.api,
-      renderer3d,
-      findObject: (id) => gameObjects.find(o => o.id === id) || null,
-      findObjectsByType: (type) => gameObjects.filter(o => o.type === type),
-      keyIsDown: (code) => keysRef.current.has(code),
-      viewport: {
-        width: canvasRef.current ? canvasRef.current.width : 960,
-        height: canvasRef.current ? canvasRef.current.height : 540,
+      runtimeState.activeSceneId = nextScene.id;
+      runtimeState.scene = nextScene;
+      runtimeState.projectSnapshot.activeSceneId = nextScene.id;
+      runtimeState.projectSnapshot.world = nextScene.world || runtimeState.projectSnapshot.world;
+      runtimeState.projectSnapshot.objects = nextScene.objects || runtimeState.projectSnapshot.objects;
+      runtimeState.world = JSON.parse(JSON.stringify(nextScene.world || runtimeState.projectSnapshot.world || {}));
+      runtimeState.gameObjects.splice(0, runtimeState.gameObjects.length, ...((nextScene.objects || runtimeState.projectSnapshot.objects || []).map(buildRuntimeObject)));
+      runtimeState.scriptInstances = [];
+      runtimeState.pendingSceneId = null;
+      if (runtimeState.audioSystem && runtimeState.audioSystem.api) runtimeState.audioSystem.api.stopAll();
+      clearSceneCss();
+      if (runtimeState.uiManager && typeof runtimeState.uiManager.clear === 'function') runtimeState.uiManager.clear();
+      if (runtimeState.render3D && runtimeState.render3D.runtime) destroyPlayWebGLRuntime(runtimeState.render3D.runtime);
+      runtimeState.renderMode = resolvePlayRenderMode(runtimeState.projectSnapshot, nextScene.id);
+      runtimeState.render3D = createInitialPlay3DState(runtimeState);
+      syncCanvasMode(runtimeState.renderMode);
+
+      runtimeState.gameObjects.forEach((obj) => {
+        const bindings = obj.components.ScriptBindings || [];
+        const legacy = obj.components.ScriptBinding;
+        if (legacy && legacy.scriptId) bindings.push({ scriptId: legacy.scriptId, active: true, properties: {} });
+
+        bindings.forEach((binding) => {
+          if (!binding.active || !binding.scriptId || !scripts[binding.scriptId]) return;
+          try {
+            const src = scripts[binding.scriptId].source;
+            const language = scripts[binding.scriptId].language || 'javascript';
+            if (language === 'css') {
+              applyCssScript(scripts[binding.scriptId]);
+              return;
+            }
+            const enabled = language === 'javascript' || !!(scriptingConfig.engines && scriptingConfig.engines[language]);
+            if (!enabled || language !== 'javascript') {
+              onLog({ type: 'warn', message: `Script "${scripts[binding.scriptId].name}" skipped (${language} runtime unavailable in play mode).`, time: new Date().toLocaleTimeString() });
+              return;
+            }
+            const factory = new Function('return (function(self, props, console, keyIsDown, LEFT_ARROW, RIGHT_ARROW, UP_ARROW, DOWN_ARROW, SPACE) { ' + src + ' return { onInit: typeof onInit==="function"?onInit:null, onUpdate: typeof onUpdate==="function"?onUpdate:null }; })')();
+            const props = binding.properties ? JSON.parse(JSON.stringify(binding.properties)) : {};
+            const hooks = factory(obj, props, sandboxConsole, (code) => keysRef.current.has(code), 37, 39, 38, 40, 32);
+            runtimeState.scriptInstances.push({ obj, hooks, props });
+          } catch (e) {
+            onLog({ type: 'error', message: `Script compile error: ${e.message}`, time: new Date().toLocaleTimeString() });
+          }
+        });
+      });
+
+      warnMissingSpriteAssets(runtimeState.gameObjects);
+      const baseCellLayer = ((((runtimeState.projectSnapshot || {}).layers || {}).cells || [])
+        .filter((layer) => layer.visible !== false)
+        .sort((a, b) => (a.order || 0) - (b.order || 0))[0] || { id: null }).id;
+      runtimeState.worldSparse = buildWorldSparseIndex(runtimeState.world, (cell) => {
+        if (normalizeCellTypeId(cell) === 'empty') return null;
+        const type = getCellType(runtimeState.projectSnapshot, cell);
+        return { type, layerId: type.layerId || baseCellLayer };
+      });
+      const initialCamera = resolvePlayCamera(runtimeState);
+      const initialView = resolveDesiredView(
+        runtimeState,
+        initialCamera,
+        0,
+        true,
+        canvasRef.current ? canvasRef.current.width : 960,
+        canvasRef.current ? canvasRef.current.height : 540,
+      );
+      runtimeState.viewX = initialView.x;
+      runtimeState.viewY = initialView.y;
+      updateSceneManagerState(runtimeState);
+
+      if (runInit) {
+        const engine = createEngineForState(runtimeState);
+        runtimeState.scriptInstances.forEach((inst) => {
+          if (!inst.hooks.onInit) return;
+          try { inst.hooks.onInit(inst.obj, engine); }
+          catch (e) { onLog({ type: 'error', message: `onInit error: ${e.message}`, time: new Date().toLocaleTimeString() }); }
+        });
+        if (runtimeState.audioSystem) runtimeState.audioSystem.autoplayFromComponents();
+      }
+      return true;
+    };
+    state.createEngine = () => createEngineForState(stateRef.current || state);
+    state.hydrateScene = (sceneId, runInit = true) => hydrateScene(stateRef.current || state, sceneId, runInit);
+    state.syncSceneManager = () => updateSceneManagerState(stateRef.current || state);
+    state.audioSystem = createPlayAudioSystem({
+      assetById,
+      gameObjects: state.gameObjects,
+      onLog,
+      getNow: () => new Date().toLocaleTimeString(),
+    });
+    const queueSceneOffset = (offset) => {
+      const runtimeState = stateRef.current;
+      if (!runtimeState || !runtimeState.running) return false;
+      const scenes = Array.isArray(runtimeState.projectSnapshot && runtimeState.projectSnapshot.scenes)
+        ? runtimeState.projectSnapshot.scenes.filter(Boolean)
+        : [];
+      if (!scenes.length) return false;
+      const currentIndex = Math.max(0, scenes.findIndex((scene) => scene.id === runtimeState.activeSceneId));
+      const nextIndex = currentIndex + offset;
+      if (nextIndex < 0 || nextIndex >= scenes.length) return false;
+      const nextScene = scenes[nextIndex];
+      if (!nextScene || !nextScene.id) return false;
+      runtimeState.pendingSceneId = nextScene.id;
+      return true;
+    };
+    state.sceneManager = {
+      activeSceneId: state.activeSceneId,
+      currentSceneId: state.activeSceneId,
+      activeScene: null,
+      getActiveScene() {
+        const runtimeState = stateRef.current;
+        return runtimeState && runtimeState.scene
+          ? { id: runtimeState.scene.id, name: runtimeState.scene.name, renderMode: runtimeState.renderMode }
+          : null;
+      },
+      loadScene(sceneId) {
+        const runtimeState = stateRef.current;
+        if (!runtimeState || !runtimeState.running || !sceneId) return false;
+        runtimeState.pendingSceneId = sceneId;
+        return true;
+      },
+      loadSceneOffset(offset = 0) {
+        if (!Number.isFinite(offset) || offset === 0) return false;
+        return queueSceneOffset(Math.trunc(offset));
+      },
+      loadNextScene() {
+        return queueSceneOffset(1);
+      },
+      loadPreviousScene() {
+        return queueSceneOffset(-1);
+      },
+      reloadScene() {
+        const runtimeState = stateRef.current;
+        if (!runtimeState || !runtimeState.running) return false;
+        runtimeState.pendingSceneId = runtimeState.activeSceneId;
+        return true;
       },
     };
-    if (initialWorldMetrics) engine.world = createPlayWorldApi(snapshot, state, initialWorldMetrics);
-
-    state.audioSystem.autoplayFromComponents();
-
-    // Run onInit
-    scriptInstances.forEach(inst => {
-      if (inst.hooks.onInit) {
-        try { inst.hooks.onInit(inst.obj, engine); }
-        catch (e) { onLog({ type: 'error', message: `onInit error: ${e.message}`, time: new Date().toLocaleTimeString() }); }
-      }
-    });
+    window.sceneManager = state.sceneManager;
+    state.hydrateScene(state.activeSceneId, true);
 
     onLog({ type: 'info', message: 'Play mode started', time: new Date().toLocaleTimeString() });
-
-    const baseCellLayer = (((snapshot.layers || {}).cells || [])
-      .filter((layer) => layer.visible !== false)
-      .sort((a, b) => (a.order || 0) - (b.order || 0))[0] || { id: null }).id;
-    state.worldSparse = buildWorldSparseIndex(state.world, (cell) => {
-      if (normalizeCellTypeId(cell) === 'empty') return null;
-      const type = getCellType(snapshot, cell);
-      return { type, layerId: type.layerId || baseCellLayer };
-    });
-
-    const initialCamera = resolvePlayCamera(state);
-    const initialView = resolveDesiredView(
-      state,
-      initialCamera,
-      0,
-      true,
-      canvasRef.current ? canvasRef.current.width : 960,
-      canvasRef.current ? canvasRef.current.height : 540,
-    );
-    state.viewX = initialView.x;
-    state.viewY = initialView.y;
     startLoop();
-  }, [project, onLog]);
+  }, [project, onLog, syncCanvasMode]);
 
-    const stop = useCallback(() => {
+  const stop = useCallback(() => {
     const state = stateRef.current;
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
@@ -266,6 +386,8 @@ export function usePlayMode(project, onLog) {
     else delete window.KozUIManager;
     if (saved.hasUiManager) window.uiManager = saved.prevUiManager;
     else delete window.uiManager;
+    if (saved.hasSceneManager) window.sceneManager = saved.prevSceneManager;
+    else delete window.sceneManager;
     stateRef.current = null;
     onLog({ type: 'info', message: 'Play mode stopped', time: new Date().toLocaleTimeString() });
   }, [onLog]);
@@ -303,6 +425,10 @@ export function usePlayMode(project, onLog) {
       lastTime = now;
       state.elapsed += dt;
 
+      if (state.pendingSceneId && typeof state.hydrateScene === 'function') {
+        state.hydrateScene(state.pendingSceneId, true);
+      }
+
       // Evaluate animations
       state.animClips.forEach(clip => {
         if (!clip.tracks) return;
@@ -316,27 +442,33 @@ export function usePlayMode(project, onLog) {
       });
 
       // Engine API
-      const runtimeScene = resolveRuntimeScene(state);
+      let runtimeScene = resolveRuntimeScene(state);
+      if (runtimeScene.id && runtimeScene.id !== state.activeSceneId && typeof state.hydrateScene === 'function') {
+        state.hydrateScene(runtimeScene.id, true);
+        runtimeScene = resolveRuntimeScene(state);
+      }
       state.activeSceneId = runtimeScene.id || state.activeSceneId;
-      const engine = {
-        gameObjects: state.gameObjects,
-        elapsed: state.elapsed,
-        sceneId: state.activeSceneId,
-        uiManager: state.uiManager || null,
-        audio: state.audioSystem ? state.audioSystem.api : null,
-        renderer3d: state.renderer3dController || null,
-        findObject: (id) => state.gameObjects.find(o => o.id === id) || null,
-        findObjectsByType: (type) => state.gameObjects.filter((o) => o.type === type),
-        keyIsDown: (code) => keysRef.current.has(code),
-        viewport: {
-          width: canvasRef.current ? canvasRef.current.width : 960,
-          height: canvasRef.current ? canvasRef.current.height : 540,
-        },
-      };
+      const engine = typeof state.createEngine === 'function'
+        ? state.createEngine()
+        : {
+            gameObjects: state.gameObjects,
+            elapsed: state.elapsed,
+            sceneId: state.activeSceneId,
+            uiManager: state.uiManager || null,
+            audio: state.audioSystem ? state.audioSystem.api : null,
+            renderer3d: state.renderer3dController || null,
+            sceneManager: state.sceneManager || null,
+            findObject: (id) => state.gameObjects.find(o => o.id === id) || null,
+            findObjectsByType: (type) => state.gameObjects.filter((o) => o.type === type),
+            keyIsDown: (code) => keysRef.current.has(code),
+            viewport: {
+              width: canvasRef.current ? canvasRef.current.width : 960,
+              height: canvasRef.current ? canvasRef.current.height : 540,
+            },
+          };
 
-      const worldMetrics = resolveWorldMetrics(state.world, CELL_SIZE);
+      const worldMetrics = engine.world || resolveWorldMetrics(state.world, CELL_SIZE);
       if (worldMetrics) {
-        engine.world = createPlayWorldApi(state.projectSnapshot || {}, state, worldMetrics);
         state.gameObjects.forEach((obj) => {
           if (Object.prototype.hasOwnProperty.call(obj, 'worldWidth')) obj.worldWidth = worldMetrics.width;
           if (Object.prototype.hasOwnProperty.call(obj, 'worldHeight')) obj.worldHeight = worldMetrics.height;
@@ -625,11 +757,14 @@ export function usePlayMode(project, onLog) {
     };
   }, []);
 
-  return { canvasRef, uiRootRef, isPlaying, start, stop, execute };
+  return { canvasRef, canvas2dRef, canvas3dRef, uiRootRef, isPlaying, start, stop, execute };
 }
 
-function resolvePlayRenderMode(project) {
-  const mode = project && project.meta && project.meta.renderMode;
+function resolvePlayRenderMode(project, sceneId) {
+  const scenes = Array.isArray(project && project.scenes) ? project.scenes : [];
+  const targetSceneId = sceneId || (project && project.activeSceneId) || null;
+  const scene = scenes.find((entry) => entry && entry.id === targetSceneId) || scenes[0] || null;
+  const mode = (scene && scene.renderMode) || (project && project.meta && project.meta.renderMode);
   return mode === '3d' || mode === PLAY_RENDER_MODE_WEBGL_3D ? PLAY_RENDER_MODE_WEBGL_3D : '2d';
 }
 

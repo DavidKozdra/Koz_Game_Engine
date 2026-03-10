@@ -7,29 +7,284 @@
       "width": 960,
       "height": 540
     },
-    "engineVersion": "0.1.0"
+    "engineVersion": "0.1.0",
+    "renderMode": "2d"
   },
-  "activeSceneId": "scene_level_one",
+  "activeSceneId": "scene_menu",
   "world": {
     "cols": 20,
     "rows": 12,
     "defaultCell": 0,
     "grid": [
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0],
-      [0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
     ],
     "elements": [],
-    "meta": {}
+    "meta": {},
+    "offsetX": 0,
+    "offsetY": 0
   },
   "objects": [
     {
@@ -39,10 +294,27 @@
       "x": 0,
       "y": 0,
       "components": {
-        "Transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 },
-        "Sprite": { "assetId": null, "color": "#0f172a", "width": 1, "height": 1 },
-        "Collider": { "shape": "rect", "width": 1, "height": 1 },
-        "ScriptBinding": { "scriptId": null },
+        "Transform": {
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        "Sprite": {
+          "assetId": null,
+          "color": "#0f172a",
+          "width": 1,
+          "height": 1
+        },
+        "Collider": {
+          "shape": "rect",
+          "width": 1,
+          "height": 1
+        },
+        "ScriptBinding": {
+          "scriptId": null
+        },
         "ScriptBindings": [
           {
             "scriptId": "script_menu_overlay",
@@ -61,8 +333,25 @@
             "properties": {}
           }
         ],
-        "Animator": { "clipId": null }
-      }
+        "Animator": {
+          "clipId": null
+        },
+        "Render": {
+          "layerId": "obj-main",
+          "visible": true,
+          "zIndex": 0
+        },
+        "Collision": {
+          "enabled": true,
+          "isTrigger": false
+        },
+        "RigidBody": {
+          "enabled": false,
+          "weight": 1,
+          "friction": 0.4
+        }
+      },
+      "editorFolder": "Root"
     },
     {
       "id": "obj_player",
@@ -71,15 +360,47 @@
       "x": 48,
       "y": 120,
       "components": {
-        "Transform": { "x": 48, "y": 120, "rotation": 0, "scaleX": 1, "scaleY": 1 },
-        "Sprite": { "assetId": null, "color": "#f8fafc", "width": 22, "height": 30 },
-        "Collider": { "shape": "rect", "width": 22, "height": 30 },
-        "Collision": { "enabled": true, "isTrigger": false },
-        "RigidBody": { "enabled": true, "weight": 1, "friction": 0.2 },
-        "ScriptBinding": { "scriptId": "script_player_controller" },
+        "Transform": {
+          "x": 48,
+          "y": 120,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        "Sprite": {
+          "assetId": null,
+          "color": "#f8fafc",
+          "width": 22,
+          "height": 30
+        },
+        "Collider": {
+          "shape": "rect",
+          "width": 22,
+          "height": 30
+        },
+        "Collision": {
+          "enabled": true,
+          "isTrigger": false
+        },
+        "RigidBody": {
+          "enabled": true,
+          "weight": 1,
+          "friction": 0.2
+        },
+        "ScriptBinding": {
+          "scriptId": "script_player_controller"
+        },
         "ScriptBindings": [],
-        "Animator": { "clipId": null }
-      }
+        "Animator": {
+          "clipId": null
+        },
+        "Render": {
+          "layerId": "obj-main",
+          "visible": true,
+          "zIndex": 0
+        }
+      },
+      "editorFolder": "Root"
     },
     {
       "id": "obj_goal",
@@ -88,27 +409,120 @@
       "x": 396,
       "y": 180,
       "components": {
-        "Transform": { "x": 396, "y": 180, "rotation": 0, "scaleX": 1, "scaleY": 1 },
-        "Sprite": { "assetId": null, "color": "#22c55e", "width": 24, "height": 48 },
-        "Collider": { "shape": "rect", "width": 24, "height": 48 },
-        "Collision": { "enabled": true, "isTrigger": true },
-        "ScriptBinding": { "scriptId": null },
+        "Transform": {
+          "x": 396,
+          "y": 180,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        "Sprite": {
+          "assetId": null,
+          "color": "#22c55e",
+          "width": 24,
+          "height": 48
+        },
+        "Collider": {
+          "shape": "rect",
+          "width": 24,
+          "height": 48
+        },
+        "Collision": {
+          "enabled": true,
+          "isTrigger": true
+        },
+        "ScriptBinding": {
+          "scriptId": null
+        },
         "ScriptBindings": [],
-        "Animator": { "clipId": null }
-      }
+        "Animator": {
+          "clipId": null
+        },
+        "Render": {
+          "layerId": "obj-main",
+          "visible": true,
+          "zIndex": 0
+        },
+        "RigidBody": {
+          "enabled": false,
+          "weight": 1,
+          "friction": 0.4
+        }
+      },
+      "editorFolder": "Root"
     }
   ],
   "scenes": [
     {
       "id": "scene_menu",
       "name": "Main Menu",
+      "renderMode": "2d",
       "world": {
-        "cols": 1,
-        "rows": 1,
+        "cols": 6,
+        "rows": 7,
         "defaultCell": 0,
-        "grid": [[0]],
+        "grid": [
+          [
+            "empty",
+            "empty",
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
         "elements": [],
-        "meta": {}
+        "meta": {},
+        "offsetX": -5,
+        "offsetY": -6
       },
       "objects": [
         {
@@ -118,24 +532,44 @@
           "x": 0,
           "y": 0,
           "components": {
-            "Transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 },
-            "Sprite": { "assetId": null, "color": "#0f172a", "width": 1, "height": 1 },
-            "Collider": { "shape": "rect", "width": 1, "height": 1 },
-            "ScriptBinding": { "scriptId": null },
+            "Transform": {
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#0f172a",
+              "width": 1,
+              "height": 1
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 1,
+              "height": 1
+            },
+            "ScriptBinding": {
+              "scriptId": null
+            },
             "ScriptBindings": [
               {
                 "scriptId": "script_menu_overlay",
                 "active": true,
                 "properties": {
                   "title": "Platformer Menu Scene",
-                  "subtitle": "Secondary scene for scene-browser testing",
-                  "instructions": "This scene is intentionally light. Switch back to Level One in the scene browser to play.",
-                  "actionLabel": "Hide Overlay",
-                  "note": "Current runtime still boots a single active scene at a time."
+                  "subtitle": "Start menu for the platformer template",
+                  "instructions": "Start the run to load Level One through the runtime scene manager.",
+                  "actionLabel": "Load Level One",
+                  "nextSceneId": "scene_level_one",
+                  "note": "This template now boots on the main menu and transitions into gameplay in both play mode and export."
                 }
               }
             ],
-            "Animator": { "clipId": null }
+            "Animator": {
+              "clipId": null
+            }
           }
         }
       ]
@@ -143,26 +577,281 @@
     {
       "id": "scene_level_one",
       "name": "Level One",
+      "renderMode": "2d",
       "world": {
         "cols": 20,
         "rows": 12,
         "defaultCell": 0,
         "grid": [
-          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0],
-          [0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
         ],
         "elements": [],
-        "meta": {}
+        "meta": {},
+        "offsetX": 0,
+        "offsetY": 0
       },
       "objects": [
         {
@@ -172,10 +861,27 @@
           "x": 0,
           "y": 0,
           "components": {
-            "Transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 },
-            "Sprite": { "assetId": null, "color": "#0f172a", "width": 1, "height": 1 },
-            "Collider": { "shape": "rect", "width": 1, "height": 1 },
-            "ScriptBinding": { "scriptId": null },
+            "Transform": {
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#0f172a",
+              "width": 1,
+              "height": 1
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 1,
+              "height": 1
+            },
+            "ScriptBinding": {
+              "scriptId": null
+            },
             "ScriptBindings": [
               {
                 "scriptId": "script_menu_overlay",
@@ -194,7 +900,9 @@
                 "properties": {}
               }
             ],
-            "Animator": { "clipId": null }
+            "Animator": {
+              "clipId": null
+            }
           }
         },
         {
@@ -204,14 +912,40 @@
           "x": 48,
           "y": 120,
           "components": {
-            "Transform": { "x": 48, "y": 120, "rotation": 0, "scaleX": 1, "scaleY": 1 },
-            "Sprite": { "assetId": null, "color": "#f8fafc", "width": 22, "height": 30 },
-            "Collider": { "shape": "rect", "width": 22, "height": 30 },
-            "Collision": { "enabled": true, "isTrigger": false },
-            "RigidBody": { "enabled": true, "weight": 1, "friction": 0.2 },
-            "ScriptBinding": { "scriptId": "script_player_controller" },
+            "Transform": {
+              "x": 48,
+              "y": 120,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#f8fafc",
+              "width": 22,
+              "height": 30
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 22,
+              "height": 30
+            },
+            "Collision": {
+              "enabled": true,
+              "isTrigger": false
+            },
+            "RigidBody": {
+              "enabled": true,
+              "weight": 1,
+              "friction": 0.2
+            },
+            "ScriptBinding": {
+              "scriptId": "script_player_controller"
+            },
             "ScriptBindings": [],
-            "Animator": { "clipId": null }
+            "Animator": {
+              "clipId": null
+            }
           }
         },
         {
@@ -221,13 +955,542 @@
           "x": 396,
           "y": 180,
           "components": {
-            "Transform": { "x": 396, "y": 180, "rotation": 0, "scaleX": 1, "scaleY": 1 },
-            "Sprite": { "assetId": null, "color": "#22c55e", "width": 24, "height": 48 },
-            "Collider": { "shape": "rect", "width": 24, "height": 48 },
-            "Collision": { "enabled": true, "isTrigger": true },
-            "ScriptBinding": { "scriptId": null },
+            "Transform": {
+              "x": 396,
+              "y": 180,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#22c55e",
+              "width": 24,
+              "height": 48
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 24,
+              "height": 48
+            },
+            "Collision": {
+              "enabled": true,
+              "isTrigger": true
+            },
+            "ScriptBinding": {
+              "scriptId": null
+            },
             "ScriptBindings": [],
-            "Animator": { "clipId": null }
+            "Animator": {
+              "clipId": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "scene_mml1az0w",
+      "name": "Level One Copy",
+      "renderMode": "2d",
+      "world": {
+        "cols": 22,
+        "rows": 12,
+        "defaultCell": 0,
+        "grid": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            "solid",
+            "solid",
+            "solid",
+            "solid",
+            "solid",
+            "solid",
+            1,
+            "solid",
+            "solid",
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            "solid",
+            "solid",
+            "solid",
+            "solid",
+            "solid",
+            "solid",
+            "solid",
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ],
+        "elements": [],
+        "meta": {},
+        "offsetX": -2,
+        "offsetY": 0
+      },
+      "objects": [
+        {
+          "id": "obj_game_state",
+          "name": "Game State",
+          "type": "controller",
+          "x": 0,
+          "y": 0,
+          "components": {
+            "Transform": {
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#0f172a",
+              "width": 1,
+              "height": 1
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 1,
+              "height": 1
+            },
+            "ScriptBinding": {
+              "scriptId": null
+            },
+            "ScriptBindings": [
+              {
+                "scriptId": "script_menu_overlay",
+                "active": true,
+                "properties": {
+                  "title": "2D Platformer",
+                  "subtitle": "Scene-first platformer template",
+                  "instructions": "Move with A/D or arrows. Jump with Space, W, or Up.",
+                  "actionLabel": "Start Run",
+                  "note": "Includes a second scene for menu/layout testing. Full scene transitions land in the next milestone."
+                }
+              },
+              {
+                "scriptId": "script_platformer_hud",
+                "active": true,
+                "properties": {}
+              }
+            ],
+            "Animator": {
+              "clipId": null
+            }
+          }
+        },
+        {
+          "id": "obj_player",
+          "name": "Player",
+          "type": "player",
+          "x": 48,
+          "y": 120,
+          "components": {
+            "Transform": {
+              "x": 48,
+              "y": 120,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#f8fafc",
+              "width": 22,
+              "height": 30
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 22,
+              "height": 30
+            },
+            "Collision": {
+              "enabled": true,
+              "isTrigger": false
+            },
+            "RigidBody": {
+              "enabled": true,
+              "weight": 1,
+              "friction": 0.2
+            },
+            "ScriptBinding": {
+              "scriptId": "script_player_controller"
+            },
+            "ScriptBindings": [],
+            "Animator": {
+              "clipId": null
+            }
+          }
+        },
+        {
+          "id": "obj_goal",
+          "name": "Goal",
+          "type": "goal",
+          "x": 396,
+          "y": 180,
+          "components": {
+            "Transform": {
+              "x": 396,
+              "y": 180,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#22c55e",
+              "width": 24,
+              "height": 48
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 24,
+              "height": 48
+            },
+            "Collision": {
+              "enabled": true,
+              "isTrigger": true
+            },
+            "ScriptBinding": {
+              "scriptId": null
+            },
+            "ScriptBindings": [],
+            "Animator": {
+              "clipId": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "scene_level_complete",
+      "name": "Level Complete",
+      "renderMode": "2d",
+      "world": {
+        "cols": 4,
+        "rows": 4,
+        "defaultCell": 0,
+        "grid": [
+          [0, 0, 0, 0],
+          [0, 0, 0, 0],
+          [0, 0, 0, 0],
+          [0, 0, 0, 0]
+        ],
+        "elements": [],
+        "meta": {},
+        "offsetX": -2,
+        "offsetY": -2
+      },
+      "objects": [
+        {
+          "id": "obj_level_complete",
+          "name": "Level Complete State",
+          "type": "controller",
+          "x": 0,
+          "y": 0,
+          "components": {
+            "Transform": {
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#0f172a",
+              "width": 1,
+              "height": 1
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 1,
+              "height": 1
+            },
+            "ScriptBinding": {
+              "scriptId": null
+            },
+            "ScriptBindings": [
+              {
+                "scriptId": "script_menu_overlay",
+                "active": true,
+                "properties": {
+                  "title": "Level Complete",
+                  "subtitle": "Goal reached",
+                  "instructions": "The goal object transitioned here through the player controller script.",
+                  "actionLabel": "Back To Menu",
+                  "nextSceneId": "scene_menu",
+                  "note": "This scene is the scripted next-scene destination for the platformer goal."
+                }
+              }
+            ],
+            "Animator": {
+              "clipId": null
+            }
           }
         }
       ]
@@ -239,7 +1502,7 @@
       "id": "script_menu_overlay",
       "name": "MainMenuOverlay",
       "language": "javascript",
-      "source": "function onInit(self, engine) {\n  if (typeof self.started !== 'boolean') self.started = false;\n  if (typeof self.completed !== 'boolean') self.completed = false;\n  var manager = engine.uiManager || (typeof KozUIManager !== 'undefined' ? KozUIManager : null) || (typeof uiManager !== 'undefined' ? uiManager : null);\n  if (!manager) return;\n  manager.registerScreen(self.id + '_menu', {\n    layer: 'hud',\n    layerOrder: 100,\n    isVisible: function() { return !self.started; },\n    create: function() {\n      var wrap = document.createElement('div');\n      wrap.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg, rgba(15,23,42,0.88), rgba(2,6,23,0.94));pointer-events:auto;font-family:Trebuchet MS,sans-serif;';\n      var card = document.createElement('div');\n      card.style.cssText = 'width:min(520px,92vw);padding:28px 26px;border-radius:18px;background:rgba(15,23,42,0.96);border:1px solid rgba(148,163,184,0.25);box-shadow:0 24px 80px rgba(0,0,0,0.45);color:#e2e8f0;';\n      var title = document.createElement('h1');\n      title.textContent = props.title || 'Koz Template';\n      title.style.cssText = 'margin:0 0 8px;font-size:34px;';\n      var subtitle = document.createElement('p');\n      subtitle.textContent = props.subtitle || '';\n      subtitle.style.cssText = 'margin:0 0 14px;color:#94a3b8;line-height:1.4;';\n      var instructions = document.createElement('p');\n      instructions.textContent = props.instructions || '';\n      instructions.style.cssText = 'margin:0 0 18px;color:#cbd5e1;line-height:1.5;';\n      var button = document.createElement('button');\n      button.textContent = props.actionLabel || 'Start';\n      button.style.cssText = 'padding:12px 18px;border:none;border-radius:999px;background:#22c55e;color:#052e16;font-weight:700;cursor:pointer;';\n      button.onclick = function() {\n        self.started = true;\n        self.completed = false;\n        if (typeof self.onStartGame === 'function') self.onStartGame();\n      };\n      var note = document.createElement('p');\n      note.textContent = props.note || '';\n      note.style.cssText = 'margin:14px 0 0;color:#64748b;font-size:12px;line-height:1.5;';\n      card.appendChild(title);\n      if (subtitle.textContent) card.appendChild(subtitle);\n      if (instructions.textContent) card.appendChild(instructions);\n      card.appendChild(button);\n      if (note.textContent) card.appendChild(note);\n      wrap.appendChild(card);\n      return wrap;\n    }\n  });\n}\n\nfunction onUpdate(self, engine, dt) {}\n"
+      "source": "function onInit(self, engine) {\n  if (typeof self.started !== 'boolean') self.started = false;\n  if (typeof self.completed !== 'boolean') self.completed = false;\n  var manager = engine.uiManager || (typeof KozUIManager !== 'undefined' ? KozUIManager : null) || (typeof uiManager !== 'undefined' ? uiManager : null);\n  if (!manager) return;\n  manager.registerScreen(self.id + '_menu', {\n    layer: 'hud',\n    layerOrder: 100,\n    isVisible: function() { return !self.started; },\n    create: function() {\n      var wrap = document.createElement('div');\n      wrap.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg, rgba(15,23,42,0.88), rgba(2,6,23,0.94));pointer-events:auto;font-family:Trebuchet MS,sans-serif;';\n      var card = document.createElement('div');\n      card.style.cssText = 'width:min(520px,92vw);padding:28px 26px;border-radius:18px;background:rgba(15,23,42,0.96);border:1px solid rgba(148,163,184,0.25);box-shadow:0 24px 80px rgba(0,0,0,0.45);color:#e2e8f0;';\n      var title = document.createElement('h1');\n      title.textContent = props.title || 'Koz Template';\n      title.style.cssText = 'margin:0 0 8px;font-size:34px;';\n      var subtitle = document.createElement('p');\n      subtitle.textContent = props.subtitle || '';\n      subtitle.style.cssText = 'margin:0 0 14px;color:#94a3b8;line-height:1.4;';\n      var instructions = document.createElement('p');\n      instructions.textContent = props.instructions || '';\n      instructions.style.cssText = 'margin:0 0 18px;color:#cbd5e1;line-height:1.5;';\n      var button = document.createElement('button');\n      button.textContent = props.actionLabel || 'Start';\n      button.style.cssText = 'padding:12px 18px;border:none;border-radius:999px;background:#22c55e;color:#052e16;font-weight:700;cursor:pointer;';\n      button.onclick = function() {\n        self.started = true;\n        self.completed = false;\n        var manager = (engine && engine.sceneManager) || (typeof sceneManager !== 'undefined' ? sceneManager : null) || window.sceneManager;\n        if (props.nextSceneId && manager && typeof manager.loadScene === 'function') {\n          window.__kozPendingAutoStart = true;\n          manager.loadScene(props.nextSceneId);\n          return;\n        }\n        if (typeof self.onStartGame === 'function') self.onStartGame();\n      };\n      var note = document.createElement('p');\n      note.textContent = props.note || '';\n      note.style.cssText = 'margin:14px 0 0;color:#64748b;font-size:12px;line-height:1.5;';\n      card.appendChild(title);\n      if (subtitle.textContent) card.appendChild(subtitle);\n      if (instructions.textContent) card.appendChild(instructions);\n      card.appendChild(button);\n      if (note.textContent) card.appendChild(note);\n      wrap.appendChild(card);\n      return wrap;\n    }\n  });\n}\n\nfunction onUpdate(self, engine, dt) {\n  if (!self.started && !props.nextSceneId && window.__kozPendingAutoStart && typeof self.onStartGame === 'function') {\n    window.__kozPendingAutoStart = false;\n    self.started = true;\n    self.completed = false;\n    self.onStartGame();\n  }\n}\n"
     },
     {
       "id": "script_platformer_hud",
@@ -251,12 +1514,19 @@
       "id": "script_player_controller",
       "name": "PlatformerPlayerController",
       "language": "javascript",
-      "source": "function onInit(self, engine) {\n  self.vx = 0;\n  self.vy = 0;\n  self.grounded = false;\n  self.spawnX = self.x;\n  self.spawnY = self.y;\n}\n\nfunction overlaps(a, b) {\n  return !!(a && b && a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y);\n}\n\nfunction onUpdate(self, engine, dt) {\n  var game = engine.findObject('obj_game_state');\n  if (!game || !game.started || game.completed) return;\n  var left = keyIsDown(65) || keyIsDown(LEFT_ARROW);\n  var right = keyIsDown(68) || keyIsDown(RIGHT_ARROW);\n  var jump = keyIsDown(SPACE) || keyIsDown(87) || keyIsDown(UP_ARROW);\n\n  self.vx = 0;\n  if (left && !right) self.vx = -160;\n  if (right && !left) self.vx = 160;\n  if (self.grounded && jump && !self.jumpLatch) {\n    self.vy = -340;\n    self.jumpLatch = true;\n  }\n  if (!jump) self.jumpLatch = false;\n\n  self.vy += 880 * dt;\n  self.x += self.vx * dt;\n  self.y += self.vy * dt;\n\n  if (self.y > 340) {\n    self.x = self.spawnX;\n    self.y = self.spawnY;\n    self.vx = 0;\n    self.vy = 0;\n  }\n\n  var goal = engine.findObject('obj_goal');\n  if (overlaps(self, goal)) {\n    game.completed = true;\n    game.started = false;\n  }\n}\n"
+      "source": "function onInit(self, engine) {\n  self.vx = 0;\n  self.vy = 0;\n  self.grounded = false;\n  self.spawnX = self.x;\n  self.spawnY = self.y;\n}\n\nfunction overlaps(a, b) {\n  return !!(a && b && a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y);\n}\n\nfunction onUpdate(self, engine, dt) {\n  var game = engine.findObject('obj_game_state');\n  if (!game || !game.started || game.completed) return;\n  var left = keyIsDown(65) || keyIsDown(LEFT_ARROW);\n  var right = keyIsDown(68) || keyIsDown(RIGHT_ARROW);\n  var jump = keyIsDown(SPACE) || keyIsDown(87) || keyIsDown(UP_ARROW);\n\n  self.vx = 0;\n  if (left && !right) self.vx = -160;\n  if (right && !left) self.vx = 160;\n  if (self.grounded && jump && !self.jumpLatch) {\n    self.vy = -440;\n    self.jumpLatch = true;\n  }\n  if (!jump) self.jumpLatch = false;\n\n  self.vy += 880 * dt;\n  self.x += self.vx * dt;\n  self.y += self.vy * dt;\n\n  if (self.y > 340) {\n    self.x = self.spawnX;\n    self.y = self.spawnY;\n    self.vx = 0;\n    self.vy = 0;\n  }\n\n  var goal = engine.findObject('obj_goal');\n  if (overlaps(self, goal)) {\n    game.completed = true;\n    game.started = false;\n    var manager = (engine && engine.sceneManager) || (typeof sceneManager !== 'undefined' ? sceneManager : null) || window.sceneManager;\n    if (manager && typeof manager.loadNextScene === 'function') {\n      manager.loadNextScene();\n    } else if (manager && typeof manager.loadScene === 'function') {\n      manager.loadScene('scene_level_complete');\n    }\n  }\n}\n"
     }
   ],
   "assets": [],
   "build": {
     "profile": "web-prod",
+    "target": "html-zip",
+    "targets": {
+      "electronExe": false,
+      "pwa": false,
+      "htmlZip": true,
+      "tarball": false
+    },
     "pwa": false
   },
   "camera": {
@@ -276,5 +1546,131 @@
     "followY": true,
     "clampToWorld": true,
     "maxSpeed": 1600
+  },
+  "cellTypes": [
+    {
+      "id": "empty",
+      "name": "Empty",
+      "color": "#111827",
+      "imageAssetId": null,
+      "collision": false,
+      "layerId": "cell-base",
+      "rigidBody": {
+        "enabled": false,
+        "weight": 0,
+        "friction": 0
+      }
+    },
+    {
+      "id": "solid",
+      "name": "Solid",
+      "color": "#334155",
+      "imageAssetId": null,
+      "collision": true,
+      "layerId": "cell-base",
+      "rigidBody": {
+        "enabled": true,
+        "weight": 1,
+        "friction": 0.8
+      }
+    },
+    {
+      "id": "hazard",
+      "name": "Hazard",
+      "color": "#7f1d1d",
+      "imageAssetId": null,
+      "collision": true,
+      "layerId": "cell-detail",
+      "rigidBody": {
+        "enabled": false,
+        "weight": 0,
+        "friction": 0
+      }
+    }
+  ],
+  "layers": {
+    "cells": [
+      {
+        "id": "cell-base",
+        "name": "Cell Base",
+        "order": 0,
+        "visible": true
+      },
+      {
+        "id": "cell-detail",
+        "name": "Cell Detail",
+        "order": 1,
+        "visible": true
+      }
+    ],
+    "objects": [
+      {
+        "id": "obj-main",
+        "name": "Main Objects",
+        "order": 0,
+        "visible": true
+      },
+      {
+        "id": "obj-fx",
+        "name": "FX Objects",
+        "order": 1,
+        "visible": true
+      }
+    ]
+  },
+  "prefabs": [],
+  "sceneFolders": [
+    "Root"
+  ],
+  "assetFolders": [
+    "Root"
+  ],
+  "defaultClasses": [
+    {
+      "id": "generic",
+      "name": "Generic Object",
+      "baseType": "generic"
+    },
+    {
+      "id": "sprite",
+      "name": "Sprite Object",
+      "baseType": "sprite"
+    },
+    {
+      "id": "animator",
+      "name": "Animator Object",
+      "baseType": "animator"
+    },
+    {
+      "id": "camera",
+      "name": "Camera Object",
+      "baseType": "camera"
+    },
+    {
+      "id": "audio_source",
+      "name": "Audio Source",
+      "baseType": "audio_source"
+    },
+    {
+      "id": "music_source",
+      "name": "Music Source",
+      "baseType": "music_source"
+    }
+  ],
+  "settings": {
+    "preferredEditor": "vscode",
+    "editorCommand": "",
+    "editorArgs": [],
+    "autoSaveScripts": true,
+    "formatOnSave": false,
+    "confirmBeforeScriptDelete": true
+  },
+  "plugins": [],
+  "scripting": {
+    "engines": {
+      "javascript": true,
+      "lua": false,
+      "python": false
+    }
   }
 }

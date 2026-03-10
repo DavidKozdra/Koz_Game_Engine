@@ -41,8 +41,18 @@ entries.forEach((filePath) => {
   assert(typeof project.activeSceneId === 'string' && project.activeSceneId.length > 0, `${name} has an active scene`);
   assert(Array.isArray(project.objects) && project.objects.length > 0, `${name} exposes active-scene objects at top level`);
   assert(Array.isArray(project.scripts) && project.scripts.length > 0, `${name} includes script assets`);
+  assert(project.activeSceneId === 'scene_menu', `${name} boots into its menu scene`);
   if (name === 'Template - 3D FPS Shell') {
-    assert(project.meta && project.meta.renderMode === 'webgl-3d', `${name} opts into WebGL 3D play mode`);
+    const menuScene = project.scenes.find((scene) => scene.id === 'scene_menu');
+    const labScene = project.scenes.find((scene) => scene.id === 'scene_fps_lab');
+    assert(menuScene && menuScene.renderMode === '2d', `${name} keeps the menu in 2D`);
+    assert(labScene && labScene.renderMode === 'webgl-3d', `${name} marks the gameplay lab as WebGL 3D`);
+  }
+  if (name === 'Template - 2D Platformer') {
+    const completeScene = project.scenes.find((scene) => scene.id === 'scene_level_complete');
+    const playerController = (project.scripts || []).find((script) => script.id === 'script_player_controller');
+    assert(completeScene, `${name} includes a scripted level-complete scene`);
+    assert(playerController && playerController.source.includes('loadNextScene()'), `${name} goal script uses ordered scene progression`);
   }
 });
 

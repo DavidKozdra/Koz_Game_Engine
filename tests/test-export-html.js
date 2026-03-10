@@ -1,0 +1,49 @@
+/**
+ * Validates export HTML generation for mixed 2D/3D scene projects.
+ * Run with: node tests/test-export-html.js
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+let passed = 0;
+let failed = 0;
+
+function assert(condition, message) {
+  if (condition) {
+    passed += 1;
+    console.log('  PASS:', message);
+  } else {
+    failed += 1;
+    console.error('  FAIL:', message);
+  }
+}
+
+async function main() {
+  console.log('\n=== Export HTML Tests ===\n');
+
+  const modulePath = path.join(__dirname, '..', 'editor', 'src', 'renderer', 'lib', 'exportHtml.js');
+  const moduleSource = fs.readFileSync(modulePath, 'utf8');
+  const moduleUrl = `data:text/javascript;base64,${Buffer.from(moduleSource).toString('base64')}`;
+  const { buildExportHtml } = await import(moduleUrl);
+  const projectPath = path.join(__dirname, '..', 'projects', 'template-3d-fps-shell', 'project.json');
+  const project = JSON.parse(fs.readFileSync(projectPath, 'utf8'));
+  const html = buildExportHtml(project, JSON.stringify(project), 'html-zip', { minify: false });
+
+  assert(html.includes('id="game-2d"'), 'export includes a dedicated 2D canvas');
+  assert(html.includes('id="game-3d"'), 'export includes a dedicated WebGL canvas');
+  assert(html.includes('sceneManager'), 'export runtime includes scene-manager support');
+  assert(html.includes('loadScene'), 'export runtime includes runtime scene transitions');
+  assert(html.includes('loadNextScene'), 'export runtime includes ordered scene progression helpers');
+  assert(html.includes('webgl-3d'), 'export runtime contains the WebGL render mode');
+
+  console.log('\n=== Results ===\n');
+  console.log(`Passed: ${passed}, Failed: ${failed}`);
+  if (failed > 0) process.exit(1);
+  console.log('\nAll export HTML tests passed!\n');
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
