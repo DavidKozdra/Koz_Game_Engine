@@ -950,6 +950,8 @@ function App() {
   });
   const [bottomTab, setBottomTab] = useState('timeline');
   const [bottomHeight, setBottomHeight] = useState(240);
+  const [leftWidth, setLeftWidth] = useState(220);
+  const [rightWidth, setRightWidth] = useState(260);
   const [logs, setLogs] = useState([]);
   const [showExportModal, setShowExportModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -1902,6 +1904,28 @@ def on_update(self, engine, dt):
     window.addEventListener('mouseup', onUp);
   }, [bottomHeight]);
 
+  // ---- Left panel resize ----
+  const handleLeftResizeStart = useCallback((e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = leftWidth;
+    function onMove(e) { setLeftWidth(Math.max(180, Math.min(500, startW + (e.clientX - startX)))); }
+    function onUp() { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [leftWidth]);
+
+  // ---- Right panel resize ----
+  const handleRightResizeStart = useCallback((e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = rightWidth;
+    function onMove(e) { setRightWidth(Math.max(220, Math.min(500, startW - (e.clientX - startX)))); }
+    function onUp() { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [rightWidth]);
+
   // ---- Keyboard shortcuts ----
   useEffect(() => {
     function handleKey(e) {
@@ -2036,7 +2060,7 @@ def on_update(self, engine, dt):
       )}
       {!(showProjectSelector || !project) && (
         // ...existing code for the editor layout...
-        <div className="editor-layout">
+        <div className="editor-layout" style={{ gridTemplateColumns: `${leftWidth}px 1fr ${rightWidth}px` }}>
           <Toolbar project={projectView} editorState={editorState} isPlaying={isPlaying}
             onToolChange={(tool) => updateEditor({ activeTool: tool })}
             onBrushChange={(val) => updateEditor({ brushValue: getBrushValue({ brushValue: val }) })}
@@ -2051,7 +2075,8 @@ def on_update(self, engine, dt):
             undoCount={undoStackRef.current.length} redoCount={redoStackRef.current.length}
             onAlignObjects={handleAlignObjects} />
 
-          <div className="editor-left">
+          <div className="editor-left" style={{ width: leftWidth, overflow: 'auto' }}>
+            <div className="resize-handle-h" onMouseDown={handleLeftResizeStart} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 5, cursor: 'ew-resize', zIndex: 10 }} />
             <WorldTools
               project={projectView}
               editorState={editorState}
@@ -2217,7 +2242,8 @@ def on_update(self, engine, dt):
               </div>
             )}
           </div>
-          <div className="editor-right">
+          <div className="editor-right" style={{ width: rightWidth, overflow: 'auto' }}>
+            <div className="resize-handle-h" onMouseDown={handleRightResizeStart} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 5, cursor: 'ew-resize', zIndex: 10 }} />
             <Inspector
               project={projectView}
               editorState={editorState}
