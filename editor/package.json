@@ -28,5 +28,21 @@
     "react-dom": "^18.2.0",
     "vite": "^5.0.0",
     "wait-on": "^7.0.1"
+  },
+  "build": {
+    "appId": "com.koz.engine",
+    "productName": "Koz Engine",
+    "directories": {
+      "buildResources": "build"
+    },
+    "win": {
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "icon": "build/icon.png"
+    },
+    "mac": {
+      "icon": "build/icon.png"
+    }
   }
 }
