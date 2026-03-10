@@ -525,12 +525,16 @@ ipcMain.handle('scripts:delete', async (_event, payload) => {
 ipcMain.handle('editor:openFile', async (_event, payload) => {
   const filePath = payload?.filePath;
   const editor = payload?.editor || 'vscode';
+  const commandOverride = typeof payload?.command === 'string' ? payload.command.trim() : '';
+  const extraArgs = Array.isArray(payload?.args) ? payload.args.map((arg) => String(arg)).filter((arg) => arg.length > 0) : [];
   if (!filePath) return { ok: false, error: 'Missing filePath' };
   
   try {
     const fullPath = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
     let command;
-    if (editor === 'code' || editor === 'vscode') {
+    if (commandOverride) {
+      command = commandOverride;
+    } else if (editor === 'code' || editor === 'vscode') {
       command = 'code';
     } else if (editor === 'cursor') {
       command = 'cursor';
@@ -540,7 +544,7 @@ ipcMain.handle('editor:openFile', async (_event, payload) => {
       command = editor;
     }
     
-    await spawn(command, [fullPath], { detached: true, stdio: 'ignore' });
+    await spawn(command, [...extraArgs, fullPath], { detached: true, stdio: 'ignore' });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error.message };

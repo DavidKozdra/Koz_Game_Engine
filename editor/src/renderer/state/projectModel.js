@@ -56,6 +56,15 @@ const DEFAULT_BUILD = {
   },
 };
 
+const DEFAULT_SETTINGS = {
+  preferredEditor: 'vscode',
+  editorCommand: '',
+  editorArgs: [],
+  autoSaveScripts: true,
+  formatOnSave: false,
+  confirmBeforeScriptDelete: true,
+};
+
 const DEFAULT_CAMERA = {
   targetObjectId: null,
   speed: 8,
@@ -127,6 +136,14 @@ function ensureProjectShape(project) {
   if (!Array.isArray(next.defaultClasses)) next.defaultClasses = clone(DEFAULT_CLASSES);
   if (!next.build || typeof next.build !== 'object') next.build = clone(DEFAULT_BUILD);
   next.build = { ...clone(DEFAULT_BUILD), ...next.build, targets: { ...DEFAULT_BUILD.targets, ...(next.build.targets || {}) } };
+  if (!next.settings || typeof next.settings !== 'object') next.settings = clone(DEFAULT_SETTINGS);
+  next.settings = {
+    ...clone(DEFAULT_SETTINGS),
+    ...next.settings,
+    editorArgs: Array.isArray(next.settings.editorArgs)
+      ? next.settings.editorArgs.map((arg) => String(arg))
+      : [],
+  };
   if (!next.camera || typeof next.camera !== 'object') next.camera = clone(DEFAULT_CAMERA);
   next.camera = { ...clone(DEFAULT_CAMERA), ...next.camera };
   if (!Array.isArray(next.plugins)) next.plugins = [];
