@@ -35,6 +35,11 @@
       },
       settings: {
         preferredEditor: "vscode",
+        editorCommand: "",
+        editorArgs: [],
+        autoSaveScripts: true,
+        formatOnSave: false,
+        confirmBeforeScriptDelete: true,
       },
     };
   }
@@ -126,6 +131,12 @@
     if (Array.isArray(data.scripts)) project.scripts = data.scripts;
     if (Array.isArray(data.assets)) project.assets = data.assets;
     if (data.build && typeof data.build === "object") project.build = data.build;
+    if (data.settings && typeof data.settings === "object") {
+      project.settings = {
+        ...project.settings,
+        ...data.settings,
+      };
+    }
 
     project.schemaVersion = CURRENT_VERSION;
     return project;
@@ -140,10 +151,12 @@
 
   function createGameObject(name, x, y, options) {
     const opts = options || {};
+    const type = opts.type || "generic";
+    const isAudioType = type === "audio_source" || type === "music_source";
     return {
       id: opts.id || generateId("obj"),
       name: name || "Object",
-      type: opts.type || "generic",
+      type,
       x: x || 0,
       y: y || 0,
       components: {
@@ -154,6 +167,18 @@
         ScriptBinding: { scriptId: null },
         ScriptBindings: [],
         Animator: { clipId: null },
+        ...(isAudioType
+          ? {
+              Sound: {
+                assetId: null,
+                category: type === "music_source" ? "music" : "sfx",
+                autoplay: type === "music_source",
+                loop: type === "music_source",
+                volume: 1,
+                maxDistance: type === "music_source" ? 0 : 320,
+              },
+            }
+          : {}),
       },
     };
   }

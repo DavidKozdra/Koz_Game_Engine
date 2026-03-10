@@ -22,6 +22,7 @@
     let scriptInstances = [];
     let cssStyleElements = new Map();
     let animationClips = [];
+    let audioService = null;
     let running = false;
     let elapsed = 0;
 
@@ -33,6 +34,7 @@
       animationClips = project.animations || [];
       scripts = {};
       scriptInstances = [];
+      audioService = createRuntimeAudioService(project.assets || [], gameObjects);
 
       // Index scripts by id
       if (Array.isArray(project.scripts)) {
@@ -125,6 +127,7 @@
     function init() {
       running = true;
       elapsed = 0;
+      if (audioService) audioService.autoplayFromComponents();
 
       const engine = createEngineApi();
       for (const instance of scriptInstances) {
@@ -195,6 +198,7 @@
 
     function stop() {
       running = false;
+      if (audioService) audioService.destroy();
       clearActiveCssStyles();
     }
 
@@ -203,11 +207,144 @@
         worldSpace: worldSpace,
         gameObjects: gameObjects,
         elapsed: elapsed,
+        audio: audioService ? audioService.api : null,
         findObject: function findObject(id) {
           return gameObjects.find(function byId(o) { return o.id === id; }) || null;
         },
         findObjectsByType: function findObjectsByType(type) {
           return gameObjects.filter(function byType(o) { return o.type === type; });
+        },
+      };
+    }
+
+    function createRuntimeAudioService(assets, objects) {
+      let masterVolume = 1;
+      let currentMusic = null;
+      const handles = new Set();
+      const assetById = new Map((Array.isArray(assets) ? assets : []).map((asset) => [asset.id, asset]));
+
+      function clamp01(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return 1;
+        return Math.max(0, Math.min(1, n));
+      }
+
+      function resolveAudioSrc(assetId) {
+        const asset = assetById.get(assetId);
+        if (!asset) return null;
+        return asset.previewUrl || asset.url || asset.src || null;
+      }
+
+      function resolveObject(target) {
+        if (!target) return null;
+        if (typeof target === "string") return objects.find((obj) => obj.id === target) || null;
+        if (typeof target === "object" && target.id) return target;
+        return null;
+      }
+
+      function stopHandle(handle) {
+        if (!handle) return;
+        try {
+          handle.audio.pause();
+          handle.audio.currentTime = 0;
+        } catch (_err) {}
+        handles.delete(handle);
+        if (currentMusic === handle) currentMusic = null;
+      }
+
+      function play(assetId, options = {}) {
+        if (typeof Audio === "undefined") return null;
+        const src = resolveAudioSrc(assetId);
+        if (!src) return null;
+        const audio = new Audio(src);
+        const handle = {
+          audio,
+          sourceObjectId: options.sourceObjectId || null,
+          baseVolume: clamp01(options.volume ?? 1),
+          category: options.category === "music" ? "music" : "sfx",
+        };
+        audio.loop = !!options.loop;
+        audio.volume = clamp01(handle.baseVolume * masterVolume);
+        audio.addEventListener("ended", function onEnded() {
+          if (!audio.loop) handles.delete(handle);
+          if (currentMusic === handle && !audio.loop) currentMusic = null;
+        });
+        handles.add(handle);
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.catch === "function") {
+          playPromise.catch(function ignoredPlaybackError() {});
+        }
+        return handle;
+      }
+
+      const api = {
+        play: function playApi(assetId, options) {
+          return play(assetId, options);
+        },
+        playMusic: function playMusicApi(assetId, options = {}) {
+          if (currentMusic) stopHandle(currentMusic);
+          currentMusic = play(assetId, { ...options, loop: options.loop !== false, category: "music" });
+          return currentMusic;
+        },
+        stopMusic: function stopMusicApi() {
+          if (currentMusic) stopHandle(currentMusic);
+          currentMusic = null;
+        },
+        playObjectSound: function playObjectSoundApi(target, overrides = {}) {
+          const obj = resolveObject(target);
+          if (!obj) return null;
+          const components = obj.meta && obj.meta.components;
+          const sound = components && components.Sound;
+          if (!sound || !sound.assetId) return null;
+          const options = {
+            loop: overrides.loop !== undefined ? overrides.loop : !!sound.loop,
+            volume: overrides.volume !== undefined ? overrides.volume : (Number.isFinite(sound.volume) ? sound.volume : 1),
+            category: overrides.category || (sound.category === "music" ? "music" : "sfx"),
+            sourceObjectId: obj.id,
+          };
+          if (options.category === "music") return api.playMusic(sound.assetId, options);
+          return play(sound.assetId, options);
+        },
+        stopObjectSound: function stopObjectSoundApi(target) {
+          const obj = resolveObject(target);
+          if (!obj) return;
+          Array.from(handles).forEach(function eachHandle(handle) {
+            if (handle.sourceObjectId === obj.id) stopHandle(handle);
+          });
+        },
+        stop: function stopApi(handle) {
+          stopHandle(handle);
+        },
+        stopAll: function stopAllApi() {
+          Array.from(handles).forEach(function eachHandle(handle) {
+            stopHandle(handle);
+          });
+          currentMusic = null;
+        },
+        setMasterVolume: function setMasterVolumeApi(value) {
+          masterVolume = clamp01(value);
+          handles.forEach(function eachHandle(handle) {
+            handle.audio.volume = clamp01(handle.baseVolume * masterVolume);
+          });
+          return masterVolume;
+        },
+        getMasterVolume: function getMasterVolumeApi() {
+          return masterVolume;
+        },
+      };
+
+      return {
+        api,
+        autoplayFromComponents: function autoplayFromComponents() {
+          objects.forEach(function eachObject(obj) {
+            const components = obj.meta && obj.meta.components;
+            const sound = components && components.Sound;
+            if (!sound || !sound.assetId || !sound.autoplay) return;
+            api.playObjectSound(obj);
+          });
+        },
+        destroy: function destroy() {
+          api.stopAll();
         },
       };
     }

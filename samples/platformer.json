@@ -689,6 +689,11 @@
             "scriptId": "script_hud",
             "active": true,
             "properties": {}
+          },
+          {
+            "scriptId": "script_mmkw1zci_1",
+            "active": true,
+            "properties": {}
           }
         ]
       },
@@ -1473,6 +1478,11 @@
                 "scriptId": "script_hud",
                 "active": true,
                 "properties": {}
+              },
+              {
+                "scriptId": "script_mmkw1zci_1",
+                "active": true,
+                "properties": {}
               }
             ]
           }
@@ -1529,5 +1539,14 @@
       "lua": false,
       "python": false
     }
-  }
+  },
+  "settings": {
+    "preferredEditor": "vscode",
+    "editorCommand": "",
+    "editorArgs": [],
+    "autoSaveScripts": true,
+    "formatOnSave": false,
+    "confirmBeforeScriptDelete": true
+  },
+  "editorTheme": "graphite"
 }
