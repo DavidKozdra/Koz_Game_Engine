@@ -24,6 +24,8 @@
     const ws = createWorldSpace({
       cols: worldData.cols,
       rows: worldData.rows,
+      offsetX: worldData.offsetX || 0,
+      offsetY: worldData.offsetY || 0,
       defaultCell: worldData.defaultCell,
     });
     ws.replaceState(worldData);

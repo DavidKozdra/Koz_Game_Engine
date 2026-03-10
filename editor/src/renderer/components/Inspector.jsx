@@ -1,7 +1,31 @@
 import React, { useMemo, useState } from 'react';
 import Modal from './Modal.jsx';
 
-export default function Inspector({ project, editorState, onUpdateObject, onUpdateComponent, onCreatePrefabFromObject, onUnlinkPrefab }) {
+const AVAILABLE_COMPONENTS = [
+  { id: 'Sprite', label: 'Sprite', defaults: { assetId: null, color: '#4ade80', width: 32, height: 32, frameAssetIds: [], fps: 8 } },
+  { id: 'Collider', label: 'Collider', defaults: { shape: 'rect', width: 32, height: 32 } },
+  { id: 'Collision', label: 'Collision', defaults: { enabled: true, isTrigger: false } },
+  { id: 'RigidBody', label: 'RigidBody', defaults: { enabled: false, weight: 1, friction: 0.4 } },
+  { id: 'Animator', label: 'Animator', defaults: { clipId: null, autoplay: false } },
+  { id: 'Camera', label: 'Camera', defaults: { enabled: true, targetObjectId: null, speed: 8, offsetX: 0, offsetY: 0, deadZoneWidth: 180, deadZoneHeight: 120, lookAheadX: 0, lookAheadY: 0, visibleMargin: 40, followX: true, followY: true, clampToWorld: true, maxSpeed: 2000 } },
+];
+
+function CollapsibleSection({ title, defaultOpen = true, onRemove, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="panel-section">
+      <h3 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }} onClick={() => setOpen(!open)}>
+        <span>{open ? 'v' : '>'} {title}</span>
+        {onRemove && (
+          <button className="btn btn-sm btn-danger" onClick={(e) => { e.stopPropagation(); onRemove(); }} style={{ fontSize: 9, padding: '0 4px' }} title={`Remove ${title}`}>x</button>
+        )}
+      </h3>
+      {open && children}
+    </div>
+  );
+}
+
+export default function Inspector({ project, editorState, onUpdateObject, onUpdateComponent, onRemoveComponent, onCreatePrefabFromObject, onUnlinkPrefab }) {
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [imageQuery, setImageQuery] = useState('');
   const selectedId = editorState.selectedObjectId;
@@ -148,8 +172,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
 
       {/* Transform */}
       {components.Transform && (
-        <div className="panel-section">
-          <h3>Transform</h3>
+        <CollapsibleSection title="Transform">
           <div className="field">
             <label>X</label>
             <input type="number" value={components.Transform.x || 0}
@@ -164,14 +187,24 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             <label>Rotation</label>
             <input type="number" value={components.Transform.rotation || 0}
               onChange={(e) => handleComponentChange('Transform', 'rotation', parseFloat(e.target.value) || 0)} />
+            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>deg</span>
           </div>
-        </div>
+          <div className="field">
+            <label>Scale X</label>
+            <input type="number" step="0.1" value={components.Transform.scaleX ?? 1}
+              onChange={(e) => handleComponentChange('Transform', 'scaleX', parseFloat(e.target.value) || 1)} />
+          </div>
+          <div className="field">
+            <label>Scale Y</label>
+            <input type="number" step="0.1" value={components.Transform.scaleY ?? 1}
+              onChange={(e) => handleComponentChange('Transform', 'scaleY', parseFloat(e.target.value) || 1)} />
+          </div>
+        </CollapsibleSection>
       )}
 
       {/* Sprite */}
       {components.Sprite && (
-        <div className="panel-section">
-          <h3>Sprite</h3>
+        <CollapsibleSection title="Sprite" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'Sprite') : undefined}>
           {components.Sprite.assetId && !imageAssetById.has(components.Sprite.assetId) && (
             <div style={{ color: '#fca5a5', fontSize: 11, marginBottom: 6 }}>
               Missing PNG asset reference: {components.Sprite.assetId}
@@ -227,7 +260,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
               onChange={(e) => handleComponentChange('Sprite', 'fps', Math.max(1, parseInt(e.target.value, 10) || 8))}
             />
           </div>
-        </div>
+        </CollapsibleSection>
       )}
       <Modal open={showImagePicker} title="Select Sprite Image" onClose={() => setShowImagePicker(false)} maxWidth={920} minWidth={620}>
         <div style={{ display: 'grid', gap: 10 }}>
@@ -288,8 +321,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
 
       {/* Collider */}
       {components.Collider && (
-        <div className="panel-section">
-          <h3>Collider</h3>
+        <CollapsibleSection title="Collider" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'Collider') : undefined}>
           <div className="field">
             <label>Shape</label>
             <select value={components.Collider.shape || 'rect'}
@@ -308,13 +340,12 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             <input type="number" value={components.Collider.height || 32}
               onChange={(e) => handleComponentChange('Collider', 'height', parseInt(e.target.value, 10) || 32)} />
           </div>
-        </div>
+        </CollapsibleSection>
       )}
 
       {/* Collision */}
       {components.Collision && (
-        <div className="panel-section">
-          <h3>Collision</h3>
+        <CollapsibleSection title="Collision" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'Collision') : undefined}>
           <div className="field">
             <label>Enabled</label>
             <input type="checkbox" checked={components.Collision.enabled !== false}
@@ -325,13 +356,12 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             <input type="checkbox" checked={!!components.Collision.isTrigger}
               onChange={(e) => handleComponentChange('Collision', 'isTrigger', e.target.checked)} />
           </div>
-        </div>
+        </CollapsibleSection>
       )}
 
       {/* RigidBody */}
       {components.RigidBody && (
-        <div className="panel-section">
-          <h3>RigidBody</h3>
+        <CollapsibleSection title="RigidBody" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'RigidBody') : undefined}>
           <div className="field">
             <label>Enabled</label>
             <input type="checkbox" checked={!!components.RigidBody.enabled}
@@ -347,13 +377,12 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             <input type="number" value={components.RigidBody.friction || 0}
               onChange={(e) => handleComponentChange('RigidBody', 'friction', parseFloat(e.target.value) || 0)} />
           </div>
-        </div>
+        </CollapsibleSection>
       )}
 
       {/* Render */}
       {components.Render && (
-        <div className="panel-section">
-          <h3>Render</h3>
+        <CollapsibleSection title="Render">
           <div className="field">
             <label>Layer</label>
             <select
@@ -375,13 +404,12 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             <input type="number" value={components.Render.zIndex || 0}
               onChange={(e) => handleComponentChange('Render', 'zIndex', parseInt(e.target.value, 10) || 0)} />
           </div>
-        </div>
+        </CollapsibleSection>
       )}
 
       {/* Camera */}
       {components.Camera && (
-        <div className="panel-section">
-          <h3>Camera</h3>
+        <CollapsibleSection title="Camera" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'Camera') : undefined}>
           <div className="field">
             <label>Enabled</label>
             <input
@@ -541,7 +569,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
               Grab Player
             </button>
           </div>
-        </div>
+        </CollapsibleSection>
       )}
 
       {/* Script Bindings (multiple) */}
@@ -604,8 +632,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
 
       {/* Animator */}
       {components.Animator && (
-        <div className="panel-section">
-          <h3>Animator</h3>
+        <CollapsibleSection title="Animator" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'Animator') : undefined}>
           <div className="field">
             <label>Clip</label>
             <select
@@ -618,8 +645,32 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
               ))}
             </select>
           </div>
-        </div>
+        </CollapsibleSection>
       )}
+
+      {/* Add Component */}
+      {(() => {
+        const existing = Object.keys(components).filter(k => k !== 'Transform' && k !== 'Render' && k !== 'ScriptBindings');
+        const available = AVAILABLE_COMPONENTS.filter(c => !existing.includes(c.id) && c.id !== 'Transform' && c.id !== 'Render');
+        if (available.length === 0) return null;
+        return (
+          <div className="panel-section">
+            <select
+              value=""
+              onChange={(e) => {
+                const comp = AVAILABLE_COMPONENTS.find(c => c.id === e.target.value);
+                if (comp && onUpdateComponent) {
+                  onUpdateComponent(obj.id, comp.id, { ...comp.defaults });
+                }
+              }}
+              style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 11 }}
+            >
+              <option value="">+ Add Component...</option>
+              {available.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+            </select>
+          </div>
+        );
+      })()}
     </div>
   );
 }
