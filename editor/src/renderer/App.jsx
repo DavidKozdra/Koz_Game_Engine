@@ -387,7 +387,7 @@ function App() {
   }, []);
 
   // ---- Play mode ----
-  const { canvasRef: playCanvasRef, isPlaying, start: startPlay, stop: stopPlay, execute } = usePlayMode(projectView, addLog);
+  const { canvasRef: playCanvasRef, uiRootRef: playUiRootRef, isPlaying, start: startPlay, stop: stopPlay, execute } = usePlayMode(projectView, addLog);
 
   const handlePlayToggle = useCallback(() => {
     if (isPlaying) { stopPlay(); updateEditor({ mode: 'EDIT' }); }
@@ -700,55 +700,38 @@ function onUpdate(self, engine, dt) {
   // Use engine.keyIsDown(keyCode) for input
 }
 `,
-      ui: `// UI Screen using KozUIManager
-// Registers a screen that shows/hides based on game state
+      ui: `// UI Screen using KozUIManager / uiManager
+// Visibility can be filtered by game state and active scene
 
 function onInit(self, engine) {
-  // Register screen with UIManager (auto-injected as global)
-  if (typeof KozUIManager !== 'undefined') {
-    KozUIManager.registerScreen('myScreen', {
-      // validStates: ['RUNNING', 'PAUSED'], // Show in these states
-      create: function() {
-        const container = document.createElement('div');
-        container.id = 'myScreen';
-        container.style.cssText = 'position:absolute;top:20px;right:20px;padding:16px;background:rgba(0,0,0,0.8);color:#fff;border-radius:8px;font-family:sans-serif;';
-        container.innerHTML = '<h3>My UI</h3><p>Game time: 0s</p><button id="myBtn">Click Me</button>';
-        
-        // Add click handler
-        const btn = container.querySelector('#myBtn');
-        if (btn) {
-          btn.onclick = function() {
-            console.log('Button clicked!');
-          };
-        }
-        
-        return container;
-      },
-      show: function() {
-        // Called when screen becomes visible
-        console.log('UI Screen shown');
-      },
-      hide: function() {
-        // Called when screen hides
-        console.log('UI Screen hidden');
-      },
-      update: function() {
-        // Called every frame while visible
-        const container = this.container;
-        if (container) {
-          const time = Math.floor(engine.elapsed || 0);
-          const p = container.querySelector('p');
-          if (p) p.textContent = 'Game time: ' + time + 's';
-        }
-      },
-      validStates: ['RUNNING']
-    });
-  }
+  const manager = (typeof uiManager !== 'undefined' && uiManager) || (typeof KozUIManager !== 'undefined' && KozUIManager);
+  if (!manager) return;
+
+  manager.registerScreen('myScreen', {
+    validStates: ['RUNNING'],
+    // validScenes: ['scene_main', 'Main Scene'],
+    layer: 'hud',
+    layerOrder: 20,
+    create: function() {
+      const container = document.createElement('div');
+      container.id = 'myScreen';
+      container.style.cssText = 'position:absolute;top:20px;right:20px;padding:16px;background:rgba(0,0,0,0.8);color:#fff;border-radius:8px;font-family:sans-serif;';
+      container.innerHTML = '<h3>My UI</h3><p id="uiTime">Game time: 0s</p><button id="myBtn">Click Me</button>';
+      const btn = container.querySelector('#myBtn');
+      if (btn) btn.onclick = function() { console.log('Button clicked!'); };
+      return container;
+    },
+    update: function(ctx) {
+      const panel = document.getElementById('myScreen');
+      if (!panel) return;
+      const p = panel.querySelector('#uiTime');
+      if (p) p.textContent = 'Game time: ' + Math.floor(ctx.elapsed || 0) + 's';
+    }
+  });
 }
 
 function onUpdate(self, engine, dt) {
-  // Called every frame
-  // KozUIManager.updateAll() is called automatically
+  // manager.updateAll() is called automatically by play mode
 }
 `,
       typescript: `// TypeScript support coming soon
@@ -1303,8 +1286,11 @@ def on_update(self, engine, dt):
               <>
                 <div className="editor-viewport">
                   {isPlaying ? (
-                    <canvas ref={playCanvasRef} width={projectView.meta.resolution.width} height={projectView.meta.resolution.height}
-                      style={{ display: 'block', maxWidth: '100%', maxHeight: '100%', margin: '0 auto', background: '#0b1220' }} tabIndex={0} />
+                    <div style={{ position: 'relative', width: 'fit-content', maxWidth: '100%', maxHeight: '100%', margin: '0 auto' }}>
+                      <canvas ref={playCanvasRef} width={projectView.meta.resolution.width} height={projectView.meta.resolution.height}
+                        style={{ display: 'block', maxWidth: '100%', maxHeight: '100%', margin: '0 auto', background: '#0b1220' }} tabIndex={0} />
+                      <div ref={playUiRootRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
+                    </div>
                   ) : (
                     <Viewport project={projectView} editorState={editorState}
                       onCellPaint={handleCellPaint} onCellFill={handleCellFill} onSelectObject={handleSelectObject}
