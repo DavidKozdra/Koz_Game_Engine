@@ -217,33 +217,666 @@ function instantiateFromPrefab(prefab, projectView, x, y) {
   return obj;
 }
 
-function buildExportHtml(project, projectJson, target) {
+function buildExportHtml(project, projectJson, target, options = {}) {
   const safeJson = projectJson
     .replace(/</g, '\\u003c')
     .replace(/>/g, '\\u003e')
     .replace(/&/g, '\\u0026');
-  return `<!doctype html>
+  const title = (project && project.meta && project.meta.name) || 'Koz Game';
+  const width = project?.meta?.resolution?.width || 960;
+  const height = project?.meta?.resolution?.height || 540;
+  const html = `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${(project && project.meta && project.meta.name) || 'Koz Game'}</title>
+  <title>${title}</title>
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; background: #0b1220; color: #e2e8f0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; overflow: hidden; }
+    #shell { width: 100%; height: 100%; display: grid; place-items: center; }
+    #stage { position: relative; width: min(100vw, ${width}px); height: min(100vh, ${height}px); display: grid; place-items: center; }
+    #game { display: block; max-width: 100%; max-height: 100%; background: #111827; image-rendering: pixelated; }
+    #ui-root { position: absolute; inset: 0; pointer-events: none; }
+  </style>
 </head>
-<body style="margin:0;background:#0b1220;color:#e2e8f0;font-family:sans-serif;">
-  <div style="padding:12px;border-bottom:1px solid #334155;">Export target: ${target || 'html-zip'}</div>
-  <canvas id="game" width="${project?.meta?.resolution?.width || 960}" height="${project?.meta?.resolution?.height || 540}" style="display:block;margin:12px auto;background:#111827;"></canvas>
+<body>
+  <div id="shell">
+    <div id="stage">
+      <canvas id="game" width="${width}" height="${height}"></canvas>
+      <div id="ui-root"></div>
+    </div>
+  </div>
   <script>window.__KOZ_PROJECT__=${safeJson};</script>
   <script>
-    const p = window.__KOZ_PROJECT__;
-    const ctx = document.getElementById('game').getContext('2d');
-    ctx.fillStyle = '#111827'; ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);
-    ctx.fillStyle = '#22c55e'; ctx.font = '16px sans-serif';
-    ctx.fillText((p.meta && p.meta.name) || 'Koz Export', 16, 28);
-    ctx.fillStyle = '#94a3b8'; ctx.font = '12px sans-serif';
-    ctx.fillText('Project exported with target: ${(target || 'html-zip')}', 16, 50);
+    (function() {
+      var project = window.__KOZ_PROJECT__ || {};
+      var canvas = document.getElementById('game');
+      var uiRoot = document.getElementById('ui-root');
+      var ctx = canvas.getContext('2d');
+      var keys = new Set();
+      var images = new Map();
+      var assetById = new Map((Array.isArray(project.assets) ? project.assets : []).map(function(a) { return [a.id, a]; }));
+      var cellSize = 24;
+      var CELL_SIZE = 24;
+      var elapsed = 0;
+
+      function clone(v) { return JSON.parse(JSON.stringify(v)); }
+      function resolveScene(p) {
+        var scenes = Array.isArray(p.scenes) ? p.scenes : [];
+        if (!scenes.length) return { id: p.activeSceneId || 'scene_main', name: 'Main Scene', world: p.world || {}, objects: p.objects || [] };
+        for (var i = 0; i < scenes.length; i += 1) if (scenes[i].id === p.activeSceneId) return scenes[i];
+        return scenes[0];
+      }
+      function resolveCellType(cell) {
+        if (cell == null || cell === 'empty') return null;
+        var types = Array.isArray(project.cellTypes) ? project.cellTypes : [];
+        if (typeof cell === 'number') return types[cell] || null;
+        if (typeof cell === 'string') return types.find(function(t) { return t && t.id === cell; }) || null;
+        if (typeof cell === 'object' && cell.typeId) return types.find(function(t) { return t && t.id === cell.typeId; }) || null;
+        return null;
+      }
+      function normalizeCellTypeId(cell) {
+        if (cell == null) return 'empty';
+        if (typeof cell === 'string') return cell;
+        if (typeof cell === 'number') {
+          var type = resolveCellType(cell);
+          return (type && type.id) || 'empty';
+        }
+        if (typeof cell === 'object') {
+          if (typeof cell.typeId === 'string') return cell.typeId;
+          if (typeof cell.id === 'string') return cell.id;
+        }
+        return 'empty';
+      }
+      function isCollidableCell(cell) {
+        if (normalizeCellTypeId(cell) === 'empty') return false;
+        var type = resolveCellType(cell);
+        return !!(type && type.collision);
+      }
+      function getColliderRect(obj) {
+        var collider = (obj && obj.components && obj.components.Collider) || {};
+        var w = Number.isFinite(collider.width) ? collider.width : (Number.isFinite(obj.width) ? obj.width : 0);
+        var h = Number.isFinite(collider.height) ? collider.height : (Number.isFinite(obj.height) ? obj.height : 0);
+        var ox = Number.isFinite(collider.offsetX) ? collider.offsetX : (Number.isFinite(collider.x) ? collider.x : 0);
+        var oy = Number.isFinite(collider.offsetY) ? collider.offsetY : (Number.isFinite(collider.y) ? collider.y : 0);
+        return {
+          x: (Number.isFinite(obj.x) ? obj.x : 0) + ox,
+          y: (Number.isFinite(obj.y) ? obj.y : 0) + oy,
+          w: w,
+          h: h,
+        };
+      }
+      function getOverlap(a, b) {
+        var overlapLeft = (a.x + a.w) - b.x;
+        var overlapRight = (b.x + b.w) - a.x;
+        var overlapTop = (a.y + a.h) - b.y;
+        var overlapBottom = (b.y + b.h) - a.y;
+        if (overlapLeft <= 0 || overlapRight <= 0 || overlapTop <= 0 || overlapBottom <= 0) return null;
+
+        var ax = a.x + a.w / 2;
+        var ay = a.y + a.h / 2;
+        var bx = b.x + b.w / 2;
+        var by = b.y + b.h / 2;
+
+        return {
+          dx: ax < bx ? -overlapLeft : overlapRight,
+          dy: ay < by ? -overlapTop : overlapBottom,
+        };
+      }
+      function imageForAssetId(id) {
+        if (!id) return null;
+        var asset = assetById.get(id);
+        if (!asset) return null;
+        var src = asset.previewUrl || asset.url || asset.src;
+        if (!src) return null;
+        if (!images.has(src)) {
+          var img = new Image();
+          img.src = src;
+          images.set(src, img);
+        }
+        return images.get(src);
+      }
+      function readGameState() {
+        var gsm = window.gameStateManager;
+        if (!gsm) return null;
+        if (typeof gsm.getState === 'function') return gsm.getState();
+        if (gsm.currentState !== undefined) return gsm.currentState;
+        if (gsm.state !== undefined) return gsm.state;
+        if (gsm.current !== undefined) return gsm.current;
+        return null;
+      }
+      function resolveSceneName(sceneId) {
+        var scenes = Array.isArray(project.scenes) ? project.scenes : [];
+        var found = scenes.find(function(s) { return s && s.id === sceneId; });
+        return found ? found.name : sceneId;
+      }
+      function resolveRuntimeScene(activeSceneId) {
+        var fallbackId = activeSceneId || 'scene_main';
+        var fallbackName = resolveSceneName(fallbackId);
+        if (!window.sceneManager) return { id: fallbackId, name: fallbackName };
+        var sm = window.sceneManager;
+        var active = null;
+        if (typeof sm.getActiveScene === 'function') active = sm.getActiveScene();
+        else if (sm.activeScene !== undefined) active = sm.activeScene;
+        else if (sm.currentScene !== undefined) active = sm.currentScene;
+        if (typeof active === 'string') return { id: active, name: resolveSceneName(active) };
+        if (active && typeof active === 'object') {
+          var id = active.id || active.sceneId || sm.activeSceneId || sm.currentSceneId || fallbackId;
+          return { id: id, name: active.name || resolveSceneName(id) };
+        }
+        var id2 = sm.activeSceneId || sm.currentSceneId || fallbackId;
+        return { id: id2, name: resolveSceneName(id2) };
+      }
+      function sampleTrack(track, time) {
+        var kfs = track && track.keyframes;
+        if (!kfs || kfs.length === 0) return 0;
+        if (kfs.length === 1) return kfs[0].value;
+        if (time <= kfs[0].time) return kfs[0].value;
+        if (time >= kfs[kfs.length - 1].time) return kfs[kfs.length - 1].value;
+        for (var i = 0; i < kfs.length - 1; i += 1) {
+          if (time >= kfs[i].time && time <= kfs[i + 1].time) {
+            var range = kfs[i + 1].time - kfs[i].time;
+            var t = range > 0 ? (time - kfs[i].time) / range : 0;
+            return kfs[i].value + (kfs[i + 1].value - kfs[i].value) * t;
+          }
+        }
+        return kfs[kfs.length - 1].value;
+      }
+      function resolvePlayCamera(cameraConfig, objects) {
+        var fallback = cameraConfig || {};
+        var cameraObject = objects.find(function(o) {
+          return o && o.components && o.components.Camera && o.components.Camera.enabled !== false;
+        });
+        var cameraComp = cameraObject ? (cameraObject.components.Camera || {}) : {};
+        var targetObjectId = cameraComp.targetObjectId || fallback.targetObjectId || null;
+        if (!targetObjectId) {
+          var player = objects.find(function(o) { return o.type === 'player'; });
+          targetObjectId = player ? player.id : null;
+        }
+        if (!cameraObject) {
+          return Object.assign({}, fallback, {
+            targetObjectId: targetObjectId,
+            offsetX: 0, offsetY: 0, followX: true, followY: true, clampToWorld: true,
+          });
+        }
+        return Object.assign({}, fallback, cameraComp, {
+          originX: Number.isFinite(cameraObject.x) ? cameraObject.x : 0,
+          originY: Number.isFinite(cameraObject.y) ? cameraObject.y : 0,
+          targetObjectId: targetObjectId,
+        });
+      }
+      function smoothAxis(current, target, dt, speed, maxSpeed) {
+        if (!Number.isFinite(target)) return current;
+        var alpha = 1 - Math.exp(-Math.max(0.1, speed) * Math.max(0.0001, dt));
+        var next = current + (target - current) * alpha;
+        if (Number.isFinite(maxSpeed)) {
+          var delta = next - current;
+          var maxStep = Math.max(1, maxSpeed) * Math.max(0.0001, dt);
+          if (delta > maxStep) next = current + maxStep;
+          if (delta < -maxStep) next = current - maxStep;
+        }
+        return next;
+      }
+      function resolveDesiredView(cameraConfig, objects, currentViewX, currentViewY, snapToTarget, viewW, viewH) {
+        var target = cameraConfig.targetObjectId ? objects.find(function(o) { return o.id === cameraConfig.targetObjectId; }) : null;
+        var offsetX = Number.isFinite(cameraConfig.offsetX) ? cameraConfig.offsetX : 0;
+        var offsetY = Number.isFinite(cameraConfig.offsetY) ? cameraConfig.offsetY : 0;
+        var lookAheadX = Number.isFinite(cameraConfig.lookAheadX) ? cameraConfig.lookAheadX : 0;
+        var lookAheadY = Number.isFinite(cameraConfig.lookAheadY) ? cameraConfig.lookAheadY : 0;
+        var deadZoneWidth = Math.max(0, Number.isFinite(cameraConfig.deadZoneWidth) ? cameraConfig.deadZoneWidth : 0);
+        var deadZoneHeight = Math.max(0, Number.isFinite(cameraConfig.deadZoneHeight) ? cameraConfig.deadZoneHeight : 0);
+        var visibleMargin = Math.max(0, Number.isFinite(cameraConfig.visibleMargin) ? cameraConfig.visibleMargin : 0);
+        var followX = cameraConfig.followX !== false;
+        var followY = cameraConfig.followY !== false;
+        var desiredX = Number.isFinite(currentViewX) ? currentViewX : 0;
+        var desiredY = Number.isFinite(currentViewY) ? currentViewY : 0;
+
+        var focusCenterX = target
+          ? (target.x + (target.width || 32) * 0.5 + offsetX + lookAheadX)
+          : (Number.isFinite(cameraConfig.originX) ? cameraConfig.originX + offsetX + lookAheadX : desiredX + viewW * 0.5);
+        var focusCenterY = target
+          ? (target.y + (target.height || 32) * 0.5 + offsetY + lookAheadY)
+          : (Number.isFinite(cameraConfig.originY) ? cameraConfig.originY + offsetY + lookAheadY : desiredY + viewH * 0.5);
+
+        if (followX) {
+          if (snapToTarget || deadZoneWidth <= 0) {
+            desiredX = focusCenterX - viewW * 0.5;
+          } else {
+            var currentLeft = (currentViewX || 0) + viewW * 0.5 - deadZoneWidth * 0.5;
+            var currentRight = (currentViewX || 0) + viewW * 0.5 + deadZoneWidth * 0.5;
+            if (focusCenterX < currentLeft) desiredX = focusCenterX - (viewW * 0.5 - deadZoneWidth * 0.5);
+            if (focusCenterX > currentRight) desiredX = focusCenterX - (viewW * 0.5 + deadZoneWidth * 0.5);
+          }
+        }
+        if (followY) {
+          if (snapToTarget || deadZoneHeight <= 0) {
+            desiredY = focusCenterY - viewH * 0.5;
+          } else {
+            var currentTop = (currentViewY || 0) + viewH * 0.5 - deadZoneHeight * 0.5;
+            var currentBottom = (currentViewY || 0) + viewH * 0.5 + deadZoneHeight * 0.5;
+            if (focusCenterY < currentTop) desiredY = focusCenterY - (viewH * 0.5 - deadZoneHeight * 0.5);
+            if (focusCenterY > currentBottom) desiredY = focusCenterY - (viewH * 0.5 + deadZoneHeight * 0.5);
+          }
+        }
+
+        if (target) {
+          var tx = Number.isFinite(target.x) ? target.x : 0;
+          var ty = Number.isFinite(target.y) ? target.y : 0;
+          var tw = Number.isFinite(target.width) ? target.width : 32;
+          var th = Number.isFinite(target.height) ? target.height : 32;
+          var left = desiredX + visibleMargin;
+          var right = desiredX + viewW - visibleMargin;
+          var top = desiredY + visibleMargin;
+          var bottom = desiredY + viewH - visibleMargin;
+          if (followX) {
+            if (tx < left) desiredX = tx - visibleMargin;
+            if (tx + tw > right) desiredX = tx + tw + visibleMargin - viewW;
+          }
+          if (followY) {
+            if (ty < top) desiredY = ty - visibleMargin;
+            if (ty + th > bottom) desiredY = ty + th + visibleMargin - viewH;
+          }
+        }
+
+        if (cameraConfig.clampToWorld !== false) {
+          var rows = Number.isFinite(world.rows) ? world.rows : ((world.grid && world.grid.length) || 0);
+          var cols = Number.isFinite(world.cols) ? world.cols : ((world.grid && world.grid[0] && world.grid[0].length) || 0);
+          if (cols > 0 && rows > 0) {
+            var ox = Number.isFinite(world.offsetX) ? world.offsetX : 0;
+            var oy = Number.isFinite(world.offsetY) ? world.offsetY : 0;
+            var minX = ox * CELL_SIZE;
+            var minY = oy * CELL_SIZE;
+            var maxX = (ox + cols) * CELL_SIZE - viewW;
+            var maxY = (oy + rows) * CELL_SIZE - viewH;
+            desiredX = maxX < minX ? minX - ((viewW - cols * CELL_SIZE) * 0.5) : Math.max(minX, Math.min(maxX, desiredX));
+            desiredY = maxY < minY ? minY - ((viewH - rows * CELL_SIZE) * 0.5) : Math.max(minY, Math.min(maxY, desiredY));
+          }
+        }
+        return { x: desiredX, y: desiredY };
+      }
+      function createUiManager(root) {
+        var screens = new Map();
+        var layers = new Map();
+        function ensureLayer(id, order) {
+          var key = id || 'default';
+          if (layers.has(key)) return layers.get(key);
+          var layer = document.createElement('div');
+          layer.style.position = 'absolute';
+          layer.style.inset = '0';
+          layer.style.zIndex = String(Number.isFinite(order) ? order : 0);
+          layer.style.pointerEvents = 'none';
+          root.appendChild(layer);
+          layers.set(key, layer);
+          return layer;
+        }
+        function toNode(node) { return node && node.elt ? node.elt : node; }
+        function shouldShow(def, c) {
+          if (Array.isArray(def.validScenes) && def.validScenes.length) {
+            var okScene = def.validScenes.some(function(s) { return s === c.sceneId || s === c.sceneName; });
+            if (!okScene) return false;
+          }
+          if (Array.isArray(def.validStates) && def.validStates.length) {
+            if (!def.validStates.includes(c.gameState)) return false;
+          }
+          if (typeof def.isVisible === 'function') {
+            try { return !!def.isVisible(c); } catch (_e) { return false; }
+          }
+          return true;
+        }
+        var api = {
+          registerScreen: function(id, def) {
+            if (!id) return api;
+            var old = screens.get(id);
+            if (old && old.container && old.container.parentElement) old.container.parentElement.removeChild(old.container);
+            var rec = { id: id, def: def || {}, container: null, visible: false, hideTimer: null };
+            screens.set(id, rec);
+            return api;
+          },
+          scheduleFadeHide: function(id, delay) {
+            var rec = screens.get(id);
+            if (!rec || !rec.container) return;
+            if (rec.hideTimer) clearTimeout(rec.hideTimer);
+            rec.hideTimer = setTimeout(function() {
+              if (!rec.visible && rec.container) rec.container.style.display = 'none';
+            }, Math.max(0, delay || 0));
+          },
+          updateAll: function(c) {
+            screens.forEach(function(rec) {
+              var def = rec.def || {};
+              if (!rec.container && typeof def.create === 'function') {
+                try {
+                  var node = toNode(def.create(c));
+                  if (!node) node = document.createElement('div');
+                  if (!node.id) node.id = rec.id;
+                  node.style.display = 'none';
+                  node.style.pointerEvents = node.style.pointerEvents || 'auto';
+                  ensureLayer(def.layer || 'default', def.layerOrder || 0).appendChild(node);
+                  rec.container = node;
+                } catch (_e) {}
+              }
+              var visible = shouldShow(def, c);
+              if (visible) {
+                if (rec.container) rec.container.style.display = '';
+                if (!rec.visible && typeof def.show === 'function') { try { def.show.call(rec, c); } catch (_e) {} }
+                rec.visible = true;
+                if (typeof def.update === 'function') { try { def.update.call(rec, c); } catch (_e) {} }
+              } else {
+                if (rec.visible && typeof def.hide === 'function') { try { def.hide.call(rec, c); } catch (_e) {} }
+                else if (rec.container) rec.container.style.display = 'none';
+                rec.visible = false;
+              }
+            });
+          }
+        };
+        return api;
+      }
+
+      var scene = resolveScene(project);
+      var world = scene.world || project.world || {};
+      var gameObjects = clone(scene.objects || project.objects || []).map(function(obj) {
+        var t = (obj.components && obj.components.Transform) || {};
+        var s = (obj.components && obj.components.Sprite) || {};
+        return Object.assign({}, obj, {
+          x: Number.isFinite(t.x) ? t.x : (Number.isFinite(obj.x) ? obj.x : 0),
+          y: Number.isFinite(t.y) ? t.y : (Number.isFinite(obj.y) ? obj.y : 0),
+          width: Number.isFinite(s.width) ? s.width : 32,
+          height: Number.isFinite(s.height) ? s.height : 32,
+          color: s.color || '#4ade80',
+          components: obj.components || {},
+        });
+      });
+      var cameraConfig = project.camera || {};
+      var animClips = Array.isArray(project.animations) ? project.animations : [];
+      var activeSceneId = scene.id || project.activeSceneId || 'scene_main';
+      var viewX = 0;
+      var viewY = 0;
+      function resolveCellCollisions() {
+        if (!world || !Array.isArray(world.grid)) return;
+        var rows = Number.isFinite(world.rows) ? world.rows : world.grid.length;
+        var cols = Number.isFinite(world.cols) ? world.cols : ((world.grid[0] && world.grid[0].length) || 0);
+        var offsetX = Number.isFinite(world.offsetX) ? world.offsetX : 0;
+        var offsetY = Number.isFinite(world.offsetY) ? world.offsetY : 0;
+        if (rows <= 0 || cols <= 0) return;
+
+        for (var i = 0; i < gameObjects.length; i += 1) {
+          var obj = gameObjects[i];
+          var collision = (obj.components && obj.components.Collision) || {};
+          if (collision.enabled === false || collision.isTrigger) continue;
+
+          if (typeof obj.grounded === 'boolean') obj.grounded = false;
+          var iterations = 0;
+          while (iterations < 4) {
+            iterations += 1;
+            var rect = getColliderRect(obj);
+            if (rect.w <= 0 || rect.h <= 0) break;
+
+            var worldMinX = offsetX;
+            var worldMinY = offsetY;
+            var worldMaxX = offsetX + cols - 1;
+            var worldMaxY = offsetY + rows - 1;
+            var minX = Math.max(worldMinX, Math.floor(rect.x / CELL_SIZE));
+            var minY = Math.max(worldMinY, Math.floor(rect.y / CELL_SIZE));
+            var maxX = Math.min(worldMaxX, Math.floor((rect.x + rect.w - 1) / CELL_SIZE));
+            var maxY = Math.min(worldMaxY, Math.floor((rect.y + rect.h - 1) / CELL_SIZE));
+            if (minX > maxX || minY > maxY) break;
+
+            var resolved = false;
+            for (var y = minY; y <= maxY && !resolved; y += 1) {
+              for (var x = minX; x <= maxX && !resolved; x += 1) {
+                var ly = y - offsetY;
+                var lx = x - offsetX;
+                var cell = world.grid[ly] && world.grid[ly][lx];
+                if (!isCollidableCell(cell)) continue;
+                var tile = { x: x * CELL_SIZE, y: y * CELL_SIZE, w: CELL_SIZE, h: CELL_SIZE };
+                var overlap = getOverlap(rect, tile);
+                if (!overlap) continue;
+
+                if (Math.abs(overlap.dx) <= Math.abs(overlap.dy)) {
+                  obj.x += overlap.dx;
+                  if (typeof obj.vx === 'number' && ((overlap.dx < 0 && obj.vx > 0) || (overlap.dx > 0 && obj.vx < 0))) obj.vx = 0;
+                } else {
+                  obj.y += overlap.dy;
+                  if (typeof obj.vy === 'number' && ((overlap.dy < 0 && obj.vy > 0) || (overlap.dy > 0 && obj.vy < 0))) obj.vy = 0;
+                  if (overlap.dy < 0 && typeof obj.grounded === 'boolean') obj.grounded = true;
+                }
+                resolved = true;
+              }
+            }
+            if (!resolved) break;
+          }
+        }
+      }
+
+      var scripts = {};
+      (Array.isArray(project.scripts) ? project.scripts : []).forEach(function(s) {
+        if (!s || !s.id || (s.language && s.language !== 'javascript')) return;
+        scripts[s.id] = s;
+      });
+      var engine = {
+        elapsed: 0,
+        gameObjects: gameObjects,
+        findObject: function(id) { return gameObjects.find(function(o) { return o.id === id; }) || null; },
+        findObjectsByType: function(type) { return gameObjects.filter(function(o) { return o.type === type; }); },
+        keyIsDown: function(code) { return keys.has(code); }
+      };
+
+      var uiManager = createUiManager(uiRoot);
+      window.KozUIManager = uiManager;
+      window.uiManager = uiManager;
+      var scriptInstances = [];
+      gameObjects.forEach(function(obj) {
+        var bindings = [];
+        if (Array.isArray(obj.components && obj.components.ScriptBindings)) bindings = bindings.concat(obj.components.ScriptBindings);
+        if (obj.components && obj.components.ScriptBinding) bindings.push(Object.assign({ active: true, properties: {} }, obj.components.ScriptBinding));
+        bindings.forEach(function(binding) {
+          if (!binding || binding.active === false || !binding.scriptId || !scripts[binding.scriptId]) return;
+          try {
+            var src = scripts[binding.scriptId].source || '';
+            var factory = new Function('return (function(self, props, console, keyIsDown, LEFT_ARROW, RIGHT_ARROW, UP_ARROW, DOWN_ARROW, SPACE){' + src + '; return { onInit: typeof onInit === \"function\" ? onInit : null, onUpdate: typeof onUpdate === \"function\" ? onUpdate : null }; })')();
+            var props = binding.properties ? clone(binding.properties) : {};
+            var hooks = factory(obj, props, console, engine.keyIsDown, 37, 39, 38, 40, 32);
+            scriptInstances.push({ obj: obj, hooks: hooks });
+          } catch (err) { console.error('Script compile error', err); }
+        });
+      });
+      scriptInstances.forEach(function(inst) {
+        if (inst.hooks && typeof inst.hooks.onInit === 'function') {
+          try { inst.hooks.onInit(inst.obj, engine); } catch (err) { console.error('onInit error', err); }
+        }
+      });
+
+      function drawWorld(viewX, viewY) {
+        var grid = Array.isArray(world.grid) ? world.grid : [];
+        var rows = Number.isFinite(world.rows) ? world.rows : grid.length;
+        var cols = Number.isFinite(world.cols) ? world.cols : ((grid[0] && grid[0].length) || 0);
+        var ox = Number.isFinite(world.offsetX) ? world.offsetX : 0;
+        var oy = Number.isFinite(world.offsetY) ? world.offsetY : 0;
+        var cellLayers = ((project.layers && project.layers.cells) || [])
+          .filter(function(layer) { return layer.visible !== false; })
+          .sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
+        if (!cellLayers.length) cellLayers = [{ id: null }];
+        for (var li = 0; li < cellLayers.length; li += 1) {
+          var layer = cellLayers[li];
+          for (var y = 0; y < rows; y += 1) {
+            for (var x = 0; x < cols; x += 1) {
+              var cell = grid[y] && grid[y][x];
+              var type = resolveCellType(cell);
+              if (!type || type.id === 'empty') continue;
+              var typeLayer = type.layerId || null;
+              if (layer.id !== typeLayer) continue;
+              var px = (x + ox) * cellSize - viewX;
+              var py = (y + oy) * cellSize - viewY;
+              var img = imageForAssetId(type.imageAssetId);
+              if (img && img.complete && img.naturalWidth > 0) ctx.drawImage(img, px, py, cellSize, cellSize);
+              else {
+                ctx.fillStyle = type.color || '#334155';
+                ctx.fillRect(px, py, cellSize, cellSize);
+              }
+            }
+          }
+        }
+      }
+
+      function drawObjects(viewX, viewY) {
+        var objectLayers = ((project.layers && project.layers.objects) || [])
+          .filter(function(layer) { return layer.visible !== false; })
+          .sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
+        var objects = gameObjects.slice().sort(function(a, b) {
+          var ar = (a.components && a.components.Render) || {};
+          var br = (b.components && b.components.Render) || {};
+          var ao = objectLayers.find(function(l) { return l.id === ar.layerId; });
+          var bo = objectLayers.find(function(l) { return l.id === br.layerId; });
+          var layerDelta = ((ao && ao.order) || 0) - ((bo && bo.order) || 0);
+          if (layerDelta !== 0) return layerDelta;
+          return (ar.zIndex || 0) - (br.zIndex || 0);
+        });
+        objects.forEach(function(obj) {
+          var render = (obj.components && obj.components.Render) || {};
+          if (render.visible === false) return;
+          var sprite = (obj.components && obj.components.Sprite) || {};
+          var x = Number.isFinite(obj.x) ? obj.x : 0;
+          var y = Number.isFinite(obj.y) ? obj.y : 0;
+          var w = Number.isFinite(obj.width) ? obj.width : 32;
+          var h = Number.isFinite(obj.height) ? obj.height : 32;
+          var frameIds = Array.isArray(sprite.frameAssetIds) ? sprite.frameAssetIds : [];
+          var frameId = frameIds.length > 0
+            ? frameIds[Math.floor(elapsed * (sprite.fps || 8)) % frameIds.length]
+            : sprite.assetId;
+          var asset = frameId ? assetById.get(frameId) : null;
+          var sourceAsset = asset && asset.sourceAssetId ? assetById.get(asset.sourceAssetId) : null;
+          var src = (sourceAsset && (sourceAsset.previewUrl || sourceAsset.url || sourceAsset.src))
+            || (asset && (asset.previewUrl || asset.url || asset.src));
+          var drawn = false;
+          if (src) {
+            if (!images.has(src)) {
+              var frameImg = new Image();
+              frameImg.src = src;
+              images.set(src, frameImg);
+            }
+            var img = images.get(src);
+            if (img && img.complete && img.naturalWidth > 0) {
+              var rect = asset && asset.frameRect;
+              if (rect && Number.isFinite(rect.x) && Number.isFinite(rect.y) && Number.isFinite(rect.w) && Number.isFinite(rect.h)) {
+                ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, x - viewX, y - viewY, w, h);
+              } else {
+                ctx.drawImage(img, x - viewX, y - viewY, w, h);
+              }
+              drawn = true;
+            }
+          }
+          if (!drawn) {
+            ctx.fillStyle = obj.color || '#4ade80';
+            ctx.fillRect(x - viewX, y - viewY, w, h);
+          }
+        });
+      }
+
+      var last = performance.now();
+      function frame(now) {
+        var dt = Math.min((now - last) / 1000, 0.033);
+        last = now;
+        elapsed += dt;
+        engine.elapsed = elapsed;
+        for (var c = 0; c < animClips.length; c += 1) {
+          var clip = animClips[c];
+          if (!clip || !Array.isArray(clip.tracks)) continue;
+          var dur = clip.duration || 1;
+          var t = clip.loop ? (elapsed % dur) : Math.min(elapsed, dur);
+          for (var ti = 0; ti < clip.tracks.length; ti += 1) {
+            var track = clip.tracks[ti];
+            var obj = gameObjects.find(function(o) { return o.id === track.targetObjectId; });
+            if (!obj || !track.keyframes || track.keyframes.length === 0) continue;
+            obj[track.property] = sampleTrack(track, t);
+          }
+        }
+
+        var runtimeScene = resolveRuntimeScene(activeSceneId);
+        activeSceneId = runtimeScene.id || activeSceneId;
+        engine.sceneId = activeSceneId;
+
+        var prePositions = gameObjects.map(function(obj) {
+          var t = (obj.components && obj.components.Transform) || {};
+          return { x: obj.x, y: obj.y, tx: t.x, ty: t.y };
+        });
+
+        scriptInstances.forEach(function(inst) {
+          if (inst.hooks && typeof inst.hooks.onUpdate === 'function') {
+            try { inst.hooks.onUpdate(inst.obj, engine, dt); } catch (err) { console.error('onUpdate error', err); }
+          }
+        });
+
+        gameObjects.forEach(function(obj, i) {
+          if (!obj.components || !obj.components.Transform) return;
+          var pre = prePositions[i];
+          if (Number.isFinite(obj.components.Transform.x) && obj.components.Transform.x !== pre.tx) obj.x = obj.components.Transform.x;
+          if (Number.isFinite(obj.components.Transform.y) && obj.components.Transform.y !== pre.ty) obj.y = obj.components.Transform.y;
+          obj.components.Transform.x = obj.x;
+          obj.components.Transform.y = obj.y;
+        });
+        resolveCellCollisions();
+        gameObjects.forEach(function(obj) {
+          if (!obj.components || !obj.components.Transform) return;
+          obj.components.Transform.x = obj.x;
+          obj.components.Transform.y = obj.y;
+        });
+
+        var camera = resolvePlayCamera(cameraConfig, gameObjects);
+        var desired = resolveDesiredView(camera, gameObjects, viewX, viewY, false, canvas.width, canvas.height);
+        var speed = Number.isFinite(camera.speed) ? Math.max(0.1, camera.speed) : 8;
+        var maxSpeed = Number.isFinite(camera.maxSpeed) ? Math.max(60, camera.maxSpeed) : Infinity;
+        viewX = smoothAxis(viewX || 0, desired.x, dt, speed, maxSpeed);
+        viewY = smoothAxis(viewY || 0, desired.y, dt, speed, maxSpeed);
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#0b1220';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        drawWorld(viewX, viewY);
+        drawObjects(viewX, viewY);
+
+        uiManager.updateAll({ dt: dt, elapsed: elapsed, sceneId: runtimeScene.id, sceneName: runtimeScene.name, gameState: readGameState() });
+        requestAnimationFrame(frame);
+      }
+
+      window.addEventListener('keydown', function(e) { keys.add(e.keyCode); });
+      window.addEventListener('keyup', function(e) { keys.delete(e.keyCode); });
+      var initialCamera = resolvePlayCamera(cameraConfig, gameObjects);
+      var initialView = resolveDesiredView(initialCamera, gameObjects, 0, 0, true, canvas.width, canvas.height);
+      viewX = initialView.x;
+      viewY = initialView.y;
+      requestAnimationFrame(frame);
+    })();
   </script>
 </body>
 </html>`;
+  if (options && options.minify) return html.replace(/\n\s*/g, '');
+  return html;
+}
+
+function stripAssetsForExport(project) {
+  const next = JSON.parse(JSON.stringify(project));
+  next.assets = [];
+  const clearObjectAssets = (obj) => {
+    if (!obj || !obj.components || !obj.components.Sprite) return;
+    obj.components.Sprite.assetId = null;
+    obj.components.Sprite.frameAssetIds = [];
+  };
+  (next.objects || []).forEach(clearObjectAssets);
+  (next.scenes || []).forEach((scene) => (scene.objects || []).forEach(clearObjectAssets));
+  (next.cellTypes || []).forEach((type) => { if (type) type.imageAssetId = null; });
+  return next;
+}
+
+function stripScriptsForExport(project) {
+  const next = JSON.parse(JSON.stringify(project));
+  next.scripts = [];
+  const clearObjectScripts = (obj) => {
+    if (!obj || !obj.components) return;
+    delete obj.components.ScriptBinding;
+    obj.components.ScriptBindings = [];
+  };
+  (next.objects || []).forEach(clearObjectScripts);
+  (next.scenes || []).forEach((scene) => (scene.objects || []).forEach(clearObjectScripts));
+  return next;
 }
 
 function resolveActiveScene(project) {
@@ -1036,7 +1669,7 @@ def on_update(self, engine, dt):
     if (isExporting) return;
     const normalized = ensureProjectShape(project);
     const target = exportConfig.target || 'html-zip';
-    const projectForExport = ensureProjectShape({
+    const persistedProject = ensureProjectShape({
       ...normalized,
       build: { ...normalized.build, target },
       exportOptions: {
@@ -1050,10 +1683,14 @@ def on_update(self, engine, dt):
         desktopFormat: exportConfig.desktopFormat,
       },
     });
-    setProject(projectForExport);
+    setProject(persistedProject);
 
-    const json = JSON.stringify(projectForExport);
-    const html = buildExportHtml(projectForExport, json, target);
+    let projectForExport = JSON.parse(JSON.stringify(persistedProject));
+    if (!exportConfig.includeAssets) projectForExport = stripAssetsForExport(projectForExport);
+    if (!exportConfig.includeScripts) projectForExport = stripScriptsForExport(projectForExport);
+
+    const json = exportConfig.minify ? JSON.stringify(projectForExport) : JSON.stringify(projectForExport, null, 2);
+    const html = buildExportHtml(projectForExport, json, target, { minify: exportConfig.minify });
     const baseName = (exportConfig.fileName || projectForExport.meta.name || 'game').trim();
 
     const electronApi = window.api && typeof window.api.exportBuild === 'function' ? window.api : null;
@@ -1433,6 +2070,7 @@ def on_update(self, engine, dt):
               <option value="electron-exe">Electron based EXE</option>
               <option value="pwa">PWA</option>
               <option value="html-zip">HTML/ZIP</option>
+              <option value="single-html">Single HTML</option>
               <option value="tarball">Tarball</option>
             </select>
           </div>
@@ -1476,6 +2114,10 @@ def on_update(self, engine, dt):
                     <option key={`desktop-fmt-${fmt}`} value={fmt}>{fmt}</option>
                   ))}
                 </select>
+              </div>
+              <div className="field">
+                <label>Single File</label>
+                <input type="checkbox" checked={exportConfig.electronSingleFile} onChange={(e) => setExportConfig(prev => ({ ...prev, electronSingleFile: e.target.checked }))} />
               </div>
             </>
           )}
