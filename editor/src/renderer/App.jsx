@@ -1551,12 +1551,34 @@ def on_update(self, engine, dt):
     pass
 `,
     };
+    const ext = language === 'javascript' ? 'js' : language === 'typescript' ? 'ts' : language === 'lua' ? 'lua' : language === 'python' ? 'py' : 'js';
+    const safeName = name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const filePath = `${safeName}.${ext}`;
+    const source = templates[language] || templates.javascript;
     const script = {
       id: genId('script'), name, language,
-      source: templates[language] || templates.javascript,
+      filePath,
+      source,
     };
+    
+    // Save to external file immediately if electron API available
+    if (window.api && projectFile && projectFile.projectPath) {
+      console.log('[DEBUG] Calling saveScript', {
+        projectPath: projectFile.projectPath,
+        filePath,
+        source
+      });
+      window.api.saveScript(projectFile.projectPath, filePath, source)
+        .then(result => {
+          console.log('[DEBUG] saveScript result:', result);
+        })
+        .catch(err => console.error('[DEBUG] Failed to save script file:', err));
+    } else {
+      console.warn('[DEBUG] Script not saved: missing Electron API or project path.', { projectFile, filePath, source });
+    }
+    
     setProject(prev => { pushUndo(prev); return { ...prev, scripts: [...prev.scripts, script] }; });
-  }, [pushUndo]);
+  }, [pushUndo, projectFile.projectPath]);
 
   const handleDeleteScript = useCallback((id) => {
     setProject(prev => { pushUndo(prev); return { ...prev, scripts: prev.scripts.filter(s => s.id !== id) }; });
@@ -2205,6 +2227,7 @@ def on_update(self, engine, dt):
                   selectedId={editorState.selectedScriptId}
                   setSelectedId={id => setEditorState(prev => ({ ...prev, selectedScriptId: id }))}
                   showFileList={true}
+                  projectPath={projectFile.folderPath}
                 />
               </div>
             )}

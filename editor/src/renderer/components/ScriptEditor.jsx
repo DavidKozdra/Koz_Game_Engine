@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { EditorView, basicSetup } from 'codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { oneDark } from '@codemirror/theme-one-dark';
@@ -96,20 +96,87 @@ export default function ScriptEditor({
   selectedId: externalSelectedId,
   setSelectedId: externalSetSelectedId,
   showFileList = true,
+  projectPath,
 }) {
   const scripts = project ? project.scripts || [] : [];
   const [localSelectedId, setLocalSelectedId] = useState(null);
   const [showNewModal, setShowNewModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [newLang, setNewLang] = useState('javascript');
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState(null);
   const editorRef = useRef(null);
   const viewRef = useRef(null);
   const skipUpdateRef = useRef(false);
   const nameInputRef = useRef(null);
+  const saveTimeoutRef = useRef(null);
   const selectedId = externalSelectedId !== undefined ? externalSelectedId : localSelectedId;
   const setSelectedId = externalSetSelectedId || setLocalSelectedId;
+  const preferredEditor = project?.settings?.preferredEditor || 'vscode';
 
   const selectedScript = scripts.find(s => s.id === selectedId) || null;
+
+  const hasFileSupport = typeof window !== 'undefined' && window.api && window.api.saveScript;
+
+  // Debounced save to external file
+  const saveToFile = useCallback(async (script, content) => {
+    if (!hasFileSupport || !projectPath || !script?.filePath) return;
+    
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    saveTimeoutRef.current = setTimeout(async () => {
+      setIsSaving(true);
+      try {
+        await window.api.saveScript(projectPath, script.filePath, content);
+        setLastSaved(new Date());
+      } catch (err) {
+        console.error('Failed to save script to file:', err);
+      } finally {
+        setIsSaving(false);
+      }
+    }, 500);
+  }, [hasFileSupport, projectPath]);
+
+  // Immediate save (for focus loss)
+  const immediateSaveToFile = useCallback(async (script, content) => {
+    if (!hasFileSupport || !projectPath || !script?.filePath) return;
+    
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    
+    setIsSaving(true);
+    try {
+      await window.api.saveScript(projectPath, script.filePath, content);
+      setLastSaved(new Date());
+    } catch (err) {
+      console.error('Failed to save script to file:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [hasFileSupport, projectPath]);
+
+  // Open script in external editor
+  const handleOpenInEditor = useCallback(async () => {
+    if (!hasFileSupport || !selectedScript?.filePath) return;
+    // Compute the real absolute file path as used by the main process
+    let realPath = selectedScript.filePath;
+    if (!realPath.startsWith('/') && projectPath) {
+      let scriptsDir;
+      let folder = projectPath.endsWith('.json') ? projectPath.substring(0, projectPath.lastIndexOf('/')) : projectPath;
+      if (folder.endsWith('/scripts')) scriptsDir = folder;
+      else scriptsDir = folder + '/scripts';
+      realPath = scriptsDir + '/' + realPath;
+    }
+    try {
+      await window.api.openInEditor(realPath, preferredEditor);
+    } catch (err) {
+      console.error('Failed to open in editor:', err);
+    }
+  }, [hasFileSupport, selectedScript, preferredEditor, projectPath]);
 
   // Auto-select first script
   useEffect(() => {
@@ -131,6 +198,8 @@ export default function ScriptEditor({
       if (update.docChanged && !skipUpdateRef.current) {
         const newSource = update.state.doc.toString();
         onUpdateScript(selectedScript.id, { source: newSource });
+        // Also save to external file if available
+        saveToFile(selectedScript, newSource);
       }
     });
 
@@ -255,14 +324,22 @@ export default function ScriptEditor({
         </div>
       )}
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderBottom: '1px solid var(--border)', flexShrink: 0, flexWrap: 'wrap' }}>
           <span style={{ fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace", color: 'var(--text-muted)', fontSize: 11 }}>
             {selectedScript ? getScriptFileName(selectedScript) : 'No file selected'}
           </span>
+          {selectedScript && selectedScript.filePath && (
+            <span style={{ fontSize: 9, color: '#475569', fontFamily: 'monospace' }} title={selectedScript.filePath}>
+              {selectedScript.filePath}
+            </span>
+          )}
           {selectedScript && (
             <span style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase' }}>
               {selectedScript.language || 'text'}
             </span>
+          )}
+          {isSaving && (
+            <span style={{ fontSize: 10, color: '#f59e0b' }}>Saving...</span>
           )}
           {!showFileList && (
             <button className="btn btn-sm" onClick={openNewModal} style={{ marginLeft: 'auto' }}>
@@ -272,6 +349,11 @@ export default function ScriptEditor({
           {selectedId && (
             <button className="btn btn-sm btn-danger" onClick={handleDelete} title="Delete Script" style={{ marginLeft: 'auto' }}>
               Delete
+            </button>
+          )}
+          {selectedScript && selectedScript.filePath && hasFileSupport && (
+            <button className="btn btn-sm" onClick={handleOpenInEditor} title={`Open in ${preferredEditor}`} style={{ marginLeft: 4 }}>
+              Open in {preferredEditor}
             </button>
           )}
         </div>
