@@ -675,7 +675,13 @@
           "visible": false,
           "zIndex": 0
         },
-        "ScriptBindings": []
+        "ScriptBindings": [
+          {
+            "scriptId": "script_hud",
+            "active": true,
+            "properties": {}
+          }
+        ]
       },
       "editorFolder": "Root"
     }
@@ -698,7 +704,7 @@
       "id": "script_hud",
       "name": "HUD",
       "language": "javascript",
-      "source": "function onInit(self, engine) {\n  self.canvas = null;\n}\n\nfunction onUpdate(self, engine, dt) {\n  // Find player\n  var player = engine.findObject('obj_player');\n  if (!player) return;\n  \n  // Draw HUD using p5.js\n  if (typeof fill !== 'undefined' && typeof text !== 'undefined') {\n    // Score\n    fill('#fbbf24');\n    noStroke();\n    textSize(20);\n    textAlign(LEFT, TOP);\n    text('Score: ' + (player.score || 0), 16, 16);\n    \n    // Instructions\n    fill('#94a3b8');\n    textSize(12);\n    text('WASD or Arrows to move/jump', 16, 42);\n    \n    // Win message\n    if ((player.score || 0) >= 30) {\n      fill('#4ade80');\n      textSize(32);\n      textAlign(CENTER, CENTER);\n      text('YOU WIN!', 400, 200);\n      textSize(16);\n      text('Press R to restart', 400, 240);\n    }\n    \n    // Restart\n    if (keyIsDown(82)) { // R key\n      player.x = 64;\n      player.y = 200;\n      player.vx = 0;\n      player.vy = 0;\n      player.score = 0;\n      // Reset coins\n      engine.gameObjects.forEach(function(o) {\n        if (o.type === 'coin') {\n          o.active = true;\n          if (o.id === 'obj_coin') { o.x = 350; o.y = 280; }\n          if (o.id === 'obj_coin2') { o.x = 500; o.y = 200; }\n          if (o.id === 'obj_coin3') { o.x = 650; o.y = 120; }\n        }\n      });\n    }\n  }\n}\n"
+      "source": "function onInit(self, engine) {\n  var manager = (typeof uiManager !== 'undefined' && uiManager) || (typeof KozUIManager !== 'undefined' && KozUIManager);\n  if (!manager) return;\n\n  manager.registerScreen('platformerHud', {\n    validScenes: ['scene_main', 'Main Scene'],\n    layer: 'hud',\n    layerOrder: 50,\n    create: function() {\n      var panel = document.createElement('div');\n      panel.id = 'platformerHud';\n      panel.style.cssText = 'position:absolute;left:12px;top:12px;padding:10px 12px;background:rgba(15,23,42,0.78);color:#e2e8f0;border:1px solid rgba(148,163,184,0.35);border-radius:8px;font:12px/1.4 system-ui,sans-serif;pointer-events:none;';\n      panel.innerHTML = '<div style=\"font-weight:700;margin-bottom:4px\">Platformer HUD</div><div id=\"platformerHudScore\">Score: 0</div><div style=\"opacity:0.8\">WASD / Arrows + Space</div>';\n      return panel;\n    },\n    show: function() {\n      var w = document.getElementById('platformerHud');\n      if (w) { w.style.display = ''; w.style.opacity = '1'; }\n    },\n    hide: function() {\n      var w = document.getElementById('platformerHud');\n      if (w) { w.style.opacity = '0'; manager.scheduleFadeHide('platformerHud', 120); }\n    },\n    update: function(ctx) {\n      var player = engine.findObject ? engine.findObject('obj_player') : null;\n      var scoreEl = document.getElementById('platformerHudScore');\n      if (scoreEl) scoreEl.textContent = 'Score: ' + ((player && player.score) || 0);\n    }\n  });\n}\n\nfunction onUpdate(self, engine, dt) {\n  // UI manager drives visibility/update each frame.\n}\n"
     }
   ],
   "assets": [
@@ -1446,7 +1452,13 @@
               "visible": false,
               "zIndex": 0
             },
-            "ScriptBindings": []
+            "ScriptBindings": [
+              {
+                "scriptId": "script_hud",
+                "active": true,
+                "properties": {}
+              }
+            ]
           }
         }
       ]
