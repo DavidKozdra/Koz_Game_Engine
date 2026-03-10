@@ -18,6 +18,8 @@ import './editor.css';
 function createDefaultProject(opts = {}) {
   const cols = opts.cols || 30;
   const rows = opts.rows || 20;
+  const offsetX = opts.offsetX !== undefined ? opts.offsetX : -Math.floor(cols / 2);
+  const offsetY = opts.offsetY !== undefined ? opts.offsetY : -Math.floor(rows / 2);
   const dc = opts.defaultCell !== undefined ? opts.defaultCell : null;
   const grid = [];
   for (let y = 0; y < rows; y++) {
@@ -28,7 +30,7 @@ function createDefaultProject(opts = {}) {
   return ensureProjectShape({
     schemaVersion: 1,
     meta: { name: opts.name || 'Untitled Project', version: '1.0.0', resolution: { width: 960, height: 540 }, engineVersion: '0.1.0' },
-    world: { cols, rows, offsetX: 0, offsetY: 0, defaultCell: dc, grid, elements: [], meta: {} },
+    world: { cols, rows, offsetX, offsetY, defaultCell: dc, grid, elements: [], meta: {} },
     objects: [],
     animations: [],
     scripts: [],
@@ -943,8 +945,8 @@ function App() {
   const [projectsRoot, setProjectsRoot] = useState(null);
   const [newProjectName, setNewProjectName] = useState('Untitled Project');
   const [editorState, setEditorState] = useState({
-    mode: 'EDIT', activeTool: 'brush', brushValue: 'solid',
-    selectedObjectId: null, selectedObjectIds: [], selectedScriptId: null, camera: { x: 0, y: 0, zoom: 1 }, gridVisible: true,
+    mode: 'EDIT', activeTool: 'brush', brushValue: 'solid', gizmoMode: 'move',
+    selectedObjectId: null, selectedObjectIds: [], selectedScriptId: null, camera: { x: -240, y: -140, zoom: 1 }, gridVisible: true,
   });
   const [bottomTab, setBottomTab] = useState('timeline');
   const [bottomHeight, setBottomHeight] = useState(240);
@@ -1270,6 +1272,22 @@ function App() {
     });
   }, [pushUndo, mutateActiveScene]);
 
+  const handleRemoveComponent = useCallback((objId, compName) => {
+    if (compName === 'Transform' || compName === 'Render' || compName === 'ScriptBindings') return;
+    setProject(prev => {
+      pushUndo(prev);
+      return mutateActiveScene(prev, ({ world, objects }) => ({
+        world,
+        objects: objects.map(o => {
+          if (o.id !== objId) return o;
+          const comps = { ...o.components };
+          delete comps[compName];
+          return { ...o, components: comps };
+        }),
+      }));
+    });
+  }, [pushUndo, mutateActiveScene]);
+
   const handleMoveObject = useCallback((id, x, y) => {
     setProject(prev => mutateActiveScene(prev, ({ world, objects }) => ({
       world,
@@ -1297,6 +1315,105 @@ function App() {
       }),
     })));
   }, [mutateActiveScene]);
+
+  const handleRotateObject = useCallback((id, rotation) => {
+    setProject(prev => mutateActiveScene(prev, ({ world, objects }) => ({
+      world,
+      objects: objects.map(o => {
+        if (o.id !== id) return o;
+        return { ...o, components: { ...o.components, Transform: { ...(o.components && o.components.Transform), rotation } } };
+      }),
+    })));
+  }, [mutateActiveScene]);
+
+  const handleScaleObject = useCallback((id, scaleX, scaleY) => {
+    setProject(prev => mutateActiveScene(prev, ({ world, objects }) => ({
+      world,
+      objects: objects.map(o => {
+        if (o.id !== id) return o;
+        return { ...o, components: { ...o.components, Transform: { ...(o.components && o.components.Transform), scaleX, scaleY } } };
+      }),
+    })));
+  }, [mutateActiveScene]);
+
+  const handleAlignObjects = useCallback((alignment) => {
+    const ids = Array.isArray(editorState.selectedObjectIds) ? editorState.selectedObjectIds : [];
+    if (ids.length < 2) return;
+    pushUndo(project);
+    setProject(prev => mutateActiveScene(prev, ({ world, objects }) => {
+      const selected = objects.filter(o => ids.includes(o.id));
+      const positions = selected.map(o => {
+        const t = (o.components && o.components.Transform) || {};
+        const s = (o.components && o.components.Sprite) || {};
+        return {
+          id: o.id,
+          x: Number.isFinite(t.x) ? t.x : (Number.isFinite(o.x) ? o.x : 0),
+          y: Number.isFinite(t.y) ? t.y : (Number.isFinite(o.y) ? o.y : 0),
+          w: s.width || 32,
+          h: s.height || 32,
+        };
+      });
+      const minX = Math.min(...positions.map(p => p.x));
+      const maxX = Math.max(...positions.map(p => p.x + p.w));
+      const minY = Math.min(...positions.map(p => p.y));
+      const maxY = Math.max(...positions.map(p => p.y + p.h));
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+
+      const updateMap = new Map();
+      for (const p of positions) {
+        let nx = p.x, ny = p.y;
+        if (alignment === 'left') nx = minX;
+        else if (alignment === 'right') nx = maxX - p.w;
+        else if (alignment === 'centerH') nx = centerX - p.w / 2;
+        else if (alignment === 'top') ny = minY;
+        else if (alignment === 'bottom') ny = maxY - p.h;
+        else if (alignment === 'centerV') ny = centerY - p.h / 2;
+        updateMap.set(p.id, { x: Math.round(nx), y: Math.round(ny) });
+      }
+
+      return {
+        world,
+        objects: objects.map(o => {
+          const u = updateMap.get(o.id);
+          if (!u) return o;
+          return { ...o, x: u.x, y: u.y, components: { ...o.components, Transform: { ...(o.components && o.components.Transform), x: u.x, y: u.y } } };
+        }),
+      };
+    }));
+  }, [editorState.selectedObjectIds, project, pushUndo, mutateActiveScene]);
+
+  const handleReparentObject = useCallback((childId, newParentId) => {
+    if (childId === newParentId) return;
+    // Prevent circular references
+    if (newParentId) {
+      const checkCircular = (id) => {
+        if (!id) return false;
+        if (id === childId) return true;
+        const obj = (project && project.objects || []).find(o => o.id === id);
+        return obj ? checkCircular(obj.parentId) : false;
+      };
+      if (checkCircular(newParentId)) return;
+    }
+    pushUndo(project);
+    setProject(prev => mutateActiveScene(prev, ({ world, objects }) => ({
+      world,
+      objects: objects.map(o => o.id === childId ? { ...o, parentId: newParentId } : o),
+    })));
+  }, [project, pushUndo, mutateActiveScene]);
+
+  const handleDropAsset = useCallback((assetId, assetName, x, y) => {
+    const asset = (project && project.assets || []).find(a => a.id === assetId);
+    if (!asset) return;
+    const w = asset.width || 32;
+    const h = asset.height || 32;
+    const obj = createGameObject(assetName || 'Sprite', x, y, { type: 'generic' });
+    obj.components.Sprite = { ...obj.components.Sprite, assetId, width: Math.min(w, 128), height: Math.min(h, 128) };
+    obj.components.Collider = { ...obj.components.Collider, width: Math.min(w, 128), height: Math.min(h, 128) };
+    pushUndo(project);
+    setProject(prev => mutateActiveScene(prev, ({ world, objects }) => ({ world, objects: [...objects, obj] })));
+    updateEditor({ selectedObjectId: obj.id, selectedObjectIds: [obj.id], activeTool: 'select' });
+  }, [project, pushUndo, mutateActiveScene, updateEditor]);
 
   const handleMoveWorld = useCallback((dx, dy) => {
     if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
@@ -1659,7 +1776,7 @@ def on_update(self, engine, dt):
     setProject(nextProject);
     setShowProjectSelector(false);
     setProjectFile({ projectPath: null, folderPath: null, name });
-    updateEditor({ selectedObjectId: null, selectedObjectIds: [], selectedScriptId: null, camera: { x: 0, y: 0, zoom: 1 }, brushValue: 'solid' });
+    updateEditor({ selectedObjectId: null, selectedObjectIds: [], selectedScriptId: null, camera: { x: -240, y: -140, zoom: 1 }, brushValue: 'solid' });
     undoStackRef.current = [];
     redoStackRef.current = [];
     const api = window.api;
@@ -1800,11 +1917,14 @@ def on_update(self, engine, dt):
       if (!isPlaying) {
         if (e.key === 'b') updateEditor({ activeTool: 'brush' });
         if (e.key === 'f') updateEditor({ activeTool: 'fill' });
-        if (e.key === 'e') updateEditor({ activeTool: 'erase' });
         if (e.key === 'v') updateEditor({ activeTool: 'select' });
         if (e.key === 'g') updateEditor({ activeTool: 'worldMove' });
+        // Gizmo mode shortcuts (W/E/R) — switch to select tool + set gizmo mode
+        if (e.key === 'w') { updateEditor({ activeTool: 'select', gizmoMode: 'move' }); return; }
+        if (e.key === 'e') { updateEditor({ activeTool: 'select', gizmoMode: 'rotate' }); return; }
+        if (e.key === 'r') { updateEditor({ activeTool: 'select', gizmoMode: 'scale' }); return; }
         const camStep = e.shiftKey ? 48 : 24;
-        const isPan = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'a', 'd', 'w', 's'].includes(e.key);
+        const isPan = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'a', 'd', 's'].includes(e.key);
         if (isPan && !e.ctrlKey && !e.metaKey && !e.altKey) {
           e.preventDefault();
           const cam = editorState.camera;
@@ -1920,10 +2040,16 @@ def on_update(self, engine, dt):
           <Toolbar project={projectView} editorState={editorState} isPlaying={isPlaying}
             onToolChange={(tool) => updateEditor({ activeTool: tool })}
             onBrushChange={(val) => updateEditor({ brushValue: getBrushValue({ brushValue: val }) })}
+            onGizmoModeChange={(mode, snapOverride) => updateEditor({
+              gizmoMode: mode,
+              activeTool: 'select',
+              ...(snapOverride !== undefined ? { snapToGrid: snapOverride } : {}),
+            })}
             onUndo={handleUndo} onRedo={handleRedo}
             onNewProject={handleNew} onSaveProject={handleSave} onSaveAsProject={handleSaveAs} onLoadProject={handleLoadFromFile}
             onExport={openExportModal} onPlayToggle={handlePlayToggle}
-            undoCount={undoStackRef.current.length} redoCount={redoStackRef.current.length} />
+            undoCount={undoStackRef.current.length} redoCount={redoStackRef.current.length}
+            onAlignObjects={handleAlignObjects} />
 
           <div className="editor-left">
             <WorldTools
@@ -1942,6 +2068,7 @@ def on_update(self, engine, dt):
               onAddCameraObject={handleAddCameraObject}
               onRemoveObject={handleRemoveObject}
               onDuplicateObject={handleDuplicateObject}
+              onReparentObject={handleReparentObject}
             />
           </div>
 
@@ -2001,8 +2128,11 @@ def on_update(self, engine, dt):
                       onMoveObject={handleMoveObject}
                       onMoveObjects={handleMoveObjects}
                       onMoveWorld={handleMoveWorld}
+                      onRotateObject={handleRotateObject}
+                      onScaleObject={handleScaleObject}
                       onSelectObjects={(ids, add) => handleSelectObject(null, { ids, add })}
-                      onUpdateCamera={handleUpdateCamera} />
+                      onUpdateCamera={handleUpdateCamera}
+                      onDropAsset={handleDropAsset} />
                   )}
                 </div>
                 <div className="resize-handle" onMouseDown={handleResizeStart} />
@@ -2093,6 +2223,7 @@ def on_update(self, engine, dt):
               editorState={editorState}
               onUpdateObject={handleUpdateObject}
               onUpdateComponent={handleUpdateComponent}
+              onRemoveComponent={handleRemoveComponent}
               onCreatePrefabFromObject={handleCreatePrefabFromObject}
               onUnlinkPrefab={handleUnlinkPrefab}
             />

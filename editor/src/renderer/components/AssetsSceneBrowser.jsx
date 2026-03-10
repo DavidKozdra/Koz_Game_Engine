@@ -8,12 +8,24 @@ function isImageAsset(asset) {
   return /\.(png|jpg|jpeg|gif|webp|svg)$/.test(src);
 }
 
+function isAudioAsset(asset) {
+  if (!asset || typeof asset !== 'object') return false;
+  if (asset.kind === 'audio') return true;
+  if (asset.mime && String(asset.mime).startsWith('audio/')) return true;
+  const src = String(asset.url || asset.src || asset.path || '').toLowerCase();
+  return /\.(mp3|ogg|wav|m4a|flac|aac)$/.test(src);
+}
+
+const IMAGE_ACCEPT = '.png,.jpg,.jpeg,.gif,.webp,.svg,image/png,image/jpeg,image/gif,image/webp,image/svg+xml';
+const AUDIO_ACCEPT = '.mp3,.ogg,.wav,.m4a,.flac,.aac,audio/mpeg,audio/ogg,audio/wav,audio/mp4,audio/flac,audio/aac';
+
 function imageSrc(asset) {
   return asset.previewUrl || asset.url || asset.src || null;
 }
 
-export default function AssetsSceneBrowser({ project, onPatchProject, showScenes = true, showImages = true, showPrefabs = true, title = 'Assets' }) {
-  const [expanded, setExpanded] = useState({ scenes: true, images: true, prefabs: true });
+export default function AssetsSceneBrowser({ project, onPatchProject, showScenes = true, showImages = true, showPrefabs = true, showAudio = true, title = 'Assets' }) {
+  const [expanded, setExpanded] = useState({ scenes: true, images: true, prefabs: true, audio: true });
+  const [assetFilter, setAssetFilter] = useState('');
   const [newSceneName, setNewSceneName] = useState('');
   const [newImageName, setNewImageName] = useState('');
   const [newImageUrl, setNewImageUrl] = useState('');
@@ -28,7 +40,11 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
     return [{ id: 'scene_main', name: 'Main Scene', world: project.world, objects: project.objects || [] }];
   }, [project.scenes, project.world, project.objects]);
 
-  const images = useMemo(() => (project.assets || []).filter(isImageAsset), [project.assets]);
+  const allImages = useMemo(() => (project.assets || []).filter(isImageAsset), [project.assets]);
+  const allAudios = useMemo(() => (project.assets || []).filter(isAudioAsset), [project.assets]);
+  const filterLower = assetFilter.trim().toLowerCase();
+  const images = useMemo(() => filterLower ? allImages.filter(a => (a.name || a.id).toLowerCase().includes(filterLower)) : allImages, [allImages, filterLower]);
+  const audios = useMemo(() => filterLower ? allAudios.filter(a => (a.name || a.id).toLowerCase().includes(filterLower)) : allAudios, [allAudios, filterLower]);
   const prefabs = project.prefabs || [];
   const activeSceneId = project.activeSceneId || (scenes[0] && scenes[0].id) || null;
 
@@ -82,23 +98,21 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
     const name = newImageName.trim();
     const url = newImageUrl.trim();
     if (!name || !url) return;
-    if (!(url.toLowerCase().endsWith('.png') || url.startsWith('data:image/png'))) {
-      alert('Only PNG images are supported for sprite/image assets.');
-      return;
-    }
-    const asset = { id: `img_${Date.now().toString(36)}`, kind: 'image', mime: 'image/png', name, url };
+    const ext = url.split('.').pop().toLowerCase().split('?')[0];
+    const mime = url.startsWith('data:') ? url.split(';')[0].split(':')[1] : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+    const asset = { id: `img_${Date.now().toString(36)}`, kind: 'image', mime, name, url };
     onPatchProject({ assets: [...(project.assets || []), asset] });
     setNewImageName('');
     setNewImageUrl('');
   }
 
-  function importPngFiles(fileList) {
+  function importImageFiles(fileList) {
     const files = Array.from(fileList || []);
-    const pngs = files.filter((file) => file && file.type === 'image/png');
-    if (pngs.length === 0) return;
-    let pending = pngs.length;
+    const imgs = files.filter((file) => file && file.type.startsWith('image/'));
+    if (imgs.length === 0) return;
+    let pending = imgs.length;
     const imported = [];
-    pngs.forEach((file) => {
+    imgs.forEach((file) => {
       const reader = new FileReader();
       reader.onload = (ev) => {
         const dataUrl = ev.target && ev.target.result ? String(ev.target.result) : null;
@@ -109,11 +123,12 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
         }
         const img = new Image();
         img.onload = () => {
+          const ext = file.name.split('.').pop().toLowerCase();
           imported.push({
             id: `img_${Date.now().toString(36)}_${imported.length + 1}`,
             kind: 'image',
-            mime: 'image/png',
-            name: file.name.replace(/\.png$/i, ''),
+            mime: file.type || `image/${ext}`,
+            name: file.name.replace(/\.[^.]+$/, ''),
             url: dataUrl,
             previewUrl: dataUrl,
             width: img.naturalWidth || 0,
@@ -127,6 +142,35 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
           if (pending === 0 && imported.length > 0) onPatchProject({ assets: [...(project.assets || []), ...imported] });
         };
         img.src = dataUrl;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function importAudioFiles(fileList) {
+    const files = Array.from(fileList || []);
+    const audios = files.filter((file) => file && file.type.startsWith('audio/'));
+    if (audios.length === 0) return;
+    let pending = audios.length;
+    const imported = [];
+    audios.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const dataUrl = ev.target && ev.target.result ? String(ev.target.result) : null;
+        if (!dataUrl) {
+          pending -= 1;
+          if (pending === 0 && imported.length > 0) onPatchProject({ assets: [...(project.assets || []), ...imported] });
+          return;
+        }
+        imported.push({
+          id: `aud_${Date.now().toString(36)}_${imported.length + 1}`,
+          kind: 'audio',
+          mime: file.type,
+          name: file.name.replace(/\.[^.]+$/, ''),
+          url: dataUrl,
+        });
+        pending -= 1;
+        if (pending === 0 && imported.length > 0) onPatchProject({ assets: [...(project.assets || []), ...imported] });
       };
       reader.readAsDataURL(file);
     });
@@ -172,7 +216,29 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
   return (
     <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
       <h3>{title}</h3>
-      <div style={{ border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden', background: '#0b1220' }}>
+      {(allImages.length + allAudios.length) > 5 && (
+        <input
+          type="text"
+          value={assetFilter}
+          onChange={(e) => setAssetFilter(e.target.value)}
+          placeholder={`Filter ${allImages.length + allAudios.length} assets...`}
+          style={{ width: '100%', padding: '4px 8px', marginBottom: 6, background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 11 }}
+        />
+      )}
+      <div
+        style={{ border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden', background: '#0b1220' }}
+        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+        onDrop={(e) => {
+          e.preventDefault();
+          const files = e.dataTransfer.files;
+          if (files && files.length > 0) {
+            const imgFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+            const audFiles = Array.from(files).filter(f => f.type.startsWith('audio/'));
+            if (imgFiles.length > 0) importImageFiles(imgFiles);
+            if (audFiles.length > 0) importAudioFiles(audFiles);
+          }
+        }}
+      >
         {showScenes && (
           <button type="button" className="btn btn-sm" style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent' }} onClick={() => toggle('scenes')}>
           {expanded.scenes ? 'v' : '>'} [DIR] Scenes ({scenes.length})
@@ -215,9 +281,9 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
             <div style={{ marginBottom: 8 }}>
               <input
                 type="file"
-                accept=".png,image/png"
+                accept={IMAGE_ACCEPT}
                 multiple
-                onChange={(e) => { importPngFiles(e.target.files); e.target.value = ''; }}
+                onChange={(e) => { importImageFiles(e.target.files); e.target.value = ''; }}
                 style={{ width: '100%', fontSize: 11 }}
               />
             </div>
@@ -236,9 +302,14 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
               {images.map((img) => (
-                <div key={img.id} style={{ border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden', background: '#111827' }}>
+                <div
+                  key={img.id}
+                  draggable
+                  onDragStart={(e) => { e.dataTransfer.setData('application/koz-asset-id', img.id); e.dataTransfer.setData('application/koz-asset-name', img.name || img.id); e.dataTransfer.effectAllowed = 'copy'; }}
+                  style={{ border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden', background: '#111827', cursor: 'grab' }}
+                >
                   <div style={{ height: 72, background: '#1f2937', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {imageSrc(img) ? <img src={imageSrc(img)} alt={img.name || img.id} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 11, color: '#94a3b8' }}>No Preview</span>}
+                    {imageSrc(img) ? <img src={imageSrc(img)} alt={img.name || img.id} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'cover', pointerEvents: 'none' }} /> : <span style={{ fontSize: 11, color: '#94a3b8' }}>No Preview</span>}
                   </div>
                   <div style={{ padding: 6, fontSize: 11, color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{img.name || img.id}</span>
@@ -262,6 +333,35 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
               {prefabs.map((prefab) => (
                 <div key={prefab.id} style={{ padding: '4px 6px', border: '1px solid var(--border)', borderRadius: 4, background: '#111827', color: '#cbd5e1', fontSize: 12 }}>
                   {prefab.name}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {showAudio && (
+          <button type="button" className="btn btn-sm" style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent' }} onClick={() => toggle('audio')}>
+          {expanded.audio ? 'v' : '>'} [DIR] Audio ({allAudios.length})
+          </button>
+        )}
+        {showAudio && expanded.audio && (
+          <div style={{ padding: 8 }}>
+            <div style={{ marginBottom: 8 }}>
+              <input
+                type="file"
+                accept={AUDIO_ACCEPT}
+                multiple
+                onChange={(e) => { importAudioFiles(e.target.files); e.target.value = ''; }}
+                style={{ width: '100%', fontSize: 11 }}
+              />
+            </div>
+            <div style={{ display: 'grid', gap: 4 }}>
+              {audios.length === 0 && <div style={{ color: '#94a3b8', fontSize: 11 }}>No audio files. Drop or import MP3, OGG, WAV.</div>}
+              {audios.map((aud) => (
+                <div key={aud.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', border: '1px solid var(--border)', borderRadius: 4, background: '#111827' }}>
+                  <span style={{ fontSize: 11, color: '#94a3b8' }}>[AUD]</span>
+                  <span style={{ flex: 1, fontSize: 11, color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{aud.name || aud.id}</span>
+                  <button className="btn btn-sm btn-danger" onClick={() => onPatchProject({ assets: (project.assets || []).filter(a => a.id !== aud.id) })}>x</button>
                 </div>
               ))}
             </div>

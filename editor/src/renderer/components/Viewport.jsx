@@ -1,18 +1,24 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { getCellType, normalizeCellTypeId, getBrushValue } from '../state/projectModel.js';
 import { buildWorldSparseIndex, queryWorldSparseIndex } from '../lib/worldSparseIndex.js';
+import {
+  getSelectionBounds, getSelectionRotation,
+  drawMoveGizmo, drawRotateGizmo, drawScaleGizmo,
+  hitTestMoveGizmo, hitTestRotateGizmo, hitTestScaleGizmo,
+} from '../lib/gizmos.js';
 
 /**
  * 2D Canvas viewport for world editing.
  * Renders grid, tiles, elements, and game objects.
  * Handles mouse input for painting, selection, and camera.
  */
-export default function Viewport({ project, editorState, onCellPaint, onCellFill, onSelectObject, onSelectObjects, onPlaceObject, onMoveObject, onMoveObjects, onMoveWorld, onUpdateCamera }) {
+export default function Viewport({ project, editorState, onCellPaint, onCellFill, onSelectObject, onSelectObjects, onPlaceObject, onMoveObject, onMoveObjects, onMoveWorld, onUpdateCamera, onRotateObject, onScaleObject, onDropAsset }) {
   const canvasRef = useRef(null);
   const dragRef = useRef({ dragging: false, button: -1, startX: 0, startY: 0, lastX: 0, lastY: 0 });
   const imageCacheRef = useRef(new Map());
   const sparseRef = useRef({ world: null, cellTypes: null, index: null });
   const [canvasSize, setCanvasSize] = useState(0);
+  const [hoveredGizmoPart, setHoveredGizmoPart] = useState(null);
 
   const cellSize = 24;
 
@@ -170,6 +176,41 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
       }
     }
 
+    // Draw origin crosshair at (0,0)
+    {
+      const originX = 0;
+      const originY = 0;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(250, 204, 21, 0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 4]);
+      // Horizontal line spanning visible area
+      ctx.beginPath();
+      ctx.moveTo(viewMinX * cellSize, originY);
+      ctx.lineTo((viewMaxX + 1) * cellSize, originY);
+      ctx.stroke();
+      // Vertical line spanning visible area
+      ctx.beginPath();
+      ctx.moveTo(originX, viewMinY * cellSize);
+      ctx.lineTo(originX, (viewMaxY + 1) * cellSize);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Small crosshair marker at exact origin
+      ctx.strokeStyle = 'rgba(250, 204, 21, 0.9)';
+      ctx.lineWidth = 2;
+      const m = 8;
+      ctx.beginPath();
+      ctx.moveTo(-m, 0); ctx.lineTo(m, 0);
+      ctx.moveTo(0, -m); ctx.lineTo(0, m);
+      ctx.stroke();
+      // Label
+      ctx.fillStyle = 'rgba(250, 204, 21, 0.7)';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('(0, 0)', 4, -4);
+      ctx.restore();
+    }
+
     // Draw world elements
     if (world.elements) {
       for (const el of world.elements) {
@@ -255,6 +296,26 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
 
     ctx.restore();
 
+    // Draw transform gizmos (in screen space, after ctx.restore)
+    const gizmoMode = editorState.gizmoMode || 'move';
+    const selectedIds = Array.isArray(editorState.selectedObjectIds) && editorState.selectedObjectIds.length > 0
+      ? editorState.selectedObjectIds
+      : (editorState.selectedObjectId ? [editorState.selectedObjectId] : []);
+    if (selectedIds.length > 0 && editorState.activeTool === 'select' && project.objects) {
+      const bounds = getSelectionBounds(project.objects, selectedIds);
+      if (bounds) {
+        const screenCenter = worldToScreen(bounds.cx, bounds.cy);
+        if (gizmoMode === 'move') {
+          drawMoveGizmo(ctx, screenCenter.x, screenCenter.y, zoom, hoveredGizmoPart);
+        } else if (gizmoMode === 'rotate') {
+          const rot = getSelectionRotation(project.objects, selectedIds);
+          drawRotateGizmo(ctx, screenCenter.x, screenCenter.y, zoom, rot, hoveredGizmoPart);
+        } else if (gizmoMode === 'scale') {
+          drawScaleGizmo(ctx, screenCenter.x, screenCenter.y, zoom, hoveredGizmoPart);
+        }
+      }
+    }
+
     // Cursor position indicator
     const mousePos = dragRef.current;
     if (mousePos.lastScreenX !== undefined) {
@@ -278,7 +339,7 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
       ctx.fillStyle = 'rgba(59,130,246,0.12)';
       ctx.fillRect(rx, ry, rw, rh);
     }
-  }, [project, editorState, worldToScreen, screenToCell, canvasSize]);
+  }, [project, editorState, worldToScreen, screenToCell, canvasSize, hoveredGizmoPart]);
 
   // Resize observer — also triggers a repaint when canvas becomes visible again
   useEffect(() => {
@@ -315,6 +376,49 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
 
     if (e.button === 0) {
       const cell = screenToCell(sx, sy);
+
+      // Check for gizmo interaction first
+      if (editorState.activeTool === 'select') {
+        const sIds = Array.isArray(editorState.selectedObjectIds) && editorState.selectedObjectIds.length > 0
+          ? editorState.selectedObjectIds
+          : (editorState.selectedObjectId ? [editorState.selectedObjectId] : []);
+        if (sIds.length > 0 && project && project.objects) {
+          const bounds = getSelectionBounds(project.objects, sIds);
+          if (bounds) {
+            const sc = worldToScreen(bounds.cx, bounds.cy);
+            const gizmoMode = editorState.gizmoMode || 'move';
+            let gizmoPart = null;
+            if (gizmoMode === 'move') gizmoPart = hitTestMoveGizmo(sx, sy, sc.x, sc.y);
+            else if (gizmoMode === 'rotate') gizmoPart = hitTestRotateGizmo(sx, sy, sc.x, sc.y);
+            else if (gizmoMode === 'scale') gizmoPart = hitTestScaleGizmo(sx, sy, sc.x, sc.y);
+
+            if (gizmoPart) {
+              const worldPos = screenToWorld(sx, sy);
+              const startPositions = new Map();
+              for (const obj of (project.objects || [])) {
+                if (!sIds.includes(obj.id)) continue;
+                const t = (obj.components && obj.components.Transform) || {};
+                startPositions.set(obj.id, {
+                  x: Number.isFinite(t.x) ? t.x : (Number.isFinite(obj.x) ? obj.x : 0),
+                  y: Number.isFinite(t.y) ? t.y : (Number.isFinite(obj.y) ? obj.y : 0),
+                  rotation: Number.isFinite(t.rotation) ? t.rotation : 0,
+                  scaleX: Number.isFinite(t.scaleX) ? t.scaleX : 1,
+                  scaleY: Number.isFinite(t.scaleY) ? t.scaleY : 1,
+                });
+              }
+              dragRef.current.gizmoDrag = true;
+              dragRef.current.gizmoMode = gizmoMode;
+              dragRef.current.gizmoPart = gizmoPart;
+              dragRef.current.gizmoStartWorld = worldPos;
+              dragRef.current.gizmoStartScreen = { x: sx, y: sy };
+              dragRef.current.gizmoCenter = bounds;
+              dragRef.current.gizmoStartPositions = startPositions;
+              dragRef.current.gizmoStartAngle = Math.atan2(sy - sc.y, sx - sc.x);
+              return;
+            }
+          }
+        }
+      }
 
       if (editorState.activeTool === 'brush') {
         if (onCellPaint) onCellPaint(cell.cx, cell.cy, getBrushValue(editorState));
@@ -381,12 +485,86 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
     dragRef.current.lastScreenX = sx;
     dragRef.current.lastScreenY = sy;
 
+    // Gizmo hover detection (even when not dragging)
+    if (editorState.activeTool === 'select' && !dragRef.current.dragging) {
+      const sIds = Array.isArray(editorState.selectedObjectIds) && editorState.selectedObjectIds.length > 0
+        ? editorState.selectedObjectIds
+        : (editorState.selectedObjectId ? [editorState.selectedObjectId] : []);
+      if (sIds.length > 0 && project && project.objects) {
+        const bounds = getSelectionBounds(project.objects, sIds);
+        if (bounds) {
+          const sc = worldToScreen(bounds.cx, bounds.cy);
+          const gizmoMode = editorState.gizmoMode || 'move';
+          let part = null;
+          if (gizmoMode === 'move') part = hitTestMoveGizmo(sx, sy, sc.x, sc.y);
+          else if (gizmoMode === 'rotate') part = hitTestRotateGizmo(sx, sy, sc.x, sc.y);
+          else if (gizmoMode === 'scale') part = hitTestScaleGizmo(sx, sy, sc.x, sc.y);
+          setHoveredGizmoPart(part);
+        } else {
+          setHoveredGizmoPart(null);
+        }
+      } else {
+        setHoveredGizmoPart(null);
+      }
+    }
+
     if (!dragRef.current.dragging) return;
 
     const dx = sx - dragRef.current.lastX;
     const dy = sy - dragRef.current.lastY;
     dragRef.current.lastX = sx;
     dragRef.current.lastY = sy;
+
+    // Handle gizmo drag
+    if (dragRef.current.gizmoDrag) {
+      const worldPos = screenToWorld(sx, sy);
+      const startWorld = dragRef.current.gizmoStartWorld;
+      const startPositions = dragRef.current.gizmoStartPositions;
+      const gMode = dragRef.current.gizmoMode;
+      const gPart = dragRef.current.gizmoPart;
+
+      if (gMode === 'move') {
+        const dxw = worldPos.x - startWorld.x;
+        const dyw = worldPos.y - startWorld.y;
+        const updates = [];
+        for (const [id, pos] of startPositions.entries()) {
+          let nx = pos.x, ny = pos.y;
+          if (gPart === 'x') nx = pos.x + dxw;
+          else if (gPart === 'y') ny = pos.y + dyw;
+          else { nx = pos.x + dxw; ny = pos.y + dyw; }
+          // Snap to grid if shift held or snap toggle is on
+          if (e.shiftKey || editorState.snapToGrid) {
+            nx = Math.round(nx / cellSize) * cellSize;
+            ny = Math.round(ny / cellSize) * cellSize;
+          }
+          updates.push({ id, x: Math.round(nx), y: Math.round(ny) });
+        }
+        if (updates.length === 1 && onMoveObject) onMoveObject(updates[0].id, updates[0].x, updates[0].y);
+        else if (updates.length > 1 && onMoveObjects) onMoveObjects(updates);
+      } else if (gMode === 'rotate' && onRotateObject) {
+        const center = dragRef.current.gizmoCenter;
+        const sc = worldToScreen(center.cx, center.cy);
+        const currentAngle = Math.atan2(sy - sc.y, sx - sc.x);
+        const deltaAngle = (currentAngle - dragRef.current.gizmoStartAngle) * (180 / Math.PI);
+        for (const [id, pos] of startPositions.entries()) {
+          let newRotation = pos.rotation + deltaAngle;
+          if (e.shiftKey) newRotation = Math.round(newRotation / 15) * 15;
+          onRotateObject(id, newRotation);
+        }
+      } else if (gMode === 'scale' && onScaleObject) {
+        const dxw = worldPos.x - startWorld.x;
+        const dyw = worldPos.y - startWorld.y;
+        for (const [id, pos] of startPositions.entries()) {
+          let sx2 = pos.scaleX, sy2 = pos.scaleY;
+          const scaleFactor = 0.01;
+          if (gPart === 'x' || gPart === 'center') sx2 = pos.scaleX + dxw * scaleFactor;
+          if (gPart === 'y' || gPart === 'center') sy2 = pos.scaleY + dyw * scaleFactor;
+          if (e.shiftKey) { sx2 = Math.round(sx2 * 10) / 10; sy2 = Math.round(sy2 * 10) / 10; }
+          onScaleObject(id, Math.max(0.1, sx2), Math.max(0.1, sy2));
+        }
+      }
+      return;
+    }
 
     // Pan with middle mouse or alt+left
     if (dragRef.current.button === 1 || (dragRef.current.button === 0 && e.altKey)) {
@@ -425,6 +603,11 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
   }
 
   function handleMouseUp() {
+    if (dragRef.current.gizmoDrag) {
+      dragRef.current.gizmoDrag = false;
+      dragRef.current.dragging = false;
+      return;
+    }
     if (dragRef.current.selectMarquee && project && project.objects && onSelectObjects) {
       const sx = dragRef.current.startX;
       const sy = dragRef.current.startY;
@@ -481,12 +664,25 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
     <canvas
       ref={canvasRef}
       className="viewport-canvas"
-      style={{ cursor: editorState.activeTool === 'worldMove' ? 'grab' : undefined }}
+      style={{ cursor: editorState.activeTool === 'worldMove' ? 'grab' : hoveredGizmoPart ? (editorState.gizmoMode === 'rotate' ? 'grab' : 'move') : undefined }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
       onContextMenu={(e) => e.preventDefault()}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+      onDrop={(e) => {
+        e.preventDefault();
+        const assetId = e.dataTransfer.getData('application/koz-asset-id');
+        const assetName = e.dataTransfer.getData('application/koz-asset-name');
+        if (assetId && onDropAsset) {
+          const rect = canvasRef.current.getBoundingClientRect();
+          const sx = e.clientX - rect.left;
+          const sy = e.clientY - rect.top;
+          const worldPos = screenToWorld(sx, sy);
+          onDropAsset(assetId, assetName, Math.floor(worldPos.x), Math.floor(worldPos.y));
+        }
+      }}
     />
   );
 }

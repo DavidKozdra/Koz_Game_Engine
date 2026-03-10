@@ -13,7 +13,7 @@ function getObjectType(obj) {
   return base;
 }
 
-export default function ObjectList({ project, editorState, onSelectObject, onAddObject, onAddCameraObject, onRemoveObject, onDuplicateObject }) {
+export default function ObjectList({ project, editorState, onSelectObject, onAddObject, onAddCameraObject, onRemoveObject, onDuplicateObject, onReparentObject }) {
   const objects = (project && project.objects) || [];
   const prefabs = (project && project.prefabs) || [];
   const classes = (project && project.defaultClasses) || [];
@@ -22,6 +22,7 @@ export default function ObjectList({ project, editorState, onSelectObject, onAdd
   const [hierarchyFilter, setHierarchyFilter] = useState('');
   const [pickerTab, setPickerTab] = useState('custom');
   const [page, setPage] = useState(1);
+  const [dragOverId, setDragOverId] = useState(null);
   const imageAssetById = useMemo(() => new Map(((project && project.assets) || []).map((a) => [a.id, a])), [project]);
 
   const objectById = useMemo(() => new Map(objects.map((o) => [o.id, o])), [objects]);
@@ -112,7 +113,19 @@ export default function ObjectList({ project, editorState, onSelectObject, onAdd
         <div
           className={`object-list-item ${selected ? 'selected' : ''}`}
           onClick={(e) => handleSelectClick(e, obj.id)}
-          style={{ paddingLeft: 8 + depth * 16 }}
+          style={{ paddingLeft: 8 + depth * 16, borderLeft: dragOverId === obj.id ? '3px solid var(--accent)' : '3px solid transparent' }}
+          draggable
+          onDragStart={(e) => { e.dataTransfer.setData('application/koz-object-id', obj.id); e.dataTransfer.effectAllowed = 'move'; }}
+          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverId(obj.id); }}
+          onDragLeave={() => setDragOverId(null)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOverId(null);
+            const draggedId = e.dataTransfer.getData('application/koz-object-id');
+            if (draggedId && draggedId !== obj.id && onReparentObject) {
+              onReparentObject(draggedId, obj.id);
+            }
+          }}
         >
           <span style={{ fontSize: 12, display: 'inline-flex', gap: 6, alignItems: 'center' }}>
             {nodePreview ? (
@@ -177,8 +190,20 @@ export default function ObjectList({ project, editorState, onSelectObject, onAdd
         />
       )}
       <div style={{ display: 'grid', gap: 3 }}>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 4, background: '#0b1220' }}>
-          World Grid
+        <div
+          style={{ fontSize: 11, color: 'var(--text-muted)', padding: '4px 8px', border: dragOverId === '__root__' ? '1px solid var(--accent)' : '1px solid var(--border)', borderRadius: 4, background: '#0b1220' }}
+          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverId('__root__'); }}
+          onDragLeave={() => setDragOverId(null)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOverId(null);
+            const draggedId = e.dataTransfer.getData('application/koz-object-id');
+            if (draggedId && onReparentObject) {
+              onReparentObject(draggedId, null);
+            }
+          }}
+        >
+          World Grid (drop here for root)
         </div>
         {objects.length === 0 && (
           <div style={{ color: 'var(--text-muted)', fontSize: 11, padding: '4px 0' }}>No objects yet</div>

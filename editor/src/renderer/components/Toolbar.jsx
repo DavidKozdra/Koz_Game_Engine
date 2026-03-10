@@ -9,8 +9,17 @@ const TOOLS = [
   { id: 'place', label: 'Place', key: 'P' },
 ];
 
-export default function Toolbar({ project, editorState, isPlaying, onToolChange, onBrushChange, onUndo, onRedo, onNewProject, onSaveProject, onSaveAsProject, onLoadProject, onExport, onPlayToggle, undoCount, redoCount }) {
+const GIZMO_MODES = [
+  { id: 'move', label: 'Move', key: 'W' },
+  { id: 'rotate', label: 'Rotate', key: 'E' },
+  { id: 'scale', label: 'Scale', key: 'R' },
+];
+
+export default function Toolbar({ project, editorState, isPlaying, onToolChange, onBrushChange, onGizmoModeChange, onUndo, onRedo, onNewProject, onSaveProject, onSaveAsProject, onLoadProject, onExport, onPlayToggle, undoCount, redoCount, onAlignObjects }) {
   const cellTypes = (project && project.cellTypes) || [];
+  const gizmoMode = editorState.gizmoMode || 'move';
+  const showGizmoTools = editorState.activeTool === 'select';
+  const hasMultiSelection = Array.isArray(editorState.selectedObjectIds) && editorState.selectedObjectIds.length > 1;
   return (
     <div className="editor-toolbar">
       <div className="toolbar-group">
@@ -33,6 +42,22 @@ export default function Toolbar({ project, editorState, isPlaying, onToolChange,
         ))}
       </div>
 
+      {showGizmoTools && (
+        <div className="toolbar-group">
+          {GIZMO_MODES.map(mode => (
+            <button key={mode.id}
+              className={`btn btn-sm ${gizmoMode === mode.id ? 'active' : ''}`}
+              onClick={() => onGizmoModeChange && onGizmoModeChange(mode.id)}
+              title={`${mode.label} (${mode.key})`}
+              disabled={isPlaying}
+              style={gizmoMode === mode.id ? { background: mode.id === 'move' ? '#facc15' : mode.id === 'rotate' ? '#a78bfa' : '#3b82f6', color: '#0f172a', borderColor: 'transparent', fontWeight: 600 } : undefined}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="toolbar-group">
         <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Cell:</label>
         <select value={editorState.brushValue}
@@ -43,6 +68,29 @@ export default function Toolbar({ project, editorState, isPlaying, onToolChange,
             <option key={t.id} value={t.id}>{t.name}</option>
           ))}
         </select>
+      </div>
+
+      {showGizmoTools && hasMultiSelection && onAlignObjects && (
+        <div className="toolbar-group">
+          <button className="btn btn-sm" onClick={() => onAlignObjects('left')} title="Align Left" disabled={isPlaying}>L</button>
+          <button className="btn btn-sm" onClick={() => onAlignObjects('centerH')} title="Align Center H" disabled={isPlaying}>CH</button>
+          <button className="btn btn-sm" onClick={() => onAlignObjects('right')} title="Align Right" disabled={isPlaying}>R</button>
+          <button className="btn btn-sm" onClick={() => onAlignObjects('top')} title="Align Top" disabled={isPlaying}>T</button>
+          <button className="btn btn-sm" onClick={() => onAlignObjects('centerV')} title="Align Center V" disabled={isPlaying}>CV</button>
+          <button className="btn btn-sm" onClick={() => onAlignObjects('bottom')} title="Align Bottom" disabled={isPlaying}>B</button>
+        </div>
+      )}
+
+      <div className="toolbar-group">
+        <button
+          className={`btn btn-sm ${editorState.snapToGrid ? 'active' : ''}`}
+          onClick={() => onToolChange && onGizmoModeChange && onGizmoModeChange(editorState.gizmoMode || 'move', !editorState.snapToGrid)}
+          title="Snap to Grid (toggle)"
+          disabled={isPlaying}
+          style={editorState.snapToGrid ? { background: '#22c55e', color: '#0f172a', borderColor: 'transparent' } : undefined}
+        >
+          Snap
+        </button>
       </div>
 
       <div className="toolbar-group">
