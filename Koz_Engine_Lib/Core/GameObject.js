@@ -30,6 +30,9 @@
       this.type = String(type || "generic");
       this.x = clampNumber(x, 0);
       this.y = clampNumber(y, 0);
+      this.rotation = clampNumber(opts.rotation, 0);
+      this.scaleX = clampNumber(opts.scaleX, 1);
+      this.scaleY = clampNumber(opts.scaleY, 1);
       this.shape = opts.shape === "circle" ? "circle" : "rect";
       this.width = clampNumber(opts.width, 0);
       this.height = clampNumber(opts.height, 0);
