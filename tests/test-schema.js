@@ -61,6 +61,9 @@ assert(obj.components.Sprite.color === '#ff0000', 'sprite color');
 const script = projectSchema.createScript('MyScript');
 assert(script.name === 'MyScript', 'script name');
 assert(script.source.includes('onInit'), 'has onInit template');
+const cssScript = projectSchema.createScript('HudTheme', null, { language: 'css' });
+assert(cssScript.filePath.endsWith('.css'), 'css script uses .css extension');
+assert(cssScript.language === 'css', 'css script language is css');
 
 // Test 7: Create animation clip
 const clip = projectSchema.createAnimationClip('Walk', { duration: 2 });

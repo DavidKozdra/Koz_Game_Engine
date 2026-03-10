@@ -20,11 +20,13 @@
     let gameObjects = [];
     let scripts = {};
     let scriptInstances = [];
+    let cssStyleElements = new Map();
     let animationClips = [];
     let running = false;
     let elapsed = 0;
 
     function loadProject(projectData) {
+      clearActiveCssStyles();
       project = projectData;
       worldSpace = adapters.projectToWorldSpace(createWorldSpace, project.world);
       gameObjects = adapters.projectToGameObjects(GameObjectCtor, project.objects);
@@ -48,20 +50,50 @@
         
         // Handle legacy single binding
         if (legacyBinding && legacyBinding.scriptId && scripts[legacyBinding.scriptId]) {
-          const instance = createScriptInstance(scripts[legacyBinding.scriptId], obj);
-          if (instance) scriptInstances.push(instance);
+          const boundScript = scripts[legacyBinding.scriptId];
+          if (boundScript.language === "css") {
+            applyCssScript(boundScript);
+          } else {
+            const instance = createScriptInstance(boundScript, obj);
+            if (instance) scriptInstances.push(instance);
+          }
         }
         
         // Handle array of bindings
         if (Array.isArray(bindings)) {
           for (const binding of bindings) {
             if (binding && binding.active !== false && binding.scriptId && scripts[binding.scriptId]) {
-              const instance = createScriptInstance(scripts[binding.scriptId], obj);
-              if (instance) scriptInstances.push(instance);
+              const boundScript = scripts[binding.scriptId];
+              if (boundScript.language === "css") {
+                applyCssScript(boundScript);
+              } else {
+                const instance = createScriptInstance(boundScript, obj);
+                if (instance) scriptInstances.push(instance);
+              }
             }
           }
         }
       }
+    }
+
+    function applyCssScript(script) {
+      if (!script || !script.id || cssStyleElements.has(script.id)) return;
+      if (typeof document === "undefined") return;
+      const target = document.head || document.documentElement || document.body;
+      if (!target || typeof target.appendChild !== "function") return;
+      const styleEl = document.createElement("style");
+      styleEl.type = "text/css";
+      styleEl.setAttribute("data-koz-script-id", script.id);
+      styleEl.textContent = String(script.source || "");
+      target.appendChild(styleEl);
+      cssStyleElements.set(script.id, styleEl);
+    }
+
+    function clearActiveCssStyles() {
+      cssStyleElements.forEach(function removeStyle(styleEl) {
+        if (styleEl && styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
+      });
+      cssStyleElements = new Map();
     }
 
     function createScriptInstance(script, gameObject) {
@@ -163,6 +195,7 @@
 
     function stop() {
       running = false;
+      clearActiveCssStyles();
     }
 
     function createEngineApi() {

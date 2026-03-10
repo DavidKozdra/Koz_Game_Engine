@@ -63,6 +63,7 @@ It is stored as `project.json` inside a project folder.
     {
       "id": "script_1",
       "name": "PlayerController",
+      "language": "javascript",
       "source": "function onInit(self, engine) {}\nfunction onUpdate(self, engine, dt) {}\n"
     }
   ],
@@ -94,7 +95,8 @@ Array of game objects with component data. Each object has a unique `id` and a `
 Array of animation clips. Each clip targets an object property via tracks with keyframes.
 
 ### scripts
-Array of script assets with source code. Bound to objects via `ScriptBinding` component.
+Array of script assets with source code. Bound to objects via `ScriptBinding` / `ScriptBindings`.
+`language` can be `javascript` (runtime hooks) or `css` (injected stylesheet when the binding is active).
 
 ### build
 Export settings. `profile` is `"web-dev"` or `"web-prod"`. `pwa` enables PWA output.

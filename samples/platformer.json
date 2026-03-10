@@ -668,7 +668,16 @@
           "targetObjectId": "obj_player",
           "speed": 8,
           "offsetX": 0,
-          "offsetY": 0
+          "offsetY": 0,
+          "deadZoneWidth": 180,
+          "deadZoneHeight": 120,
+          "lookAheadX": 0,
+          "lookAheadY": 0,
+          "visibleMargin": 40,
+          "followX": true,
+          "followY": true,
+          "clampToWorld": true,
+          "maxSpeed": 2000
         },
         "Render": {
           "layerId": "obj-main",
@@ -705,6 +714,13 @@
       "name": "HUD",
       "language": "javascript",
       "source": "function onInit(self, engine) {\n  var manager = (typeof uiManager !== 'undefined' && uiManager) || (typeof KozUIManager !== 'undefined' && KozUIManager);\n  if (!manager) return;\n\n  manager.registerScreen('platformerHud', {\n    validScenes: ['scene_main', 'Main Scene'],\n    layer: 'hud',\n    layerOrder: 50,\n    create: function() {\n      var panel = document.createElement('div');\n      panel.id = 'platformerHud';\n      panel.style.cssText = 'position:absolute;left:12px;top:12px;padding:10px 12px;background:rgba(15,23,42,0.78);color:#e2e8f0;border:1px solid rgba(148,163,184,0.35);border-radius:8px;font:12px/1.4 system-ui,sans-serif;pointer-events:none;';\n      panel.innerHTML = '<div style=\"font-weight:700;margin-bottom:4px\">Platformer HUD</div><div id=\"platformerHudScore\">Score: 0</div><div style=\"opacity:0.8\">WASD / Arrows + Space</div>';\n      return panel;\n    },\n    show: function() {\n      var w = document.getElementById('platformerHud');\n      if (w) { w.style.display = ''; w.style.opacity = '1'; }\n    },\n    hide: function() {\n      var w = document.getElementById('platformerHud');\n      if (w) { w.style.opacity = '0'; manager.scheduleFadeHide('platformerHud', 120); }\n    },\n    update: function(ctx) {\n      var player = engine.findObject ? engine.findObject('obj_player') : null;\n      var scoreEl = document.getElementById('platformerHudScore');\n      if (scoreEl) scoreEl.textContent = 'Score: ' + ((player && player.score) || 0);\n    }\n  });\n}\n\nfunction onUpdate(self, engine, dt) {\n  // UI manager drives visibility/update each frame.\n}\n"
+    },
+    {
+      "id": "script_mmkw1zci_1",
+      "name": "style",
+      "language": "css",
+      "filePath": "style.css",
+      "source": "/* Loaded when this script is bound to an active component */\n#ui-root {\n  pointer-events: none;\n}\n\n#platformerHud {\n  color:red !important;\n}"
     }
   ],
   "assets": [
@@ -1493,7 +1509,18 @@
     "speed": 8,
     "zoom": 1,
     "minZoom": 0.25,
-    "maxZoom": 4
+    "maxZoom": 4,
+    "offsetX": 0,
+    "offsetY": 0,
+    "deadZoneWidth": 180,
+    "deadZoneHeight": 120,
+    "lookAheadX": 0,
+    "lookAheadY": 0,
+    "visibleMargin": 40,
+    "followX": true,
+    "followY": true,
+    "clampToWorld": true,
+    "maxSpeed": 2000
   },
   "plugins": [],
   "scripting": {
