@@ -161,21 +161,24 @@
   function createScript(name, source, options) {
     const opts = options || {};
     const lang = opts.language || 'javascript';
-    const ext = lang === 'javascript' ? 'js' : lang === 'typescript' ? 'ts' : lang === 'lua' ? 'lua' : lang === 'python' ? 'py' : 'js';
+    const ext = lang === 'javascript' ? 'js' : lang === 'typescript' ? 'ts' : lang === 'lua' ? 'lua' : lang === 'python' ? 'py' : lang === 'css' ? 'css' : 'js';
     const safeName = (name || 'NewScript').toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const defaultSource = lang === 'css'
+      ? "/* Loaded when bound to an active component */\n#ui-root {\n  pointer-events: none;\n}\n"
+      : "function onInit(self, engine) {\n  // Called once when the game starts\n}\n\nfunction onUpdate(self, engine, dt) {\n  // Called every frame\n}\n";
     return {
       id: opts.id || generateId("script"),
       name: name || "NewScript",
       filePath: opts.filePath || `scripts/${safeName}.${ext}`,
       language: lang,
-      source: source || "function onInit(self, engine) {\n  // Called once when the game starts\n}\n\nfunction onUpdate(self, engine, dt) {\n  // Called every frame\n}\n",
+      source: source || defaultSource,
     };
   }
 
   function getScriptFileName(script) {
     if (script.filePath) return script.filePath;
     const lang = script.language || 'javascript';
-    const ext = lang === 'javascript' ? 'js' : lang === 'typescript' ? 'ts' : lang === 'lua' ? 'lua' : lang === 'python' ? 'py' : 'js';
+    const ext = lang === 'javascript' ? 'js' : lang === 'typescript' ? 'ts' : lang === 'lua' ? 'lua' : lang === 'python' ? 'py' : lang === 'css' ? 'css' : 'js';
     const safeName = (script.name || 'NewScript').toLowerCase().replace(/[^a-z0-9]/g, '_');
     return `scripts/${safeName}.${ext}`;
   }

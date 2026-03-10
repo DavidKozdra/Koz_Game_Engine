@@ -1,0 +1,8 @@
+/* Loaded when this script is bound to an active component */
+#ui-root {
+  pointer-events: none;
+}
+
+#platformerHud {
+  color:red !important;
+}
