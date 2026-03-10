@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import Modal from './Modal.jsx';
 
 const AVAILABLE_COMPONENTS = [
+  { id: 'Grid', label: 'Grid', defaults: { cols: 10, rows: 10, cellSize: 24, visible: true, layerId: null } },
   { id: 'Sprite', label: 'Sprite', defaults: { assetId: null, color: '#4ade80', width: 32, height: 32, frameAssetIds: [], fps: 8 } },
   { id: 'Collider', label: 'Collider', defaults: { shape: 'rect', width: 32, height: 32 } },
   { id: 'Collision', label: 'Collision', defaults: { enabled: true, isTrigger: false } },
@@ -198,6 +199,44 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             <label>Scale Y</label>
             <input type="number" step="0.1" value={components.Transform.scaleY ?? 1}
               onChange={(e) => handleComponentChange('Transform', 'scaleY', parseFloat(e.target.value) || 1)} />
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {/* Grid */}
+      {components.Grid && (
+        <CollapsibleSection title="Grid" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'Grid') : undefined}>
+          <div className="field">
+            <label>Columns</label>
+            <input type="number" value={components.Grid.cols || 10}
+              onChange={(e) => handleComponentChange('Grid', 'cols', parseInt(e.target.value, 10) || 10)} />
+          </div>
+          <div className="field">
+            <label>Rows</label>
+            <input type="number" value={components.Grid.rows || 10}
+              onChange={(e) => handleComponentChange('Grid', 'rows', parseInt(e.target.value, 10) || 10)} />
+          </div>
+          <div className="field">
+            <label>Cell Size</label>
+            <input type="number" value={components.Grid.cellSize || 24}
+              onChange={(e) => handleComponentChange('Grid', 'cellSize', parseInt(e.target.value, 10) || 24)} />
+          </div>
+          <div className="field">
+            <label>Visible</label>
+            <input type="checkbox" checked={components.Grid.visible !== false}
+              onChange={(e) => handleComponentChange('Grid', 'visible', e.target.checked)} />
+          </div>
+          <div className="field">
+            <label>Layer</label>
+            <select
+              value={components.Grid.layerId || ''}
+              onChange={(e) => handleComponentChange('Grid', 'layerId', e.target.value || null)}
+            >
+              <option value="">None</option>
+              {(project.layers?.cells || []).map((layer) => (
+                <option key={layer.id} value={layer.id}>{layer.name}</option>
+              ))}
+            </select>
           </div>
         </CollapsibleSection>
       )}

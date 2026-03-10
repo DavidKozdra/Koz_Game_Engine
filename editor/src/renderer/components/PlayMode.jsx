@@ -42,11 +42,19 @@ export function usePlayMode(project, onLog) {
       const t = (obj.components && obj.components.Transform) || {};
       const tx = Number.isFinite(t.x) ? t.x : (Number.isFinite(obj.x) ? obj.x : 0);
       const ty = Number.isFinite(t.y) ? t.y : (Number.isFinite(obj.y) ? obj.y : 0);
+      const tro = Number.isFinite(t.rotation) ? t.rotation : 0;
+      const tsx = Number.isFinite(t.scaleX) ? t.scaleX : 1;
+      const tsy = Number.isFinite(t.scaleY) ? t.scaleY : 1;
+      const sw = (obj.components && obj.components.Sprite && obj.components.Sprite.width) || 32;
+      const sh = (obj.components && obj.components.Sprite && obj.components.Sprite.height) || 32;
       gameObjects.push({
         id: obj.id, name: obj.name, type: obj.type,
         x: tx, y: ty,
-        width: (obj.components && obj.components.Sprite && obj.components.Sprite.width) || 32,
-        height: (obj.components && obj.components.Sprite && obj.components.Sprite.height) || 32,
+        rotation: tro,
+        scaleX: tsx,
+        scaleY: tsy,
+        width: sw * tsx,
+        height: sh * tsy,
         color: (obj.components && obj.components.Sprite && obj.components.Sprite.color) || '#4ade80',
         components: obj.components || {},
       });
@@ -428,6 +436,15 @@ export function usePlayMode(project, onLog) {
       const render = (obj.components && obj.components.Render) || {};
       const sprite = (obj.components && obj.components.Sprite) || {};
       if (render.visible === false) return;
+      
+      const rotation = obj.rotation || 0;
+      const scaleX = obj.scaleX || 1;
+      const scaleY = obj.scaleY || 1;
+      const baseWidth = (sprite.width || 32);
+      const baseHeight = (sprite.height || 32);
+      const w = baseWidth * scaleX;
+      const h = baseHeight * scaleY;
+      
       let drawn = false;
       const frameIds = Array.isArray(sprite.frameAssetIds) ? sprite.frameAssetIds : [];
       const frameId = frameIds.length > 0
@@ -437,6 +454,11 @@ export function usePlayMode(project, onLog) {
       const sourceAsset = asset && asset.sourceAssetId ? state.assetById.get(asset.sourceAssetId) : null;
       const src = (sourceAsset && (sourceAsset.previewUrl || sourceAsset.url || sourceAsset.src))
         || (asset && (asset.previewUrl || asset.url || asset.src));
+      
+      ctx.save();
+      ctx.translate(obj.x + w / 2, obj.y + h / 2);
+      ctx.rotate((rotation * Math.PI) / 180);
+      
       if (src) {
         if (!imageCacheRef.current.has(src)) {
           const img = new Image();
@@ -447,17 +469,18 @@ export function usePlayMode(project, onLog) {
         if (img && img.complete && img.naturalWidth > 0) {
           const rect = asset && asset.frameRect;
           if (rect && Number.isFinite(rect.x) && Number.isFinite(rect.y) && Number.isFinite(rect.w) && Number.isFinite(rect.h)) {
-            ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, obj.x, obj.y, obj.width, obj.height);
+            ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, -baseWidth / 2, -baseHeight / 2, baseWidth, baseHeight);
           } else {
-            ctx.drawImage(img, obj.x, obj.y, obj.width, obj.height);
+            ctx.drawImage(img, -baseWidth / 2, -baseHeight / 2, baseWidth, baseHeight);
           }
           drawn = true;
         }
       }
       if (!drawn) {
         ctx.fillStyle = obj.color;
-        ctx.fillRect(obj.x, obj.y, obj.width, obj.height);
+        ctx.fillRect(-baseWidth / 2, -baseHeight / 2, baseWidth, baseHeight);
       }
+      ctx.restore();
       /*
       ctx.fillStyle = '#fff';
       ctx.font = '10px sans-serif';

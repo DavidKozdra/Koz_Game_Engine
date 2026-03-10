@@ -296,5 +296,39 @@ function isPlainObject(value) {
     cloneValue: cloneValue,
     createGrid: createGrid,
     createWorldSpace: createWorldSpace,
+    gridToWorld: function gridToWorld(gridX, gridY, cellSize, transform) {
+      const t = transform || {};
+      const x = gridX * (t.scaleX || 1) * cellSize + (t.x || 0);
+      const y = gridY * (t.scaleY || 1) * cellSize + (t.y || 0);
+      const rotation = (t.rotation || 0) * Math.PI / 180;
+      if (rotation !== 0) {
+        const cos = Math.cos(rotation);
+        const sin = Math.sin(rotation);
+        const rx = x * cos - y * sin;
+        const ry = x * sin + y * cos;
+        return { x: rx, y: ry };
+      }
+      return { x, y };
+    },
+    worldToGrid: function worldToGrid(worldX, worldY, cellSize, transform) {
+      const t = transform || {};
+      const rotation = -((t.rotation || 0) * Math.PI / 180);
+      let x = worldX - (t.x || 0);
+      let y = worldY - (t.y || 0);
+      if (rotation !== 0) {
+        const cos = Math.cos(rotation);
+        const sin = Math.sin(rotation);
+        const rx = x * cos - y * sin;
+        const ry = x * sin + y * cos;
+        x = rx;
+        y = ry;
+      }
+      const sx = t.scaleX || 1;
+      const sy = t.scaleY || 1;
+      return { 
+        gridX: Math.floor(x / (sx * cellSize)), 
+        gridY: Math.floor(y / (sy * cellSize)) 
+      };
+    },
   };
 });
