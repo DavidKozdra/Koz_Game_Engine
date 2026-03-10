@@ -80,6 +80,51 @@ function isPlainObject(value) {
     let nextElementId = 1;
     const meta = cloneValue(opts.meta || {});
 
+    // --- Performance indexes ---
+    const _idIndex = new Map();       // id -> element
+    const _posIndex = new Map();      // "x,y" -> element[]
+
+    function _posKey(x, y) { return x + "," + y; }
+
+    function _indexAdd(el) {
+      _idIndex.set(el.id, el);
+      const pk = _posKey(el.x, el.y);
+      let arr = _posIndex.get(pk);
+      if (!arr) { arr = []; _posIndex.set(pk, arr); }
+      arr.push(el);
+    }
+
+    function _indexRemove(el) {
+      _idIndex.delete(el.id);
+      const pk = _posKey(el.x, el.y);
+      const arr = _posIndex.get(pk);
+      if (arr) {
+        const idx = arr.indexOf(el);
+        if (idx !== -1) arr.splice(idx, 1);
+        if (arr.length === 0) _posIndex.delete(pk);
+      }
+    }
+
+    function _indexMove(el, oldX, oldY) {
+      const oldPk = _posKey(oldX, oldY);
+      const arr = _posIndex.get(oldPk);
+      if (arr) {
+        const idx = arr.indexOf(el);
+        if (idx !== -1) arr.splice(idx, 1);
+        if (arr.length === 0) _posIndex.delete(oldPk);
+      }
+      const newPk = _posKey(el.x, el.y);
+      let newArr = _posIndex.get(newPk);
+      if (!newArr) { newArr = []; _posIndex.set(newPk, newArr); }
+      newArr.push(el);
+    }
+
+    function _rebuildIndexes() {
+      _idIndex.clear();
+      _posIndex.clear();
+      for (const el of elements) _indexAdd(el);
+    }
+
     function inBounds(x, y) {
       return x >= offsetX && x < offsetX + cols && y >= offsetY && y < offsetY + rows;
     }
@@ -151,21 +196,32 @@ function isPlainObject(value) {
 
     function indexOfElement(id) {
       const targetId = Number(id);
-      return elements.findIndex(function byId(element) {
-        return element.id === targetId;
-      });
+      const el = _idIndex.get(targetId);
+      if (!el) return -1;
+      return elements.indexOf(el);
     }
 
     function findElementById(id) {
-      const idx = indexOfElement(id);
-      return idx === -1 ? null : elements[idx];
+      return _idIndex.get(Number(id)) || null;
     }
 
     function findElementAt(x, y, filterOrKind) {
-      const matches = listElements(filterOrKind);
-      return matches.find(function onElement(element) {
-        return element.x === x && element.y === y;
-      }) || null;
+      const arr = _posIndex.get(_posKey(x, y));
+      if (!arr || arr.length === 0) return null;
+      if (!filterOrKind) return arr[0];
+      if (typeof filterOrKind === "string") {
+        for (let i = 0; i < arr.length; i++) {
+          if (arr[i].kind === filterOrKind) return arr[i];
+        }
+        return null;
+      }
+      if (typeof filterOrKind === "function") {
+        for (let i = 0; i < arr.length; i++) {
+          if (filterOrKind(arr[i])) return arr[i];
+        }
+        return null;
+      }
+      return null;
     }
 
     function addElement(input, addOptions) {
@@ -177,33 +233,40 @@ function isPlainObject(value) {
         ? Math.max(0, Math.min(elements.length, rawIndex))
         : elements.length;
       elements.splice(index, 0, element);
+      _indexAdd(element);
       return element;
     }
 
     function updateElement(id, patch) {
-      const idx = indexOfElement(id);
-      if (idx === -1) return null;
-      const current = elements[idx];
+      const current = findElementById(id);
+      if (!current) return null;
+      const oldX = current.x, oldY = current.y;
       const nextPatch = cloneValue(patch || {});
       const next = Object.assign(current, nextPatch);
       next.x = normalizeCoord(next.x);
       next.y = normalizeCoord(next.y);
       next.kind = String(next.kind || "element");
+      if (next.x !== oldX || next.y !== oldY) _indexMove(next, oldX, oldY);
       return next;
     }
 
     function replaceElement(id, snapshot) {
-      const idx = indexOfElement(id);
-      if (idx === -1) return null;
+      const old = findElementById(id);
+      if (!old) return null;
+      const idx = elements.indexOf(old);
+      _indexRemove(old);
       const replacement = normalizeElement(snapshot, Number(id));
       if (replacement.id >= nextElementId) nextElementId = replacement.id + 1;
       elements[idx] = replacement;
+      _indexAdd(replacement);
       return replacement;
     }
 
     function removeElementById(id) {
-      const idx = indexOfElement(id);
-      if (idx === -1) return null;
+      const el = findElementById(id);
+      if (!el) return null;
+      _indexRemove(el);
+      const idx = elements.indexOf(el);
       return elements.splice(idx, 1)[0] || null;
     }
 
@@ -211,6 +274,8 @@ function isPlainObject(value) {
       if (!filterOrKind) {
         const removed = elements.slice();
         elements = [];
+        _idIndex.clear();
+        _posIndex.clear();
         return removed;
       }
 
@@ -220,8 +285,12 @@ function isPlainObject(value) {
         const matches = typeof filterOrKind === "function"
           ? filterOrKind(element)
           : element.kind === filterOrKind;
-        if (matches) removed.push(element);
-        else kept.push(element);
+        if (matches) {
+          _indexRemove(element);
+          removed.push(element);
+        } else {
+          kept.push(element);
+        }
       }
       elements = kept;
       return removed;
@@ -247,6 +316,8 @@ function isPlainObject(value) {
 
       elements = [];
       nextElementId = 1;
+      _idIndex.clear();
+      _posIndex.clear();
       if (Array.isArray(source.elements)) {
         source.elements.forEach(function restoreElement(element, index) {
           addElement(element, { index: index });

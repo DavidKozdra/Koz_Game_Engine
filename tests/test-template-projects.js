@@ -47,6 +47,13 @@ entries.forEach((filePath) => {
     const labScene = project.scenes.find((scene) => scene.id === 'scene_fps_lab');
     assert(menuScene && menuScene.renderMode === '2d', `${name} keeps the menu in 2D`);
     assert(labScene && labScene.renderMode === 'webgl-3d', `${name} marks the gameplay lab as WebGL 3D`);
+    assert(labScene && Array.isArray(labScene.objects) && labScene.objects.some((obj) => obj.components && obj.components.LightingManager), `${name} includes a lighting manager object in the gameplay lab`);
+    assert(labScene && Array.isArray(labScene.objects) && labScene.objects.some((obj) => obj.components && obj.components.Light), `${name} includes a light-emitter object`);
+  }
+  if (name === 'Template - 2D Clicker') {
+    const arenaScene = project.scenes.find((scene) => scene.id === 'scene_click_arena');
+    assert(arenaScene && Array.isArray(arenaScene.objects) && arenaScene.objects.some((obj) => obj.components && obj.components.LightingManager), `${name} includes a lighting manager object in the arena`);
+    assert(arenaScene && Array.isArray(arenaScene.objects) && arenaScene.objects.some((obj) => obj.components && obj.components.Light), `${name} includes a 2D light object`);
   }
   if (name === 'Template - 2D Platformer') {
     const completeScene = project.scenes.find((scene) => scene.id === 'scene_level_complete');

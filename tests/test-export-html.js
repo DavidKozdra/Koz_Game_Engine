@@ -33,8 +33,10 @@ async function main() {
   assert(html.includes('id="game-2d"'), 'export includes a dedicated 2D canvas');
   assert(html.includes('id="game-3d"'), 'export includes a dedicated WebGL canvas');
   assert(html.includes('sceneManager'), 'export runtime includes scene-manager support');
+  assert(html.includes('lightingManager'), 'export runtime includes lighting-manager support');
   assert(html.includes('loadScene'), 'export runtime includes runtime scene transitions');
   assert(html.includes('loadNextScene'), 'export runtime includes ordered scene progression helpers');
+  assert(html.includes('renderFrame2DLighting'), 'export runtime includes 2D lighting overlay support');
   assert(html.includes('webgl-3d'), 'export runtime contains the WebGL render mode');
 
   console.log('\n=== Results ===\n');

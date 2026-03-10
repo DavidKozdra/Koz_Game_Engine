@@ -5,6 +5,12 @@
 const AtlasManager = (function () {
   // Internal registry: { [atlasName]: { image, meta, frames } }
   const _atlases = {};
+  // Global frame cache: frameName -> { image, x, y, w, h }
+  const _frameCache = new Map();
+
+  function _invalidateCache() {
+    _frameCache.clear();
+  }
 
   /**
    * Register a loaded atlas.
@@ -18,35 +24,33 @@ const AtlasManager = (function () {
       meta:   data.meta,
       frames: data.frames,
     };
+    // Pre-populate frame cache for O(1) lookups
+    const fw = data.meta.frameWidth, fh = data.meta.frameHeight;
+    for (const frameName in data.frames) {
+      const f = data.frames[frameName];
+      _frameCache.set(frameName, { image, x: f.x, y: f.y, w: fw, h: fh });
+    }
     console.log(`[AtlasManager] Registered atlas "${name}" with ${Object.keys(data.frames).length} frames.`);
   }
 
   /**
    * Retrieve frame info for a named sprite.
-   * Searches all atlases unless atlasName is specified.
+   * Uses cached global index for O(1) lookup.
    * @param {string}  frameName
    * @param {string}  [atlasName]
    * @returns {{ image, x, y, w, h } | null}
    */
   function getFrame(frameName, atlasName = null) {
-    const candidates = atlasName
-      ? (_atlases[atlasName] ? [_atlases[atlasName]] : [])
-      : Object.values(_atlases);
-
-    for (const atlas of candidates) {
-      if (!atlas) continue;
-      const f = atlas.frames[frameName];
-      if (f) {
-        return {
-          image: atlas.image,
-          x: f.x,
-          y: f.y,
-          w: atlas.meta.frameWidth,
-          h: atlas.meta.frameHeight,
-        };
-      }
+    // Fast path: global cache (most common case)
+    if (!atlasName) {
+      return _frameCache.get(frameName) || null;
     }
-    return null;
+    // Specific atlas lookup
+    const atlas = _atlases[atlasName];
+    if (!atlas) return null;
+    const f = atlas.frames[frameName];
+    if (!f) return null;
+    return { image: atlas.image, x: f.x, y: f.y, w: atlas.meta.frameWidth, h: atlas.meta.frameHeight };
   }
 
   /**
@@ -144,11 +148,13 @@ const AtlasManager = (function () {
   function registerSingle(frameName, image) {
     // Store under a private per-image atlas so the frame lookup still works
     const key = '__single__' + frameName;
+    const fw = image.width || 64, fh = image.height || 64;
     _atlases[key] = {
       image,
-      meta:   { frameWidth: image.width || 64, frameHeight: image.height || 64 },
+      meta:   { frameWidth: fw, frameHeight: fh },
       frames: { [frameName]: { x: 0, y: 0 } },
     };
+    _frameCache.set(frameName, { image, x: 0, y: 0, w: fw, h: fh });
   }
 
   return { register, registerSingle, getFrame, has, draw, drawCtx, createDOMCanvas, debugList };

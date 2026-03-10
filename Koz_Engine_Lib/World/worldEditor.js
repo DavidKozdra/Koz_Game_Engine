@@ -150,20 +150,36 @@
       const oldValue = world.getCell(startX, startY);
       if (oldValue === nextValue) return false;
 
-      const stack = [[startX, startY]];
-      const visited = new Set();
+      // Use typed array bit-set instead of Set<string> for visited tracking
+      const cols = world.cols, rows = world.rows;
+      const ox = world.offsetX, oy = world.offsetY;
+      const totalCells = cols * rows;
+      const visited = new Uint8Array(totalCells);
+      const clonedOld = cloneValue(oldValue);
+      const clonedNext = cloneValue(nextValue);
+
+      // Reuse stack arrays to avoid [x,y] allocations — use flat int stack
+      const stack = new Int32Array(totalCells * 2);
+      let sp = 0;
+      stack[sp++] = startX;
+      stack[sp++] = startY;
+
       const changes = [];
-      while (stack.length > 0) {
-        const current = stack.pop();
-        const x = current[0];
-        const y = current[1];
-        const key = `${x},${y}`;
-        if (visited.has(key) || !world.inBounds(x, y)) continue;
-        visited.add(key);
+      while (sp > 0) {
+        const y = stack[--sp];
+        const x = stack[--sp];
+        if (!world.inBounds(x, y)) continue;
+        const lx = x - ox, ly = y - oy;
+        const idx = ly * cols + lx;
+        if (visited[idx]) continue;
+        visited[idx] = 1;
         if (world.getCell(x, y) !== oldValue) continue;
-        changes.push({ x: x, y: y, prev: cloneValue(oldValue), next: cloneValue(nextValue) });
+        changes.push({ x: x, y: y, prev: clonedOld, next: clonedNext });
         world.setCell(x, y, nextValue);
-        stack.push([x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]);
+        stack[sp++] = x - 1; stack[sp++] = y;
+        stack[sp++] = x + 1; stack[sp++] = y;
+        stack[sp++] = x;     stack[sp++] = y - 1;
+        stack[sp++] = x;     stack[sp++] = y + 1;
       }
 
       if (changes.length === 0) return false;

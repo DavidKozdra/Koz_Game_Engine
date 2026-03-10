@@ -65,7 +65,10 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
     if (Array.isArray(world.grid)) {
       world.grid = world.grid.map((row) => (Array.isArray(row) ? row.map(() => world.defaultCell || 'empty') : []));
     }
-    onPatchProject({ scenes: [...scenes, { id, name, renderMode: baseRenderMode, world, objects: [] }], activeSceneId: id });
+    onPatchProject({
+      scenes: [...scenes, { id, name, renderMode: baseRenderMode, world, objects: [] }],
+      activeSceneId: id,
+    });
     setNewSceneName('');
   }
 

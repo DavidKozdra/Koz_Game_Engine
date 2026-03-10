@@ -28,23 +28,51 @@
   class ParticleSystemCore {
     constructor(options) {
       const opts = options || {};
-      this.poolSize = Math.max(1, Number(opts.poolSize) || 300);
+      this.poolSize = Math.max(1, Number(opts.poolSize) || 2048);
+      this.maxPoolSize = Math.max(this.poolSize, Number(opts.maxPoolSize) || 16384);
       this.random = typeof opts.random === "function" ? opts.random : Math.random;
       this.particles = new Array(this.poolSize);
       for (let i = 0; i < this.poolSize; i++) this.particles[i] = new Particle();
-      this._next = 0;
+      // Free list for O(1) allocation without overwriting alive particles
+      this._freeList = [];
+      for (let i = this.poolSize - 1; i >= 0; i--) this._freeList.push(i);
+      this._activeCount = 0;
+      // Burst config reuse buffer to avoid Object.assign allocations
+      this._burstCfg = {};
     }
 
     _alloc() {
-      const p = this.particles[this._next];
-      this._next = (this._next + 1) % this.poolSize;
-      return p;
+      if (this._freeList.length > 0) {
+        const idx = this._freeList.pop();
+        return this.particles[idx];
+      }
+      // Pool exhausted: grow if under max
+      if (this.poolSize < this.maxPoolSize) {
+        const growBy = Math.min(this.poolSize, this.maxPoolSize - this.poolSize);
+        const oldSize = this.poolSize;
+        this.poolSize += growBy;
+        for (let i = oldSize; i < this.poolSize; i++) {
+          this.particles[i] = new Particle();
+          if (i > oldSize) this._freeList.push(i);
+        }
+        return this.particles[oldSize];
+      }
+      // Hard cap reached: overwrite oldest alive particle (fallback)
+      for (let i = 0; i < this.poolSize; i++) {
+        if (this.particles[i].alive) {
+          this.particles[i].alive = false;
+          this._activeCount--;
+          return this.particles[i];
+        }
+      }
+      return this.particles[0];
     }
 
     spawn(x, y, opts) {
       const cfg = opts || {};
       const p = this._alloc();
       p.alive = true;
+      this._activeCount++;
       p.x = x;
       p.y = y;
       p.vx = cfg.vx != null ? cfg.vx : ((this.random() - 0.5) * (cfg.spreadX || 60));
@@ -65,47 +93,63 @@
     spawnBurst(x, y, opts) {
       const cfg = opts || {};
       const count = cfg.count || 24;
+      const bc = this._burstCfg;
+      // Copy config once, reuse for all particles in burst
+      for (const k in cfg) bc[k] = cfg[k];
       for (let i = 0; i < count; i++) {
         const angle = this.random() * Math.PI * 2;
         const speed = (cfg.speed || 80) * (0.3 + this.random());
-        this.spawn(x, y, Object.assign({}, cfg, {
-          vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed,
-        }));
+        bc.vx = Math.cos(angle) * speed;
+        bc.vy = Math.sin(angle) * speed;
+        this.spawn(x, y, bc);
       }
+      // Clean reuse buffer
+      for (const k in bc) delete bc[k];
     }
 
     update(dtMs) {
       const dt = Number(dtMs) || 0;
+      const dtSec = dt * 0.001;
+      let active = 0;
       for (let i = 0; i < this.poolSize; i++) {
         const p = this.particles[i];
         if (!p.alive) continue;
         p.life -= dt;
         if (p.life <= 0) {
           p.alive = false;
+          this._freeList.push(i);
           continue;
         }
+        active++;
         p.vx *= p.drag;
         p.vy *= p.drag;
-        p.vy += p.gravity * (dt / 1000);
-        p.x += p.vx * (dt / 1000);
-        p.y += p.vy * (dt / 1000);
-        p.alpha = Math.max(0, p.life / p.maxLife);
+        p.vy += p.gravity * dtSec;
+        p.x += p.vx * dtSec;
+        p.y += p.vy * dtSec;
+        p.alpha = p.life / p.maxLife;
       }
+      this._activeCount = active;
     }
 
     activeParticles() {
-      return this.particles.filter(function (p) { return p.alive; });
+      const result = [];
+      for (let i = 0; i < this.poolSize; i++) {
+        if (this.particles[i].alive) result.push(this.particles[i]);
+      }
+      return result;
     }
 
     activeCount() {
-      let n = 0;
-      for (let i = 0; i < this.poolSize; i++) if (this.particles[i].alive) n++;
-      return n;
+      return this._activeCount;
     }
 
     clear() {
-      for (let i = 0; i < this.poolSize; i++) this.particles[i].alive = false;
+      this._freeList.length = 0;
+      for (let i = 0; i < this.poolSize; i++) {
+        this.particles[i].alive = false;
+        this._freeList.push(i);
+      }
+      this._activeCount = 0;
     }
   }
 

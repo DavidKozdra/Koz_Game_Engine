@@ -10,6 +10,24 @@ import { buildWorldSparseIndex, queryWorldSparseIndex } from '../lib/worldSparse
 
 const CELL_SIZE = 24;
 const PLAY_RENDER_MODE_WEBGL_3D = 'webgl-3d';
+const DEFAULT_SCENE_LIGHTING = {
+  enabled: false,
+  ambientColor: '#0b1220',
+  ambientIntensity: 0.35,
+  overlayOpacity: 0.82,
+  fogColor: '#07111d',
+  fogDensity: 0.65,
+};
+const DEFAULT_LIGHT_COMPONENT = {
+  enabled: true,
+  color: '#ffd27a',
+  intensity: 1,
+  radius: 180,
+  falloff: 0.65,
+  offsetX: 0,
+  offsetY: 0,
+  height: 18,
+};
 
 export function usePlayMode(project, onLog) {
   const stateRef = useRef(null);
@@ -27,6 +45,8 @@ export function usePlayMode(project, onLog) {
     prevUiManager: undefined,
     hasSceneManager: false,
     prevSceneManager: undefined,
+    hasLightingManager: false,
+    prevLightingManager: undefined,
   });
 
   const isPlaying = stateRef.current !== null && stateRef.current.running;
@@ -136,6 +156,7 @@ export function usePlayMode(project, onLog) {
       pendingSceneId: null,
       renderMode: resolvePlayRenderMode(snapshot, snapshot.activeSceneId),
       world: snapshot.world,
+      sceneLighting: normalizePlaySceneLighting(null),
       gameObjects: [],
       assetById,
       scriptInstances: [],
@@ -172,11 +193,45 @@ export function usePlayMode(project, onLog) {
       prevUiManager: window.uiManager,
       hasSceneManager: Object.prototype.hasOwnProperty.call(window, 'sceneManager'),
       prevSceneManager: window.sceneManager,
+      hasLightingManager: Object.prototype.hasOwnProperty.call(window, 'lightingManager'),
+      prevLightingManager: window.lightingManager,
     };
     window.KozUIManager = uiManager;
     window.uiManager = uiManager;
     const renderer3d = createPlay3DController({ stateRef, canvasRef });
     state.renderer3dController = renderer3d;
+    const updateSceneLightingState = (runtimeState, lightingPatch) => {
+      if (!runtimeState) return normalizePlaySceneLighting(lightingPatch);
+      const managerObject = getPlayLightingManagerObject(runtimeState);
+      const normalized = normalizePlaySceneLighting(lightingPatch);
+      if (managerObject) {
+        if (!managerObject.components) managerObject.components = {};
+        managerObject.components.LightingManager = { ...normalized };
+      } else {
+        if (runtimeState.scene && typeof runtimeState.scene === 'object') {
+          runtimeState.scene.lighting = JSON.parse(JSON.stringify(normalized));
+        }
+        const scenes = Array.isArray(runtimeState.projectSnapshot && runtimeState.projectSnapshot.scenes)
+          ? runtimeState.projectSnapshot.scenes
+          : [];
+        const sceneEntry = scenes.find((entry) => entry && entry.id === runtimeState.activeSceneId);
+        if (sceneEntry) sceneEntry.lighting = JSON.parse(JSON.stringify(normalized));
+      }
+      runtimeState.sceneLighting = resolvePlayLightingSettings(runtimeState, runtimeState.scene || null);
+      if (runtimeState.scene && typeof runtimeState.scene === 'object' && runtimeState.sceneLighting.enabled === false && !managerObject) {
+        runtimeState.scene.lighting = JSON.parse(JSON.stringify(runtimeState.sceneLighting));
+      }
+      const scenes = Array.isArray(runtimeState.projectSnapshot && runtimeState.projectSnapshot.scenes)
+        ? runtimeState.projectSnapshot.scenes
+        : [];
+      const sceneEntry = scenes.find((entry) => entry && entry.id === runtimeState.activeSceneId);
+      if (sceneEntry && !managerObject) sceneEntry.lighting = JSON.parse(JSON.stringify(runtimeState.sceneLighting));
+      if (runtimeState.render3D) {
+        runtimeState.render3D.meshDirty = true;
+        runtimeState.render3D.lightingSignature = '';
+      }
+      return runtimeState.sceneLighting;
+    };
     const createEngineForState = (runtimeState) => {
       const engine = {
         gameObjects: runtimeState.gameObjects,
@@ -186,6 +241,8 @@ export function usePlayMode(project, onLog) {
         audio: runtimeState.audioSystem ? runtimeState.audioSystem.api : null,
         renderer3d: runtimeState.renderer3dController || null,
         sceneManager: runtimeState.sceneManager || null,
+        lightingManager: runtimeState.lightingManager || null,
+        lighting: runtimeState.lightingManager || null,
         findObject: (id) => runtimeState.gameObjects.find((o) => o.id === id) || null,
         findObjectsByType: (type) => runtimeState.gameObjects.filter((o) => o.type === type),
         keyIsDown: (code) => keysRef.current.has(code),
@@ -224,6 +281,7 @@ export function usePlayMode(project, onLog) {
       runtimeState.projectSnapshot.objects = nextScene.objects || runtimeState.projectSnapshot.objects;
       runtimeState.world = JSON.parse(JSON.stringify(nextScene.world || runtimeState.projectSnapshot.world || {}));
       runtimeState.gameObjects.splice(0, runtimeState.gameObjects.length, ...((nextScene.objects || runtimeState.projectSnapshot.objects || []).map(buildRuntimeObject)));
+      runtimeState.sceneLighting = resolvePlayLightingSettings(runtimeState, nextScene);
       runtimeState.scriptInstances = [];
       runtimeState.pendingSceneId = null;
       if (runtimeState.audioSystem && runtimeState.audioSystem.api) runtimeState.audioSystem.api.stopAll();
@@ -305,6 +363,71 @@ export function usePlayMode(project, onLog) {
       onLog,
       getNow: () => new Date().toLocaleTimeString(),
     });
+    state.lightingManager = {
+      isEnabled() {
+        const runtimeState = stateRef.current;
+        return !!(runtimeState && resolvePlayLightingSettings(runtimeState, runtimeState.scene).enabled);
+      },
+      getSettings() {
+        const runtimeState = stateRef.current;
+        return resolvePlayLightingSettings(runtimeState, runtimeState && runtimeState.scene);
+      },
+      getManagerObject() {
+        return getPlayLightingManagerObject(stateRef.current);
+      },
+      setEnabled(enabled) {
+        const runtimeState = stateRef.current;
+        if (!runtimeState || !runtimeState.running) return false;
+        updateSceneLightingState(runtimeState, {
+          ...resolvePlayLightingSettings(runtimeState, runtimeState.scene),
+          enabled: !!enabled,
+        });
+        return true;
+      },
+      setSettings(patch = {}) {
+        const runtimeState = stateRef.current;
+        if (!runtimeState || !runtimeState.running) return null;
+        return updateSceneLightingState(runtimeState, {
+          ...resolvePlayLightingSettings(runtimeState, runtimeState.scene),
+          ...(patch || {}),
+        });
+      },
+      getLights() {
+        const runtimeState = stateRef.current;
+        return getPlayActiveLights(runtimeState);
+      },
+      getLight(objectId) {
+        const runtimeState = stateRef.current;
+        if (!runtimeState || !objectId) return null;
+        const obj = runtimeState.gameObjects.find((entry) => entry.id === objectId);
+        return obj && obj.components && obj.components.Light ? normalizePlayLightComponent(obj.components.Light) : null;
+      },
+      setLight(objectId, patch = {}) {
+        const runtimeState = stateRef.current;
+        if (!runtimeState || !runtimeState.running || !objectId) return null;
+        const obj = runtimeState.gameObjects.find((entry) => entry.id === objectId);
+        if (!obj) return null;
+        if (!obj.components) obj.components = {};
+        obj.components.Light = normalizePlayLightComponent({
+          ...normalizePlayLightComponent(obj.components.Light),
+          ...(patch || {}),
+        });
+        if (runtimeState.render3D) {
+          runtimeState.render3D.meshDirty = true;
+          runtimeState.render3D.lightingSignature = '';
+        }
+        return { ...obj.components.Light };
+      },
+      refresh() {
+        const runtimeState = stateRef.current;
+        if (!runtimeState || !runtimeState.running) return false;
+        if (runtimeState.render3D) {
+          runtimeState.render3D.meshDirty = true;
+          runtimeState.render3D.lightingSignature = '';
+        }
+        return true;
+      },
+    };
     const queueSceneOffset = (offset) => {
       const runtimeState = stateRef.current;
       if (!runtimeState || !runtimeState.running) return false;
@@ -354,6 +477,7 @@ export function usePlayMode(project, onLog) {
       },
     };
     window.sceneManager = state.sceneManager;
+    window.lightingManager = state.lightingManager;
     state.hydrateScene(state.activeSceneId, true);
 
     onLog({ type: 'info', message: 'Play mode started', time: new Date().toLocaleTimeString() });
@@ -388,6 +512,8 @@ export function usePlayMode(project, onLog) {
     else delete window.uiManager;
     if (saved.hasSceneManager) window.sceneManager = saved.prevSceneManager;
     else delete window.sceneManager;
+    if (saved.hasLightingManager) window.lightingManager = saved.prevLightingManager;
+    else delete window.lightingManager;
     stateRef.current = null;
     onLog({ type: 'info', message: 'Play mode stopped', time: new Date().toLocaleTimeString() });
   }, [onLog]);
@@ -458,6 +584,8 @@ export function usePlayMode(project, onLog) {
             audio: state.audioSystem ? state.audioSystem.api : null,
             renderer3d: state.renderer3dController || null,
             sceneManager: state.sceneManager || null,
+            lightingManager: state.lightingManager || null,
+            lighting: state.lightingManager || null,
             findObject: (id) => state.gameObjects.find(o => o.id === id) || null,
             findObjectsByType: (type) => state.gameObjects.filter((o) => o.type === type),
             keyIsDown: (code) => keysRef.current.has(code),
@@ -526,6 +654,14 @@ export function usePlayMode(project, onLog) {
       const maxSpeed = Number.isFinite(camera.maxSpeed) ? Math.max(60, camera.maxSpeed) : Infinity;
       state.viewX = smoothAxis(state.viewX || 0, desired.x, dt, speed, maxSpeed);
       state.viewY = smoothAxis(state.viewY || 0, desired.y, dt, speed, maxSpeed);
+      state.sceneLighting = resolvePlayLightingSettings(state, state.scene);
+      if (state.renderMode === PLAY_RENDER_MODE_WEBGL_3D && state.render3D) {
+        const lightingSignature = buildPlayLightingSignature(state);
+        if (lightingSignature !== state.render3D.lightingSignature) {
+          state.render3D.lightingSignature = lightingSignature;
+          state.render3D.meshDirty = true;
+        }
+      }
       renderFrame(state);
       rafRef.current = requestAnimationFrame(tick);
     }
@@ -688,6 +824,7 @@ export function usePlayMode(project, onLog) {
     });
 
     ctx.restore();
+    renderFrame2DLighting(ctx, state, w, h);
 
     // HUD
     ctx.fillStyle = '#e2e8f0';
@@ -708,13 +845,21 @@ export function usePlayMode(project, onLog) {
     }
     if (!runtime || !runtime.gl) return;
 
-    const gl = runtime.gl;
-    const w = canvas.width || 960;
-    const h = canvas.height || 540;
-    const camera = state.render3D.camera || {};
-    const clear = parseHexColor((state.render3D.options && state.render3D.options.clearColor) || '#07111d', [7, 17, 29]);
-    const eye = [
-      Number.isFinite(camera.x) ? camera.x : CELL_SIZE * 1.5,
+  const gl = runtime.gl;
+  const w = canvas.width || 960;
+  const h = canvas.height || 540;
+  const camera = state.render3D.camera || {};
+  const sceneLighting = normalizePlaySceneLighting(state && state.sceneLighting);
+  const clear = parseHexColor(
+    sceneLighting.enabled
+      ? sceneLighting.fogColor
+      : ((state.render3D.options && state.render3D.options.clearColor) || '#07111d'),
+    [7, 17, 29],
+  );
+  const fogColor = parseHexColor(sceneLighting.fogColor || '#07111d', [7, 17, 29]);
+  const fogDensity = sceneLighting.enabled ? clamp01(sceneLighting.fogDensity) : 0.65;
+  const eye = [
+    Number.isFinite(camera.x) ? camera.x : CELL_SIZE * 1.5,
       Number.isFinite(camera.y) ? camera.y : CELL_SIZE * 0.72,
       Number.isFinite(camera.z) ? camera.z : CELL_SIZE * 1.5,
     ];
@@ -742,6 +887,8 @@ export function usePlayMode(project, onLog) {
     gl.vertexAttribPointer(runtime.attributes.color, 3, gl.FLOAT, false, 0, 0);
     gl.uniformMatrix4fv(runtime.uniforms.projection, false, projection);
     gl.uniformMatrix4fv(runtime.uniforms.view, false, view);
+    gl.uniform3f(runtime.uniforms.fogColor, fogColor[0] / 255, fogColor[1] / 255, fogColor[2] / 255);
+    gl.uniform1f(runtime.uniforms.fogDensity, fogDensity);
     gl.drawArrays(gl.TRIANGLES, 0, runtime.vertexCount);
   }
 
@@ -773,6 +920,7 @@ function createInitialPlay3DState(state) {
   return {
     enabled,
     meshDirty: enabled,
+    lightingSignature: '',
     runtime: null,
     camera: {
       x: CELL_SIZE * 1.5,
@@ -891,6 +1039,187 @@ function shadeRgb(rgb, factor) {
   return rgb.map((value) => Math.max(0, Math.min(255, Math.round(value * factor))));
 }
 
+function normalizePlaySceneLighting(lighting) {
+  const source = lighting && typeof lighting === 'object' ? lighting : {};
+  return {
+    enabled: source.enabled === true,
+    ambientColor: typeof source.ambientColor === 'string' && source.ambientColor ? source.ambientColor : DEFAULT_SCENE_LIGHTING.ambientColor,
+    ambientIntensity: clamp01(source.ambientIntensity ?? DEFAULT_SCENE_LIGHTING.ambientIntensity),
+    overlayOpacity: clamp01(source.overlayOpacity ?? DEFAULT_SCENE_LIGHTING.overlayOpacity),
+    fogColor: typeof source.fogColor === 'string' && source.fogColor ? source.fogColor : DEFAULT_SCENE_LIGHTING.fogColor,
+    fogDensity: clamp01(source.fogDensity ?? DEFAULT_SCENE_LIGHTING.fogDensity),
+  };
+}
+
+function getPlayLightingManagerObject(state) {
+  const objects = Array.isArray(state && state.gameObjects) ? state.gameObjects : [];
+  return objects.find((obj) => obj && obj.components && obj.components.LightingManager) || null;
+}
+
+function resolvePlayLightingSettings(state, sceneLike = null) {
+  const managerObject = getPlayLightingManagerObject(state);
+  if (managerObject && managerObject.components && managerObject.components.LightingManager) {
+    return normalizePlaySceneLighting(managerObject.components.LightingManager);
+  }
+  return normalizePlaySceneLighting(sceneLike && sceneLike.lighting);
+}
+
+function normalizePlayLightComponent(light) {
+  const source = light && typeof light === 'object' ? light : {};
+  return {
+    enabled: source.enabled !== false,
+    color: typeof source.color === 'string' && source.color ? source.color : DEFAULT_LIGHT_COMPONENT.color,
+    intensity: clamp01(source.intensity ?? DEFAULT_LIGHT_COMPONENT.intensity),
+    radius: Number.isFinite(source.radius) ? Math.max(1, source.radius) : DEFAULT_LIGHT_COMPONENT.radius,
+    falloff: clamp01(source.falloff ?? DEFAULT_LIGHT_COMPONENT.falloff),
+    offsetX: Number.isFinite(source.offsetX) ? source.offsetX : DEFAULT_LIGHT_COMPONENT.offsetX,
+    offsetY: Number.isFinite(source.offsetY) ? source.offsetY : DEFAULT_LIGHT_COMPONENT.offsetY,
+    height: Number.isFinite(source.height) ? Math.max(0, source.height) : DEFAULT_LIGHT_COMPONENT.height,
+  };
+}
+
+function rgbaString(rgb, alpha = 1) {
+  const a = clamp01(alpha);
+  return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${a})`;
+}
+
+function resolvePlayLightAnchor(obj, light) {
+  const sprite = (obj && obj.components && obj.components.Sprite) || {};
+  const width = Number.isFinite(obj && obj.width) ? obj.width : ((Number.isFinite(sprite.width) ? sprite.width : 32) * (Number.isFinite(obj && obj.scaleX) ? obj.scaleX : 1));
+  const height = Number.isFinite(obj && obj.height) ? obj.height : ((Number.isFinite(sprite.height) ? sprite.height : 32) * (Number.isFinite(obj && obj.scaleY) ? obj.scaleY : 1));
+  return {
+    worldX: (Number(obj && obj.x) || 0) + (width * 0.5) + light.offsetX,
+    worldY: (Number(obj && obj.y) || 0) + (height * 0.5) + light.offsetY,
+  };
+}
+
+function getPlayActiveLights(state) {
+  const objects = Array.isArray(state && state.gameObjects) ? state.gameObjects : [];
+  return objects.map((obj) => {
+    if (!obj || !obj.components || !obj.components.Light) return null;
+    const light = normalizePlayLightComponent(obj.components.Light);
+    if (light.enabled === false) return null;
+    const anchor = resolvePlayLightAnchor(obj, light);
+    return {
+      id: obj.id,
+      objectId: obj.id,
+      color: light.color,
+      rgb: parseHexColor(light.color, parseHexColor(DEFAULT_LIGHT_COMPONENT.color, [255, 210, 122])),
+      intensity: light.intensity,
+      radius: light.radius,
+      falloff: light.falloff,
+      offsetX: light.offsetX,
+      offsetY: light.offsetY,
+      height: light.height,
+      worldX: anchor.worldX,
+      worldY: anchor.worldY,
+    };
+  }).filter(Boolean);
+}
+
+function buildPlayLightingSignature(state) {
+  const lighting = normalizePlaySceneLighting(state && state.sceneLighting);
+  const lights = getPlayActiveLights(state)
+    .map((light) => [
+      light.id,
+      Math.round(light.worldX * 10) / 10,
+      Math.round(light.worldY * 10) / 10,
+      Math.round(light.height * 10) / 10,
+      light.color,
+      Math.round(light.intensity * 100) / 100,
+      Math.round(light.radius * 10) / 10,
+      Math.round(light.falloff * 100) / 100,
+    ].join(':'))
+    .sort();
+  return JSON.stringify({
+    enabled: lighting.enabled,
+    ambientColor: lighting.ambientColor,
+    ambientIntensity: lighting.ambientIntensity,
+    overlayOpacity: lighting.overlayOpacity,
+    fogColor: lighting.fogColor,
+    fogDensity: lighting.fogDensity,
+    lights,
+  });
+}
+
+function computePlayLightStrength(distance, radius, intensity, falloff) {
+  const maxRadius = Math.max(1, Number(radius) || 1);
+  const remaining = Math.max(0, 1 - ((Number(distance) || 0) / maxRadius));
+  if (remaining <= 0) return 0;
+  const exponent = 1 + ((1 - clamp01(falloff)) * 2.5);
+  return clamp01(intensity) * Math.pow(remaining, exponent);
+}
+
+function applyPlay3DLighting(baseRgb, samplePoint, sceneLighting, lights) {
+  const lighting = normalizePlaySceneLighting(sceneLighting);
+  if (!lighting.enabled) return baseRgb.slice();
+  const ambientRgb = parseHexColor(lighting.ambientColor, [11, 18, 32]);
+  const ambient = clamp01(lighting.ambientIntensity);
+  const next = [
+    baseRgb[0] * (0.18 + ambient * 0.82) + ambientRgb[0] * (1 - ambient) * 0.08,
+    baseRgb[1] * (0.18 + ambient * 0.82) + ambientRgb[1] * (1 - ambient) * 0.08,
+    baseRgb[2] * (0.18 + ambient * 0.82) + ambientRgb[2] * (1 - ambient) * 0.08,
+  ];
+  (lights || []).forEach((light) => {
+    const distance = Math.hypot(
+      samplePoint[0] - light.worldX,
+      samplePoint[1] - light.height,
+      samplePoint[2] - light.worldY,
+    );
+    const strength = computePlayLightStrength(distance, light.radius, light.intensity, light.falloff);
+    if (strength <= 0) return;
+    next[0] += baseRgb[0] * strength * (0.28 + ((light.rgb[0] / 255) * 0.72));
+    next[1] += baseRgb[1] * strength * (0.28 + ((light.rgb[1] / 255) * 0.72));
+    next[2] += baseRgb[2] * strength * (0.28 + ((light.rgb[2] / 255) * 0.72));
+  });
+  return next.map((value) => Math.max(0, Math.min(255, Math.round(value))));
+}
+
+function renderFrame2DLighting(ctx, state, width, height) {
+  const lighting = normalizePlaySceneLighting(state && state.sceneLighting);
+  if (!lighting.enabled) return;
+  const ambientRgb = parseHexColor(lighting.ambientColor, [11, 18, 32]);
+  const lights = getPlayActiveLights(state);
+  const overlayAlpha = clamp01(lighting.overlayOpacity * (1 - (lighting.ambientIntensity * 0.6)));
+
+  ctx.save();
+  ctx.fillStyle = rgbaString(ambientRgb, overlayAlpha);
+  ctx.fillRect(0, 0, width, height);
+  if (lights.length > 0) {
+    ctx.globalCompositeOperation = 'destination-out';
+    lights.forEach((light) => {
+      const radius = Math.max(8, light.radius);
+      const sx = light.worldX - (state.viewX || 0);
+      const sy = light.worldY - (state.viewY || 0);
+      const innerRadius = Math.max(0, radius * (0.12 + ((1 - light.falloff) * 0.18)));
+      const alpha = clamp01(0.92 * light.intensity);
+      const cutout = ctx.createRadialGradient(sx, sy, innerRadius, sx, sy, radius);
+      cutout.addColorStop(0, `rgba(0, 0, 0, ${alpha})`);
+      cutout.addColorStop(Math.min(0.68, 0.2 + (light.falloff * 0.48)), `rgba(0, 0, 0, ${alpha * 0.42})`);
+      cutout.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = cutout;
+      ctx.beginPath();
+      ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.globalCompositeOperation = 'lighter';
+    lights.forEach((light) => {
+      const radius = Math.max(8, light.radius * 0.95);
+      const sx = light.worldX - (state.viewX || 0);
+      const sy = light.worldY - (state.viewY || 0);
+      const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, radius);
+      glow.addColorStop(0, rgbaString(light.rgb, light.intensity * 0.24));
+      glow.addColorStop(0.4, rgbaString(light.rgb, light.intensity * 0.14));
+      glow.addColorStop(1, rgbaString(light.rgb, 0));
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+  ctx.restore();
+}
+
 function pushColoredQuad(positions, colors, a, b, c, d, rgb) {
   positions.push(
     a[0], a[1], a[2],
@@ -912,6 +1241,8 @@ function buildPlay3DMesh(state) {
   const project = (state && state.projectSnapshot) || {};
   const render3D = state && state.render3D;
   const options = (render3D && render3D.options) || {};
+  const sceneLighting = normalizePlaySceneLighting(state && state.sceneLighting);
+  const activeLights = getPlayActiveLights(state);
   const metrics = resolveWorldMetrics(world, CELL_SIZE);
   if (!metrics) return { positions: new Float32Array(0), colors: new Float32Array(0), farPlane: 600 };
 
@@ -923,9 +1254,11 @@ function buildPlay3DMesh(state) {
   const minZ = metrics.minY;
   const maxX = metrics.maxX;
   const maxZ = metrics.maxY;
+  const floorLit = applyPlay3DLighting(floorColor, [(minX + maxX) * 0.5, 0, (minZ + maxZ) * 0.5], sceneLighting, []);
+  const ceilingLit = applyPlay3DLighting(ceilingColor, [(minX + maxX) * 0.5, wallHeight, (minZ + maxZ) * 0.5], sceneLighting, []);
 
-  pushColoredQuad(positions, colors, [minX, 0, minZ], [maxX, 0, minZ], [maxX, 0, maxZ], [minX, 0, maxZ], floorColor);
-  pushColoredQuad(positions, colors, [minX, wallHeight, maxZ], [maxX, wallHeight, maxZ], [maxX, wallHeight, minZ], [minX, wallHeight, minZ], ceilingColor);
+  pushColoredQuad(positions, colors, [minX, 0, minZ], [maxX, 0, minZ], [maxX, 0, maxZ], [minX, 0, maxZ], floorLit);
+  pushColoredQuad(positions, colors, [minX, wallHeight, maxZ], [maxX, wallHeight, maxZ], [maxX, wallHeight, minZ], [minX, wallHeight, minZ], ceilingLit);
 
   for (let y = metrics.offsetY; y < metrics.offsetY + metrics.rows; y += 1) {
     for (let x = metrics.offsetX; x < metrics.offsetX + metrics.cols; x += 1) {
@@ -938,16 +1271,48 @@ function buildPlay3DMesh(state) {
       const z0 = y * metrics.cellSize;
       const z1 = z0 + metrics.cellSize;
       if (!isCollidableCell(project, readWorldCell(world, x, y - 1))) {
-        pushColoredQuad(positions, colors, [x0, 0, z0], [x1, 0, z0], [x1, wallHeight, z0], [x0, wallHeight, z0], shadeRgb(baseColor, 1));
+        pushColoredQuad(
+          positions,
+          colors,
+          [x0, 0, z0],
+          [x1, 0, z0],
+          [x1, wallHeight, z0],
+          [x0, wallHeight, z0],
+          applyPlay3DLighting(shadeRgb(baseColor, 1), [x0 + (metrics.cellSize * 0.5), wallHeight * 0.5, z0], sceneLighting, activeLights),
+        );
       }
       if (!isCollidableCell(project, readWorldCell(world, x, y + 1))) {
-        pushColoredQuad(positions, colors, [x1, 0, z1], [x0, 0, z1], [x0, wallHeight, z1], [x1, wallHeight, z1], shadeRgb(baseColor, 0.82));
+        pushColoredQuad(
+          positions,
+          colors,
+          [x1, 0, z1],
+          [x0, 0, z1],
+          [x0, wallHeight, z1],
+          [x1, wallHeight, z1],
+          applyPlay3DLighting(shadeRgb(baseColor, 0.82), [x0 + (metrics.cellSize * 0.5), wallHeight * 0.5, z1], sceneLighting, activeLights),
+        );
       }
       if (!isCollidableCell(project, readWorldCell(world, x - 1, y))) {
-        pushColoredQuad(positions, colors, [x0, 0, z1], [x0, 0, z0], [x0, wallHeight, z0], [x0, wallHeight, z1], shadeRgb(baseColor, 0.7));
+        pushColoredQuad(
+          positions,
+          colors,
+          [x0, 0, z1],
+          [x0, 0, z0],
+          [x0, wallHeight, z0],
+          [x0, wallHeight, z1],
+          applyPlay3DLighting(shadeRgb(baseColor, 0.7), [x0, wallHeight * 0.5, z0 + (metrics.cellSize * 0.5)], sceneLighting, activeLights),
+        );
       }
       if (!isCollidableCell(project, readWorldCell(world, x + 1, y))) {
-        pushColoredQuad(positions, colors, [x1, 0, z0], [x1, 0, z1], [x1, wallHeight, z1], [x1, wallHeight, z0], shadeRgb(baseColor, 0.9));
+        pushColoredQuad(
+          positions,
+          colors,
+          [x1, 0, z0],
+          [x1, 0, z1],
+          [x1, wallHeight, z1],
+          [x1, wallHeight, z0],
+          applyPlay3DLighting(shadeRgb(baseColor, 0.9), [x1, wallHeight * 0.5, z0 + (metrics.cellSize * 0.5)], sceneLighting, activeLights),
+        );
       }
     }
   }
@@ -1014,10 +1379,11 @@ function createPlayWebGLRuntime(canvas, state, onLog) {
     precision mediump float;
     varying vec3 vColor;
     varying float vFogDepth;
+    uniform vec3 uFogColor;
+    uniform float uFogDensity;
     void main() {
-      vec3 fogColor = vec3(0.03, 0.06, 0.11);
       float fog = smoothstep(0.15, 0.95, clamp((vFogDepth + 1.0) * 0.5, 0.0, 1.0));
-      vec3 color = mix(vColor, fogColor, fog * 0.65);
+      vec3 color = mix(vColor, uFogColor, fog * uFogDensity);
       gl_FragColor = vec4(color, 1.0);
     }
   `;
@@ -1046,6 +1412,8 @@ function createPlayWebGLRuntime(canvas, state, onLog) {
       uniforms: {
         projection: gl.getUniformLocation(program, 'uProjection'),
         view: gl.getUniformLocation(program, 'uView'),
+        fogColor: gl.getUniformLocation(program, 'uFogColor'),
+        fogDensity: gl.getUniformLocation(program, 'uFogDensity'),
       },
       buffers: { position, color },
     };

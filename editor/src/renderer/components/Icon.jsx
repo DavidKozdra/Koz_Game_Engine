@@ -94,6 +94,20 @@ function glyph(name) {
       return <path d="m8 13 4-5H9V3H7v5H4z" />;
     case 'close':
       return <path d="m4 4 8 8M12 4 4 12" />;
+    case 'objGeneric':
+      return <><path d="M8 2 3 5v6l5 3 5-3V5z" /><path d="M8 8 3 5M8 8v5M8 8l5-3" /></>;
+    case 'objSprite':
+      return <><rect x="2" y="3" width="12" height="10" rx="1" /><path d="M2 11l3-4 2 2 3-3 4 5" /><circle cx="5.5" cy="6" r="1.2" /></>;
+    case 'objAnimator':
+      return <><rect x="2" y="3" width="12" height="10" rx="1" /><path d="M6 3v10M10 3v10" /><path d="M2 6h12M2 10h12" /></>;
+    case 'objLight':
+      return <><circle cx="8" cy="6.5" r="3" /><path d="M6 10v2a2 2 0 0 0 4 0v-2" /><path d="M8 2v1M3 6.5H2M14 6.5h-1M4 3l.7.7M12 3l-.7.7" /></>;
+    case 'objLightingManager':
+      return <><circle cx="8" cy="8" r="3" /><path d="M8 2v2M8 12v2M2 8h2M12 8h2M4 4l1.5 1.5M10.5 10.5 12 12M12 4l-1.5 1.5M5.5 10.5 4 12" /></>;
+    case 'objAudioSource':
+      return <><path d="M3 6h2l3-3v10L5 10H3z" /><path d="M10 5.5a3 3 0 0 1 0 5" /><path d="M11.5 3.5a6 6 0 0 1 0 9" /></>;
+    case 'objMusicSource':
+      return <><circle cx="5" cy="11.5" r="1.8" /><circle cx="11" cy="10.5" r="1.8" /><path d="M6.8 11.5V4l6-1.5v8" /><path d="M6.8 6.5l6-1.5" /></>;
     default:
       return <circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none" />;
   }

@@ -59,12 +59,43 @@ assert(migrated.world.cols === 5, 'preserved cols');
 assert(Array.isArray(migrated.scenes) && migrated.scenes.length === 1, 'legacy project migrated to one scene');
 assert(migrated.activeSceneId === migrated.scenes[0].id, 'migrated project has active scene');
 assert(migrated.scenes[0].renderMode === '2d', 'migrated legacy scene gets a default render mode');
+assert(!migrated.scenes[0].lighting, 'migrated legacy scene does not carry scene lighting metadata by default');
+
+const migratedLightingProject = projectSchema.migrate({
+  schemaVersion: 1,
+  meta: { name: 'Lit Legacy', resolution: { width: 960, height: 540 }, renderMode: '2d' },
+  world: project.world,
+  objects: [],
+  scenes: [{
+    id: 'scene_main',
+    name: 'Main Scene',
+    renderMode: '2d',
+    lighting: { enabled: true, ambientColor: '#111827', ambientIntensity: 0.2, overlayOpacity: 0.7, fogColor: '#020617', fogDensity: 0.4 },
+    world: project.world,
+    objects: [],
+  }],
+  activeSceneId: 'scene_main',
+  animations: [],
+  scripts: [],
+  assets: [],
+  build: { profile: 'web-prod' },
+  settings: {},
+});
+const migratedLightingManager = migratedLightingProject.scenes[0].objects.find((entry) => entry.components && entry.components.LightingManager);
+assert(!!migratedLightingManager, 'legacy scene lighting migrates into a LightingManager object');
+assert(!migratedLightingProject.scenes[0].lighting, 'legacy scene lighting metadata is stripped after migration');
 
 // Test 5: Create game object
 const obj = projectSchema.createGameObject('Player', 10, 20, { color: '#ff0000' });
 assert(obj.name === 'Player', 'object name');
 assert(obj.components.Transform.x === 10, 'transform x');
 assert(obj.components.Sprite.color === '#ff0000', 'sprite color');
+const lightObj = projectSchema.createGameObject('Lamp', 30, 40, { type: 'light' });
+assert(lightObj.components.Light && lightObj.components.Light.enabled === true, 'light object includes Light component');
+assert(lightObj.components.Collider.shape === 'circle', 'light object uses circle collider');
+const lightingManagerObj = projectSchema.createGameObject('Lighting Manager', 0, 0, { type: 'lighting_manager' });
+assert(lightingManagerObj.components.LightingManager, 'lighting manager object includes LightingManager component');
+assert(lightingManagerObj.components.Render.visible === false, 'lighting manager object is hidden by default');
 
 // Test 6: Create script
 const script = projectSchema.createScript('MyScript');
