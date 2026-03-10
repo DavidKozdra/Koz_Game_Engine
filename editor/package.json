@@ -1,0 +1,32 @@
+{
+  "name": "koz-engine-editor",
+  "version": "0.1.0",
+  "main": "src/main/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently -n vite,electron \"pnpm run vite-dev\" \"pnpm run electron-dev\"",
+    "vite-dev": "vite",
+    "electron-dev": "wait-on http://127.0.0.1:5173 && NODE_ENV=development electron .",
+    "vite-only": "vite",
+    "build": "vite build",
+    "build:electron": "vite build && electron-builder"
+  },
+  "dependencies": {
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/state": "^6.5.4",
+    "@codemirror/theme-one-dark": "^6.1.3",
+    "@codemirror/view": "^6.39.16",
+    "codemirror": "^6.0.2",
+    "electron": "^28.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.0",
+    "concurrently": "^8.2.0",
+    "electron-builder": "^24.6.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "vite": "^5.0.0",
+    "wait-on": "^7.0.1"
+  }
+}

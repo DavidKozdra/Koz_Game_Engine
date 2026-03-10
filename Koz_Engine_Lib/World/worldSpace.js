@@ -72,6 +72,8 @@ function isPlainObject(value) {
     const opts = options || {};
     let cols = normalizeSize(opts.cols, 1);
     let rows = normalizeSize(opts.rows, 1);
+    let offsetX = normalizeCoord(opts.offsetX);
+    let offsetY = normalizeCoord(opts.offsetY);
     let defaultCell = opts.defaultCell !== undefined ? opts.defaultCell : null;
     let grid = createGrid(cols, rows, defaultCell);
     let elements = [];
@@ -79,17 +81,17 @@ function isPlainObject(value) {
     const meta = cloneValue(opts.meta || {});
 
     function inBounds(x, y) {
-      return x >= 0 && x < cols && y >= 0 && y < rows;
+      return x >= offsetX && x < offsetX + cols && y >= offsetY && y < offsetY + rows;
     }
 
     function getCell(x, y) {
       if (!inBounds(x, y)) return undefined;
-      return grid[y][x];
+      return grid[y - offsetY][x - offsetX];
     }
 
     function setCell(x, y, value) {
       if (!inBounds(x, y)) return false;
-      grid[y][x] = cloneValue(value);
+      grid[y - offsetY][x - offsetX] = cloneValue(value);
       return true;
     }
 
@@ -97,7 +99,7 @@ function isPlainObject(value) {
       const nextFactory = makeCellFactory(value);
       for (let y = 0; y < rows; y++) {
         for (let x = 0; x < cols; x++) {
-          grid[y][x] = nextFactory(x, y);
+          grid[y][x] = nextFactory(x + offsetX, y + offsetY);
         }
       }
       defaultCell = value;
@@ -120,7 +122,7 @@ function isPlainObject(value) {
       const removedElements = [];
       const keptElements = [];
       for (const element of elements) {
-        if (element.x >= 0 && element.x < targetCols && element.y >= 0 && element.y < targetRows) {
+        if (element.x >= offsetX && element.x < offsetX + targetCols && element.y >= offsetY && element.y < offsetY + targetRows) {
           keptElements.push(element);
         } else {
           removedElements.push(cloneValue(element));
@@ -229,6 +231,8 @@ function isPlainObject(value) {
       const source = snapshot || {};
       cols = normalizeSize(source.cols, cols);
       rows = normalizeSize(source.rows, rows);
+      if (Number.isFinite(Number(source.offsetX))) offsetX = normalizeCoord(source.offsetX);
+      if (Number.isFinite(Number(source.offsetY))) offsetY = normalizeCoord(source.offsetY);
       defaultCell = source.defaultCell !== undefined ? source.defaultCell : defaultCell;
       grid = createGrid(cols, rows, defaultCell);
 
@@ -254,6 +258,8 @@ function isPlainObject(value) {
       return {
         cols: cols,
         rows: rows,
+        offsetX: offsetX,
+        offsetY: offsetY,
         defaultCell: cloneValue(defaultCell),
         grid: cloneValue(grid),
         elements: cloneValue(elements),
@@ -264,6 +270,8 @@ function isPlainObject(value) {
     return {
       get cols() { return cols; },
       get rows() { return rows; },
+      get offsetX() { return offsetX; },
+      get offsetY() { return offsetY; },
       get grid() { return grid; },
       get meta() { return meta; },
       inBounds: inBounds,
@@ -288,5 +296,39 @@ function isPlainObject(value) {
     cloneValue: cloneValue,
     createGrid: createGrid,
     createWorldSpace: createWorldSpace,
+    gridToWorld: function gridToWorld(gridX, gridY, cellSize, transform) {
+      const t = transform || {};
+      const x = gridX * (t.scaleX || 1) * cellSize + (t.x || 0);
+      const y = gridY * (t.scaleY || 1) * cellSize + (t.y || 0);
+      const rotation = (t.rotation || 0) * Math.PI / 180;
+      if (rotation !== 0) {
+        const cos = Math.cos(rotation);
+        const sin = Math.sin(rotation);
+        const rx = x * cos - y * sin;
+        const ry = x * sin + y * cos;
+        return { x: rx, y: ry };
+      }
+      return { x, y };
+    },
+    worldToGrid: function worldToGrid(worldX, worldY, cellSize, transform) {
+      const t = transform || {};
+      const rotation = -((t.rotation || 0) * Math.PI / 180);
+      let x = worldX - (t.x || 0);
+      let y = worldY - (t.y || 0);
+      if (rotation !== 0) {
+        const cos = Math.cos(rotation);
+        const sin = Math.sin(rotation);
+        const rx = x * cos - y * sin;
+        const ry = x * sin + y * cos;
+        x = rx;
+        y = ry;
+      }
+      const sx = t.scaleX || 1;
+      const sy = t.scaleY || 1;
+      return { 
+        gridX: Math.floor(x / (sx * cellSize)), 
+        gridY: Math.floor(y / (sy * cellSize)) 
+      };
+    },
   };
 });
