@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { EditorView, basicSetup } from 'codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { oneDark } from '@codemirror/theme-one-dark';
@@ -95,6 +95,13 @@ function getLineCount(source) {
   return source.split('\n').length;
 }
 
+function formatScriptSource(source, language) {
+  const text = String(source || '');
+  if (language !== 'javascript' && language !== 'css' && language !== 'ui') return text;
+  const lines = text.split('\n').map((line) => line.replace(/[ \t]+$/g, ''));
+  return `${lines.join('\n').replace(/\n+$/g, '')}\n`;
+}
+
 export default function ScriptEditor({
   project,
   onUpdateScript,
@@ -119,7 +126,13 @@ export default function ScriptEditor({
   const saveTimeoutRef = useRef(null);
   const selectedId = externalSelectedId !== undefined ? externalSelectedId : localSelectedId;
   const setSelectedId = externalSetSelectedId || setLocalSelectedId;
-  const preferredEditor = project?.settings?.preferredEditor || 'vscode';
+  const settings = project?.settings || {};
+  const preferredEditor = settings.preferredEditor || 'vscode';
+  const editorCommand = settings.editorCommand || '';
+  const editorArgs = Array.isArray(settings.editorArgs) ? settings.editorArgs : [];
+  const autoSaveScripts = settings.autoSaveScripts !== false;
+  const formatOnSave = !!settings.formatOnSave;
+  const confirmBeforeScriptDelete = settings.confirmBeforeScriptDelete !== false;
 
   const selectedScript = scripts.find(s => s.id === selectedId) || null;
 
@@ -127,16 +140,20 @@ export default function ScriptEditor({
 
   // Debounced save to external file
   const saveToFile = useCallback(async (script, content) => {
-    if (!hasFileSupport || !projectPath || !script?.filePath) return;
+    if (!hasFileSupport || !projectPath || !script?.filePath || !autoSaveScripts) return;
     
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
     
     saveTimeoutRef.current = setTimeout(async () => {
+      const finalContent = formatOnSave ? formatScriptSource(content, script.language) : content;
       setIsSaving(true);
       try {
-        await window.api.saveScript(projectPath, script.filePath, content);
+        if (finalContent !== content) {
+          onUpdateScript(script.id, { source: finalContent });
+        }
+        await window.api.saveScript(projectPath, script.filePath, finalContent);
         setLastSaved(new Date());
       } catch (err) {
         console.error('Failed to save script to file:', err);
@@ -144,27 +161,31 @@ export default function ScriptEditor({
         setIsSaving(false);
       }
     }, 500);
-  }, [hasFileSupport, projectPath]);
+  }, [hasFileSupport, projectPath, autoSaveScripts, formatOnSave, onUpdateScript]);
 
   // Immediate save (for focus loss)
   const immediateSaveToFile = useCallback(async (script, content) => {
-    if (!hasFileSupport || !projectPath || !script?.filePath) return;
+    if (!hasFileSupport || !projectPath || !script?.filePath || !autoSaveScripts) return;
     
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
     }
     
+    const finalContent = formatOnSave ? formatScriptSource(content, script.language) : content;
     setIsSaving(true);
     try {
-      await window.api.saveScript(projectPath, script.filePath, content);
+      if (finalContent !== content) {
+        onUpdateScript(script.id, { source: finalContent });
+      }
+      await window.api.saveScript(projectPath, script.filePath, finalContent);
       setLastSaved(new Date());
     } catch (err) {
       console.error('Failed to save script to file:', err);
     } finally {
       setIsSaving(false);
     }
-  }, [hasFileSupport, projectPath]);
+  }, [hasFileSupport, projectPath, autoSaveScripts, formatOnSave, onUpdateScript]);
 
   // Open script in external editor
   const handleOpenInEditor = useCallback(async () => {
@@ -179,11 +200,15 @@ export default function ScriptEditor({
       realPath = scriptsDir + '/' + realPath;
     }
     try {
-      await window.api.openInEditor(realPath, preferredEditor);
+      await window.api.openInEditor(realPath, {
+        editor: preferredEditor,
+        command: editorCommand,
+        args: editorArgs,
+      });
     } catch (err) {
       console.error('Failed to open in editor:', err);
     }
-  }, [hasFileSupport, selectedScript, preferredEditor, projectPath]);
+  }, [hasFileSupport, selectedScript, preferredEditor, editorCommand, editorArgs, projectPath]);
 
   // Auto-select first script
   useEffect(() => {
@@ -217,6 +242,12 @@ export default function ScriptEditor({
         javascript(),
         oneDark,
         updateListener,
+        EditorView.domEventHandlers({
+          blur: () => {
+            if (!viewRef.current) return;
+            immediateSaveToFile(selectedScript, viewRef.current.state.doc.toString());
+          },
+        }),
         EditorView.theme({
           '&': { height: '100%', fontSize: '13px' },
           '.cm-scroller': { overflow: 'auto' },
@@ -236,7 +267,7 @@ export default function ScriptEditor({
         viewRef.current = null;
       }
     };
-  }, [selectedScript?.id]);
+  }, [selectedScript?.id, immediateSaveToFile, onUpdateScript, saveToFile]);
 
   // Sync content when source changes externally
   useEffect(() => {
@@ -274,10 +305,10 @@ export default function ScriptEditor({
 
   const handleDelete = useCallback(() => {
     if (!selectedId) return;
-    if (!confirm(`Delete script "${selectedScript?.name}"?`)) return;
+    if (confirmBeforeScriptDelete && !confirm(`Delete script "${selectedScript?.name}"?`)) return;
     onDeleteScript(selectedId);
     setSelectedId(null);
-  }, [selectedId, selectedScript, onDeleteScript]);
+  }, [selectedId, selectedScript, onDeleteScript, confirmBeforeScriptDelete]);
 
   return (
     <div style={{ display: 'flex', height: '100%' }}>

@@ -5,6 +5,26 @@ function idFromName(name, fallback) {
   return (name || fallback || 'item').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || fallback || 'item';
 }
 
+function parseEditorArgs(value) {
+  if (!value || !value.trim()) return [];
+  const args = [];
+  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let match;
+  while ((match = re.exec(value)) !== null) {
+    args.push(match[1] || match[2] || match[3]);
+  }
+  return args;
+}
+
+function stringifyEditorArgs(args) {
+  if (!Array.isArray(args) || args.length === 0) return '';
+  return args.map((arg) => {
+    const value = String(arg || '');
+    if (/\s/.test(value)) return `"${value.replace(/"/g, '\\"')}"`;
+    return value;
+  }).join(' ');
+}
+
 export default function SystemsTab({ mode = 'assets', project, selectedObjectId, onPatchProject, onSelectObject }) {
   const [cellTypeName, setCellTypeName] = useState('');
   const [themeName, setThemeName] = useState((project && project.editorTheme) || 'slate');
@@ -157,9 +177,14 @@ export default function SystemsTab({ mode = 'assets', project, selectedObjectId,
   if (mode === 'settings') {
     const settings = project.settings || {};
     const preferredEditor = settings.preferredEditor || 'vscode';
+    const editorCommand = settings.editorCommand || '';
+    const editorArgsText = stringifyEditorArgs(settings.editorArgs || []);
+    const autoSaveScripts = settings.autoSaveScripts !== false;
+    const formatOnSave = !!settings.formatOnSave;
+    const confirmBeforeScriptDelete = settings.confirmBeforeScriptDelete !== false;
     
-    function updatePreferredEditor(value) {
-      patch({ settings: { ...settings, preferredEditor: value } });
+    function updateSettings(patchData) {
+      patch({ settings: { ...settings, ...patchData } });
     }
     
     return (
@@ -180,7 +205,7 @@ export default function SystemsTab({ mode = 'assets', project, selectedObjectId,
           <h3>External Editor</h3>
           <div className="field">
             <label>Preferred Editor</label>
-            <select value={preferredEditor} onChange={(e) => updatePreferredEditor(e.target.value)}>
+            <select value={preferredEditor} onChange={(e) => updateSettings({ preferredEditor: e.target.value })}>
               <option value="vscode">VS Code</option>
               <option value="code">VS Code (command)</option>
               <option value="cursor">Cursor</option>
@@ -190,8 +215,32 @@ export default function SystemsTab({ mode = 'assets', project, selectedObjectId,
               <option value="webstorm">WebStorm</option>
             </select>
           </div>
+          <div className="field">
+            <label>Editor Command</label>
+            <input
+              value={editorCommand}
+              onChange={(e) => updateSettings({ editorCommand: e.target.value })}
+              placeholder="Optional override (e.g. code-insiders)"
+            />
+          </div>
+          <div className="field">
+            <label>Editor Args</label>
+            <input
+              value={editorArgsText}
+              onChange={(e) => updateSettings({ editorArgs: parseEditorArgs(e.target.value) })}
+              placeholder='Optional args (e.g. --reuse-window --goto)'
+            />
+          </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
             Scripts will auto-save to external files and can be opened in your preferred editor.
+          </div>
+          <div className="field">
+            <label>Auto-save Scripts</label>
+            <input type="checkbox" checked={autoSaveScripts} onChange={(e) => updateSettings({ autoSaveScripts: e.target.checked })} />
+            <label>Format on Save</label>
+            <input type="checkbox" checked={formatOnSave} onChange={(e) => updateSettings({ formatOnSave: e.target.checked })} />
+            <label>Confirm Script Delete</label>
+            <input type="checkbox" checked={confirmBeforeScriptDelete} onChange={(e) => updateSettings({ confirmBeforeScriptDelete: e.target.checked })} />
           </div>
         </div>
 
