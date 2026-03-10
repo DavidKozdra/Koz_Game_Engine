@@ -130,7 +130,16 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             onChange={(e) => onUpdateObject(obj.id, { parentId: e.target.value || null })}
           >
             <option value="">None</option>
-            {sceneObjects.filter((o) => o.id !== obj.id).map((o) => (
+            {sceneObjects.filter((o) => {
+              if (o.id === obj.id) return false;
+              // Prevent circular: walk up o's parent chain, skip if obj.id is an ancestor
+              let cur = o;
+              while (cur && cur.parentId) {
+                if (cur.parentId === obj.id) return false;
+                cur = sceneObjects.find((p) => p.id === cur.parentId);
+              }
+              return true;
+            }).map((o) => (
               <option key={o.id} value={o.id}>{o.name || o.id}</option>
             ))}
           </select>
