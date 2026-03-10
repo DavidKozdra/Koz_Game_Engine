@@ -221,6 +221,12 @@ export function usePlayMode(project, onLog) {
         keyIsDown: (code) => keysRef.current.has(code),
       };
 
+      // Snapshot positions before scripts so we can detect which was changed
+      const prePositions = state.gameObjects.map((obj) => {
+        const t = (obj.components && obj.components.Transform) || {};
+        return { x: obj.x, y: obj.y, tx: t.x, ty: t.y };
+      });
+
       // Script updates
       state.scriptInstances.forEach(inst => {
         if (inst.hooks.onUpdate) {
@@ -228,6 +234,20 @@ export function usePlayMode(project, onLog) {
           catch (e) { onLog({ type: 'error', message: `onUpdate error: ${e.message}`, time: new Date().toLocaleTimeString() }); }
         }
       });
+
+      // Sync obj.x/y <-> Transform.x/y (scripts may update either)
+      state.gameObjects.forEach((obj, i) => {
+        const t = obj.components && obj.components.Transform;
+        if (!t) return;
+        const pre = prePositions[i];
+        // If script changed Transform, prefer that; otherwise use obj.x/y
+        if (Number.isFinite(t.x) && t.x !== pre.tx) obj.x = t.x;
+        if (Number.isFinite(t.y) && t.y !== pre.ty) obj.y = t.y;
+        // Keep both in sync
+        t.x = obj.x;
+        t.y = obj.y;
+      });
+
       resolveCellCollisions(state);
 
       // Render
@@ -297,8 +317,30 @@ export function usePlayMode(project, onLog) {
           const entries = cellsByLayer.get(layer.id);
           if (!entries || entries.length === 0) continue;
           for (const entry of entries) {
-            ctx.fillStyle = entry.type.color || '#334155';
-            ctx.fillRect(entry.x * CELL_SIZE, entry.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+            const px = entry.x * CELL_SIZE;
+            const py = entry.y * CELL_SIZE;
+            let drawn = false;
+            const imgAssetId = entry.type.imageAssetId;
+            if (imgAssetId && state.assetById) {
+              const asset = state.assetById.get(imgAssetId);
+              const src = asset && (asset.previewUrl || asset.url || asset.src);
+              if (src) {
+                if (!imageCacheRef.current.has(src)) {
+                  const img = new Image();
+                  img.src = src;
+                  imageCacheRef.current.set(src, img);
+                }
+                const img = imageCacheRef.current.get(src);
+                if (img && img.complete && img.naturalWidth > 0) {
+                  ctx.drawImage(img, px, py, CELL_SIZE, CELL_SIZE);
+                  drawn = true;
+                }
+              }
+            }
+            if (!drawn) {
+              ctx.fillStyle = entry.type.color || '#334155';
+              ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+            }
           }
         }
       }
@@ -508,13 +550,21 @@ function resolvePlayCamera(state) {
     const c = o && o.components && o.components.Camera;
     return c && c.enabled !== false;
   });
-  if (!cameraObject) return { ...fallback, offsetX: 0, offsetY: 0, followX: true, followY: true, clampToWorld: true };
 
-  const cameraComp = cameraObject.components.Camera || {};
+  const cameraComp = cameraObject ? (cameraObject.components.Camera || {}) : {};
   let targetObjectId = cameraComp.targetObjectId || fallback.targetObjectId || null;
+  // Auto-detect player as target when none is explicitly set
   if (!targetObjectId) {
     const player = objects.find((o) => o.type === 'player');
     targetObjectId = player ? player.id : null;
+  }
+
+  if (!cameraObject) {
+    return {
+      ...fallback,
+      targetObjectId,
+      offsetX: 0, offsetY: 0, followX: true, followY: true, clampToWorld: true,
+    };
   }
 
   return {

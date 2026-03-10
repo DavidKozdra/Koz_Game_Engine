@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { getCellType, normalizeCellTypeId, getBrushValue } from '../state/projectModel.js';
 import { buildWorldSparseIndex, queryWorldSparseIndex } from '../lib/worldSparseIndex.js';
 
@@ -12,6 +12,7 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
   const dragRef = useRef({ dragging: false, button: -1, startX: 0, startY: 0, lastX: 0, lastY: 0 });
   const imageCacheRef = useRef(new Map());
   const sparseRef = useRef({ world: null, cellTypes: null, index: null });
+  const [canvasSize, setCanvasSize] = useState(0);
 
   const cellSize = 24;
 
@@ -91,6 +92,7 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
     const drawMaxY = Math.min(viewMaxY, worldMaxY);
 
     if (drawMinX <= drawMaxX && drawMinY <= drawMaxY) {
+      const assetById = new Map(((project.assets || []).map((a) => [a.id, a])));
       if (sparseRef.current.world !== world || sparseRef.current.cellTypes !== project.cellTypes) {
         sparseRef.current = {
           world,
@@ -119,8 +121,28 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
         for (const entry of entries) {
           const px = entry.x * cellSize;
           const py = entry.y * cellSize;
-          ctx.fillStyle = entry.type.color || '#334155';
-          ctx.fillRect(px, py, cellSize, cellSize);
+          let drawn = false;
+          const imgAssetId = entry.type.imageAssetId;
+          if (imgAssetId) {
+            const asset = assetById.get(imgAssetId);
+            const src = asset && (asset.previewUrl || asset.url || asset.src);
+            if (src) {
+              if (!imageCacheRef.current.has(src)) {
+                const img = new Image();
+                img.src = src;
+                imageCacheRef.current.set(src, img);
+              }
+              const img = imageCacheRef.current.get(src);
+              if (img && img.complete && img.naturalWidth > 0) {
+                ctx.drawImage(img, px, py, cellSize, cellSize);
+                drawn = true;
+              }
+            }
+          }
+          if (!drawn) {
+            ctx.fillStyle = entry.type.color || '#334155';
+            ctx.fillRect(px, py, cellSize, cellSize);
+          }
           if (entry.type.collision) {
             ctx.strokeStyle = 'rgba(239,68,68,0.4)';
             ctx.lineWidth = 1;
@@ -256,16 +278,21 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
       ctx.fillStyle = 'rgba(59,130,246,0.12)';
       ctx.fillRect(rx, ry, rw, rh);
     }
-  }, [project, editorState, worldToScreen, screenToCell]);
+  }, [project, editorState, worldToScreen, screenToCell, canvasSize]);
 
-  // Resize observer
+  // Resize observer — also triggers a repaint when canvas becomes visible again
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const parent = canvas.parentElement;
     const observer = new ResizeObserver(() => {
-      canvas.width = parent.clientWidth;
-      canvas.height = parent.clientHeight;
+      const w = parent.clientWidth;
+      const h = parent.clientHeight;
+      if (w > 0 && h > 0) {
+        canvas.width = w;
+        canvas.height = h;
+        setCanvasSize(w + h);
+      }
     });
     observer.observe(parent);
     return () => observer.disconnect();
@@ -432,15 +459,23 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
     dragRef.current.worldMove = false;
   }
 
-  function handleWheel(e) {
-    e.preventDefault();
-    const cam = editorState.camera;
-    const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-    const newZoom = Math.max(0.25, Math.min(4, cam.zoom * zoomFactor));
-    if (onUpdateCamera) {
-      onUpdateCamera({ ...cam, zoom: newZoom });
+  // Attach wheel handler imperatively so we can use { passive: false }
+  // (React registers wheel as passive by default, blocking preventDefault)
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    function handleWheel(e) {
+      e.preventDefault();
+      const cam = editorState.camera;
+      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+      const newZoom = Math.max(0.25, Math.min(4, cam.zoom * zoomFactor));
+      if (onUpdateCamera) {
+        onUpdateCamera({ ...cam, zoom: newZoom });
+      }
     }
-  }
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', handleWheel);
+  }, [editorState.camera, onUpdateCamera]);
 
   return (
     <canvas
@@ -451,7 +486,6 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      onWheel={handleWheel}
       onContextMenu={(e) => e.preventDefault()}
     />
   );

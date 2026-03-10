@@ -57,6 +57,9 @@ export default function ObjectList({ project, editorState, onSelectObject, onAdd
       const sprite = obj && obj.components && obj.components.Sprite;
       const asset = sprite && sprite.assetId ? imageAssetById.get(sprite.assetId) : null;
       const preview = asset && (asset.previewUrl || asset.url || asset.src) ? (asset.previewUrl || asset.url || asset.src) : null;
+      const spriteColor = sprite && sprite.color ? sprite.color : null;
+      const spriteW = sprite && Number.isFinite(sprite.width) ? sprite.width : 32;
+      const spriteH = sprite && Number.isFinite(sprite.height) ? sprite.height : 32;
       return {
         id: `prefab:${prefab.id}`,
         group: type === 'camera' ? 'camera' : 'prefab',
@@ -65,6 +68,9 @@ export default function ObjectList({ project, editorState, onSelectObject, onAdd
         type,
         payload: { kind: 'prefab', prefab },
         preview,
+        spriteColor,
+        spriteW,
+        spriteH,
       };
     });
     return [...classTemplates, ...prefabTemplates];
@@ -96,6 +102,10 @@ export default function ObjectList({ project, editorState, onSelectObject, onAdd
   function renderNode(obj, depth) {
     const selected = ((editorState.selectedObjectIds || []).includes(obj.id) || editorState.selectedObjectId === obj.id);
     const children = hierarchyRoots.childMap.get(obj.id) || [];
+    const sprite = obj.components && obj.components.Sprite;
+    const nodeAsset = sprite && sprite.assetId ? imageAssetById.get(sprite.assetId) : null;
+    const nodePreview = nodeAsset && (nodeAsset.previewUrl || nodeAsset.url || nodeAsset.src);
+    const nodeColor = sprite && sprite.color;
     return (
       <React.Fragment key={obj.id}>
         <div
@@ -103,8 +113,14 @@ export default function ObjectList({ project, editorState, onSelectObject, onAdd
           onClick={(e) => handleSelectClick(e, obj.id)}
           style={{ paddingLeft: 8 + depth * 16 }}
         >
-          <span style={{ fontSize: 12, display: 'inline-flex', gap: 6 }}>
-            <span style={{ color: '#94a3b8' }}>{getObjectType(obj) === 'camera' ? '[CAM]' : '[OBJ]'}</span>
+          <span style={{ fontSize: 12, display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+            {nodePreview ? (
+              <img src={nodePreview} alt="" style={{ width: 16, height: 16, objectFit: 'contain', borderRadius: 2 }} />
+            ) : nodeColor ? (
+              <span style={{ display: 'inline-block', width: 14, height: 14, background: nodeColor, borderRadius: 2, flexShrink: 0 }} />
+            ) : (
+              <span style={{ color: '#94a3b8' }}>{getObjectType(obj) === 'camera' ? '[CAM]' : '[OBJ]'}</span>
+            )}
             <span>{obj.name || obj.id}</span>
           </span>
           <button
@@ -189,6 +205,13 @@ export default function ObjectList({ project, editorState, onSelectObject, onAdd
                       <img src={tpl.preview} alt={tpl.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                     ) : tpl.type === 'camera' ? (
                       <div style={{ fontSize: 26, color: '#93c5fd' }}>[CAM]</div>
+                    ) : tpl.spriteColor ? (
+                      <div style={{
+                        width: Math.min(tpl.spriteW || 32, 80),
+                        height: Math.min(tpl.spriteH || 32, 80),
+                        background: tpl.spriteColor,
+                        borderRadius: 3,
+                      }} />
                     ) : (
                       <div style={{ fontSize: 18, color: '#94a3b8' }}>[OBJ]</div>
                     )}

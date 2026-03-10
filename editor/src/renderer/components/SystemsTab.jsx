@@ -265,6 +265,24 @@ export default function SystemsTab({ mode = 'assets', project, selectedObjectId,
               </select>
             </div>
             <div className="field">
+              <label>Image</label>
+              <select
+                value={type.imageAssetId || ''}
+                onChange={(e) => updateCellType(type.id, 'imageAssetId', e.target.value || null)}
+                style={{ flex: 1 }}
+              >
+                <option value="">None (color only)</option>
+                {((project.assets || []).filter((a) => a && a.kind === 'image' && a.mime === 'image/png')).map((a) => (
+                  <option key={a.id} value={a.id}>{a.name || a.id}</option>
+                ))}
+              </select>
+              {type.imageAssetId && (() => {
+                const asset = (project.assets || []).find((a) => a.id === type.imageAssetId);
+                const src = asset && (asset.previewUrl || asset.url || asset.src);
+                return src ? <img src={src} alt="" style={{ width: 24, height: 24, objectFit: 'contain', borderRadius: 2, marginLeft: 4 }} /> : null;
+              })()}
+            </div>
+            <div className="field">
               <label>Collision</label>
               <input type="checkbox" checked={!!type.collision} onChange={(e) => updateCellType(type.id, 'collision', e.target.checked)} />
               <label style={{ width: 80 }}>Physics</label>
