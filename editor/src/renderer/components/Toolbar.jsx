@@ -1,18 +1,19 @@
 import React from 'react';
+import Icon from './Icon.jsx';
 
 const TOOLS = [
-  { id: 'brush', label: 'Brush', key: 'B' },
-  { id: 'fill', label: 'Fill', key: 'F' },
-  { id: 'erase', label: 'Erase', key: 'E' },
-  { id: 'select', label: 'Select', key: 'V' },
-  { id: 'worldMove', label: 'World', key: 'G' },
-  { id: 'place', label: 'Place', key: 'P' },
+  { id: 'brush', label: 'Brush', key: 'B', icon: 'brush' },
+  { id: 'fill', label: 'Fill', key: 'F', icon: 'fill' },
+  { id: 'erase', label: 'Erase', key: 'E', icon: 'erase' },
+  { id: 'select', label: 'Select', key: 'V', icon: 'select' },
+  { id: 'worldMove', label: 'World', key: 'G', icon: 'world' },
+  { id: 'place', label: 'Place', key: 'P', icon: 'place' },
 ];
 
 const GIZMO_MODES = [
-  { id: 'move', label: 'Move', key: 'W' },
-  { id: 'rotate', label: 'Rotate', key: 'E' },
-  { id: 'scale', label: 'Scale', key: 'R' },
+  { id: 'move', label: 'Move', key: 'W', icon: 'move' },
+  { id: 'rotate', label: 'Rotate', key: 'E', icon: 'rotate' },
+  { id: 'scale', label: 'Scale', key: 'R', icon: 'scale' },
 ];
 
 export default function Toolbar({ project, editorState, isPlaying, onToolChange, onBrushChange, onGizmoModeChange, onUndo, onRedo, onNewProject, onSaveProject, onSaveAsProject, onLoadProject, onExport, onPlayToggle, undoCount, redoCount, onAlignObjects }) {
@@ -23,10 +24,22 @@ export default function Toolbar({ project, editorState, isPlaying, onToolChange,
   return (
     <div className="editor-toolbar">
       <div className="toolbar-group">
-        <button className="btn btn-sm" onClick={onNewProject} title="New Project">New</button>
-        <button className="btn btn-sm" onClick={onSaveProject} title="Save (Ctrl+S)">Save</button>
-        <button className="btn btn-sm" onClick={onSaveAsProject} title="Save As (Ctrl+Shift+S)">Save As</button>
-        <button className="btn btn-sm" onClick={onLoadProject} title="Load Project">Load</button>
+        <button className="btn btn-sm" onClick={onNewProject} title="New Project" aria-label="New project">
+          <Icon name="new" />
+          New
+        </button>
+        <button className="btn btn-sm" onClick={onSaveProject} title="Save (Ctrl+S)" aria-label="Save project">
+          <Icon name="save" />
+          Save
+        </button>
+        <button className="btn btn-sm" onClick={onSaveAsProject} title="Save As (Ctrl+Shift+S)" aria-label="Save project as">
+          <Icon name="saveAs" />
+          Save As
+        </button>
+        <button className="btn btn-sm" onClick={onLoadProject} title="Load Project" aria-label="Load project">
+          <Icon name="load" />
+          Load
+        </button>
       </div>
 
       <div className="toolbar-group">
@@ -36,7 +49,9 @@ export default function Toolbar({ project, editorState, isPlaying, onToolChange,
             onClick={() => onToolChange(tool.id)}
             title={`${tool.label} (${tool.key})`}
             disabled={isPlaying}
+            aria-label={`${tool.label} tool (${tool.key})`}
           >
+            <Icon name={tool.icon} />
             {tool.label}
           </button>
         ))}
@@ -51,7 +66,9 @@ export default function Toolbar({ project, editorState, isPlaying, onToolChange,
               title={`${mode.label} (${mode.key})`}
               disabled={isPlaying}
               style={gizmoMode === mode.id ? { background: mode.id === 'move' ? '#facc15' : mode.id === 'rotate' ? '#a78bfa' : '#3b82f6', color: '#0f172a', borderColor: 'transparent', fontWeight: 600 } : undefined}
+              aria-label={`${mode.label} gizmo mode (${mode.key})`}
             >
+              <Icon name={mode.icon} />
               {mode.label}
             </button>
           ))}
@@ -72,12 +89,12 @@ export default function Toolbar({ project, editorState, isPlaying, onToolChange,
 
       {showGizmoTools && hasMultiSelection && onAlignObjects && (
         <div className="toolbar-group">
-          <button className="btn btn-sm" onClick={() => onAlignObjects('left')} title="Align Left" disabled={isPlaying}>L</button>
-          <button className="btn btn-sm" onClick={() => onAlignObjects('centerH')} title="Align Center H" disabled={isPlaying}>CH</button>
-          <button className="btn btn-sm" onClick={() => onAlignObjects('right')} title="Align Right" disabled={isPlaying}>R</button>
-          <button className="btn btn-sm" onClick={() => onAlignObjects('top')} title="Align Top" disabled={isPlaying}>T</button>
-          <button className="btn btn-sm" onClick={() => onAlignObjects('centerV')} title="Align Center V" disabled={isPlaying}>CV</button>
-          <button className="btn btn-sm" onClick={() => onAlignObjects('bottom')} title="Align Bottom" disabled={isPlaying}>B</button>
+          <button className="btn btn-sm" onClick={() => onAlignObjects('left')} title="Align Left" aria-label="Align left" disabled={isPlaying}><Icon name="alignLeft" />Left</button>
+          <button className="btn btn-sm" onClick={() => onAlignObjects('centerH')} title="Align Center Horizontally" aria-label="Align center horizontally" disabled={isPlaying}><Icon name="alignCenterH" />Center H</button>
+          <button className="btn btn-sm" onClick={() => onAlignObjects('right')} title="Align Right" aria-label="Align right" disabled={isPlaying}><Icon name="alignRight" />Right</button>
+          <button className="btn btn-sm" onClick={() => onAlignObjects('top')} title="Align Top" aria-label="Align top" disabled={isPlaying}><Icon name="alignTop" />Top</button>
+          <button className="btn btn-sm" onClick={() => onAlignObjects('centerV')} title="Align Center Vertically" aria-label="Align center vertically" disabled={isPlaying}><Icon name="alignCenterV" />Center V</button>
+          <button className="btn btn-sm" onClick={() => onAlignObjects('bottom')} title="Align Bottom" aria-label="Align bottom" disabled={isPlaying}><Icon name="alignBottom" />Bottom</button>
         </div>
       )}
 
@@ -88,19 +105,22 @@ export default function Toolbar({ project, editorState, isPlaying, onToolChange,
           title="Snap to Grid (toggle)"
           disabled={isPlaying}
           style={editorState.snapToGrid ? { background: '#22c55e', color: '#0f172a', borderColor: 'transparent' } : undefined}
+          aria-label="Toggle snap to grid"
         >
+          <Icon name="snap" />
           Snap
         </button>
       </div>
 
       <div className="toolbar-group">
-        <button className="btn btn-sm" onClick={onUndo} title="Undo (Ctrl+Z)" disabled={isPlaying || !undoCount}>Undo</button>
-        <button className="btn btn-sm" onClick={onRedo} title="Redo (Ctrl+Y)" disabled={isPlaying || !redoCount}>Redo</button>
+        <button className="btn btn-sm" onClick={onUndo} title="Undo (Ctrl+Z)" aria-label="Undo" disabled={isPlaying || !undoCount}><Icon name="undo" />Undo</button>
+        <button className="btn btn-sm" onClick={onRedo} title="Redo (Ctrl+Y)" aria-label="Redo" disabled={isPlaying || !redoCount}><Icon name="redo" />Redo</button>
       </div>
 
       <div className="toolbar-group">
         <button className={`btn btn-sm ${isPlaying ? 'btn-playing' : 'btn-play'}`}
-          onClick={onPlayToggle} title="Play/Stop (F5)">
+          onClick={onPlayToggle} title="Play/Stop (F5)" aria-label={isPlaying ? 'Stop play mode' : 'Start play mode'}>
+          <Icon name={isPlaying ? 'stop' : 'play'} />
           {isPlaying ? 'Stop' : 'Play'}
         </button>
       </div>
@@ -108,7 +128,7 @@ export default function Toolbar({ project, editorState, isPlaying, onToolChange,
       <div style={{ flex: 1 }} />
 
       <div className="toolbar-group">
-        <button className="btn btn-sm" onClick={onExport} title="Export standalone HTML">Export</button>
+        <button className="btn btn-sm" onClick={onExport} title="Export standalone HTML" aria-label="Export standalone HTML"><Icon name="export" />Export</button>
       </div>
     </div>
   );

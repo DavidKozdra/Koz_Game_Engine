@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import Icon from './Icon.jsx';
 
 export default function Modal({ open, title, onClose, children, maxWidth = 460, minWidth = 340 }) {
   const backdropRef = useRef(null);
@@ -34,9 +35,9 @@ export default function Modal({ open, title, onClose, children, maxWidth = 460, 
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
           <span style={{ fontWeight: 600, fontSize: 13 }}>{title}</span>
-          <button onClick={onClose} style={{
+          <button onClick={onClose} aria-label="Close dialog" style={{
             background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16, lineHeight: 1,
-          }}>&times;</button>
+          }}><Icon name="close" size={16} /></button>
         </div>
         <div style={{ padding: '16px', overflow: 'auto' }}>
           {children}

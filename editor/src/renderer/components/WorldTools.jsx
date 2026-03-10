@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import Icon from './Icon.jsx';
 
 export default function WorldTools({ project, editorState, onUpdateCamera, onToggleGrid, onResizeWorld, onResetView }) {
   if (!project) return null;
@@ -46,10 +47,12 @@ export default function WorldTools({ project, editorState, onUpdateCamera, onTog
         <button className="btn btn-sm" onClick={() => {
           if (onResetView) onResetView();
           else onUpdateCamera({ ...editorState.camera, zoom: 1, x: 0, y: 0 });
-        }}>
+        }} aria-label="Reset viewport camera">
+          <Icon name="reset" />
           Reset View
         </button>
-        <button className={`btn btn-sm ${editorState.gridVisible ? 'active' : ''}`} onClick={onToggleGrid}>
+        <button className={`btn btn-sm ${editorState.gridVisible ? 'active' : ''}`} onClick={onToggleGrid} aria-label={editorState.gridVisible ? 'Hide grid' : 'Show grid'}>
+          <Icon name="grid" />
           Grid
         </button>
       </div>
@@ -70,7 +73,10 @@ export default function WorldTools({ project, editorState, onUpdateCamera, onTog
             onChange={(e) => setRowsInput(e.target.value)}
             style={{ width: 64 }}
           />
-          <button className="btn btn-sm" onClick={handleResize}>Apply</button>
+          <button className="btn btn-sm" onClick={handleResize} aria-label="Apply world resize">
+            <Icon name="apply" />
+            Apply
+          </button>
         </div>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import Modal from './Modal.jsx';
+import Icon from './Icon.jsx';
 
 const PAGE_SIZE = 24;
 
@@ -144,16 +145,18 @@ export default function ObjectList({ project, editorState, onSelectObject, onAdd
                 onClick={(e) => { e.stopPropagation(); onDuplicateObject(obj.id); }}
                 title="Duplicate (Ctrl+D)"
                 style={{ fontSize: 10, padding: '0 3px' }}
+                aria-label={`Duplicate ${obj.name || obj.id}`}
               >
-                dup
+                <Icon name="duplicate" />
               </button>
             )}
             <button
               className="btn btn-sm btn-danger"
               onClick={(e) => { e.stopPropagation(); onRemoveObject(obj.id); }}
               title="Delete"
+              aria-label={`Delete ${obj.name || obj.id}`}
             >
-              x
+              <Icon name="delete" />
             </button>
           </span>
         </div>
@@ -177,8 +180,8 @@ export default function ObjectList({ project, editorState, onSelectObject, onAdd
     <div className="panel-section" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
       <h3>Scene Hierarchy</h3>
       <div style={{ marginBottom: 6, display: 'flex', gap: 6 }}>
-        <button className="btn btn-sm" onClick={() => setPickerOpen(true)}>+ Add Object</button>
-        <button className="btn btn-sm" onClick={onAddCameraObject}>+ Camera</button>
+        <button className="btn btn-sm" onClick={() => setPickerOpen(true)} aria-label="Open add object picker"><Icon name="add" />Add Object</button>
+        <button className="btn btn-sm" onClick={onAddCameraObject} aria-label="Add camera object"><Icon name="camera" />Camera</button>
       </div>
       {objects.length > 5 && (
         <input

@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
+import Icon from './Icon.jsx';
 
 function isImageAsset(asset) {
   if (!asset || typeof asset !== 'object') return false;
@@ -254,14 +255,16 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
         </div>
         {showScenes && (
           <button type="button" className="btn btn-sm" style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent' }} onClick={() => toggle('scenes')}>
-          {expanded.scenes ? 'v' : '>'} [DIR] Scenes ({scenes.length})
+            <Icon name={expanded.scenes ? 'chevronDown' : 'chevronRight'} />
+            <Icon name="folder" />
+            Scenes ({scenes.length})
           </button>
         )}
         {showScenes && expanded.scenes && (
           <div style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
               <input value={newSceneName} onChange={(e) => setNewSceneName(e.target.value)} placeholder="New scene name" style={{ flex: 1, padding: '3px 6px', background: '#111827', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3 }} />
-              <button className="btn btn-sm" onClick={addScene}>Add</button>
+              <button className="btn btn-sm" onClick={addScene} aria-label="Add scene"><Icon name="add" />Add</button>
             </div>
             <div style={{ display: 'grid', gap: 4 }}>
               {scenes.map((scene) => (
@@ -269,10 +272,10 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
                   <button type="button" onClick={() => onPatchProject({ activeSceneId: scene.id })} style={{ background: 'none', border: 'none', color: '#cbd5e1', textAlign: 'left', cursor: 'pointer', flex: 1 }}>
                     {scene.name}
                   </button>
-                  <button className="btn btn-sm" onClick={() => moveScene(scene.id, -1)} title="Move Up">^</button>
-                  <button className="btn btn-sm" onClick={() => moveScene(scene.id, 1)} title="Move Down">v</button>
-                  <button className="btn btn-sm" onClick={() => duplicateScene(scene.id)} title="Duplicate">Copy</button>
-                  <button className="btn btn-sm btn-danger" onClick={() => removeScene(scene.id)} disabled={scenes.length <= 1}>x</button>
+                  <button className="btn btn-sm" onClick={() => moveScene(scene.id, -1)} title="Move Up" aria-label={`Move ${scene.name} up`}><Icon name="arrowUp" /></button>
+                  <button className="btn btn-sm" onClick={() => moveScene(scene.id, 1)} title="Move Down" aria-label={`Move ${scene.name} down`}><Icon name="arrowDown" /></button>
+                  <button className="btn btn-sm" onClick={() => duplicateScene(scene.id)} title="Duplicate" aria-label={`Duplicate ${scene.name}`}><Icon name="copy" />Copy</button>
+                  <button className="btn btn-sm btn-danger" onClick={() => removeScene(scene.id)} disabled={scenes.length <= 1} aria-label={`Delete ${scene.name}`}><Icon name="delete" /></button>
                 </div>
               ))}
             </div>
@@ -281,7 +284,9 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
 
         {showImages && (
           <button type="button" className="btn btn-sm" style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent' }} onClick={() => toggle('images')}>
-          {expanded.images ? 'v' : '>'} [DIR] Images ({images.length})
+            <Icon name={expanded.images ? 'chevronDown' : 'chevronRight'} />
+            <Icon name="image" />
+            Images ({images.length})
           </button>
         )}
         {showImages && expanded.images && (
@@ -289,10 +294,11 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 1fr) minmax(180px, 2fr) auto', gap: 6, marginBottom: 8 }}>
               <input value={newImageName} onChange={(e) => setNewImageName(e.target.value)} placeholder="Image name" style={{ padding: '3px 6px', background: '#111827', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3 }} />
               <input value={newImageUrl} onChange={(e) => setNewImageUrl(e.target.value)} placeholder="Image URL or path" style={{ padding: '3px 6px', background: '#111827', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3 }} />
-              <button className="btn btn-sm" onClick={addImage}>Add</button>
+              <button className="btn btn-sm" onClick={addImage} aria-label="Add image from URL"><Icon name="add" />Add</button>
             </div>
             <div style={{ marginBottom: 8, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
               <button className="btn btn-sm" onClick={() => imageFileInputRef.current && imageFileInputRef.current.click()}>
+                <Icon name="import" />
                 Import Images
               </button>
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>PNG, JPG, GIF, WEBP, SVG</span>
@@ -315,7 +321,7 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
                 <input type="number" min={1} value={sheetCols} onChange={(e) => setSheetCols(parseInt(e.target.value, 10) || 1)} placeholder="Cols" style={{ padding: '3px 4px', background: '#111827', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3 }} />
                 <input type="number" min={1} value={sheetRows} onChange={(e) => setSheetRows(parseInt(e.target.value, 10) || 1)} placeholder="Rows" style={{ padding: '3px 4px', background: '#111827', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3 }} />
                 <input value={sheetPrefix} onChange={(e) => setSheetPrefix(e.target.value)} placeholder="Prefix" style={{ padding: '3px 4px', background: '#111827', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3 }} />
-                <button className="btn btn-sm" onClick={sliceSpriteSheet}>Slice</button>
+                <button className="btn btn-sm" onClick={sliceSpriteSheet} aria-label="Slice sprite sheet"><Icon name="grid" />Slice</button>
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(138px, 1fr))', gap: 8 }}>
@@ -331,7 +337,7 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
                   </div>
                   <div style={{ padding: 6, fontSize: 11, color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{img.name || img.id}</span>
-                    <button className="btn btn-sm btn-danger" onClick={() => removeImage(img.id)}>x</button>
+                    <button className="btn btn-sm btn-danger" onClick={() => removeImage(img.id)} aria-label={`Delete image ${img.name || img.id}`}><Icon name="delete" /></button>
                   </div>
                 </div>
               ))}
@@ -344,7 +350,9 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
 
         {showPrefabs && (
           <button type="button" className="btn btn-sm" style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', background: 'transparent' }} onClick={() => toggle('prefabs')}>
-          {expanded.prefabs ? 'v' : '>'} [DIR] Prefabs ({prefabs.length})
+            <Icon name={expanded.prefabs ? 'chevronDown' : 'chevronRight'} />
+            <Icon name="folder" />
+            Prefabs ({prefabs.length})
           </button>
         )}
         {showPrefabs && expanded.prefabs && (
@@ -362,13 +370,16 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
 
         {showAudio && (
           <button type="button" className="btn btn-sm" style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', background: 'transparent' }} onClick={() => toggle('audio')}>
-          {expanded.audio ? 'v' : '>'} [DIR] Audio ({allAudios.length})
+            <Icon name={expanded.audio ? 'chevronDown' : 'chevronRight'} />
+            <Icon name="audio" />
+            Audio ({allAudios.length})
           </button>
         )}
         {showAudio && expanded.audio && (
           <div style={{ padding: 8 }}>
             <div style={{ marginBottom: 8, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
               <button className="btn btn-sm" onClick={() => audioFileInputRef.current && audioFileInputRef.current.click()}>
+                <Icon name="import" />
                 Import Audio
               </button>
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>MP3, OGG, WAV, M4A, FLAC, AAC</span>
@@ -394,7 +405,7 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
                       </audio>
                     )}
                   </div>
-                  <button className="btn btn-sm btn-danger" onClick={() => onPatchProject({ assets: (project.assets || []).filter(a => a.id !== aud.id) })}>x</button>
+                  <button className="btn btn-sm btn-danger" onClick={() => onPatchProject({ assets: (project.assets || []).filter(a => a.id !== aud.id) })} aria-label={`Delete audio ${aud.name || aud.id}`}><Icon name="delete" /></button>
                 </div>
               ))}
             </div>

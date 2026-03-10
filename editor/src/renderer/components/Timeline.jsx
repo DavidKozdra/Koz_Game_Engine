@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import Icon from './Icon.jsx';
 
 const TRACK_HEIGHT = 28;
 const HEADER_HEIGHT = 32;
@@ -217,20 +218,20 @@ export default function Timeline({ project, onUpdateAnimation, onAddAnimation, o
             {c.name}
           </button>
         ))}
-        <button className="btn btn-sm" onClick={handleAddClip} title="New Clip">+</button>
+        <button className="btn btn-sm" onClick={handleAddClip} title="New Clip" aria-label="Create new clip"><Icon name="add" />New Clip</button>
         <span style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }} />
         {clip && <>
-          <button className="btn btn-sm" onClick={() => { setScrubTime(0); setPlaying(!playing); }}>{playing ? 'Stop' : 'Play'}</button>
-          <button className="btn btn-sm" onClick={() => setScrubTime(0)}>|&lt;</button>
+          <button className="btn btn-sm" onClick={() => { setScrubTime(0); setPlaying(!playing); }} aria-label={playing ? 'Stop playback' : 'Play clip'}><Icon name={playing ? 'stop' : 'play'} />{playing ? 'Stop' : 'Play'}</button>
+          <button className="btn btn-sm" onClick={() => setScrubTime(0)} aria-label="Jump to clip start"><Icon name="rewind" />Start</button>
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{scrubTime.toFixed(2)}s</span>
           <span style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }} />
           <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Dur:</label>
           <input type="number" value={clip.duration} onChange={handleDurationChange} step="0.1" min="0.1" style={{ width: 50, padding: '1px 4px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3, fontSize: 11 }} />
-          <button className={`btn btn-sm ${clip.loop ? 'active' : ''}`} onClick={handleLoopToggle}>Loop</button>
+          <button className={`btn btn-sm ${clip.loop ? 'active' : ''}`} onClick={handleLoopToggle} aria-label="Toggle loop playback"><Icon name="loop" />Loop</button>
           <span style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }} />
-          <button className="btn btn-sm" onClick={handleAddTrackBtn}>+ Track</button>
-          <button className="btn btn-sm" onClick={handleAddKf}>+ Key</button>
-          <button className="btn btn-sm btn-danger" onClick={handleDeleteClip} style={{ marginLeft: 'auto' }}>Del Clip</button>
+          <button className="btn btn-sm" onClick={handleAddTrackBtn} aria-label="Add animation track"><Icon name="track" />Add Track</button>
+          <button className="btn btn-sm" onClick={handleAddKf} aria-label="Add keyframe"><Icon name="key" />Add Key</button>
+          <button className="btn btn-sm btn-danger" onClick={handleDeleteClip} style={{ marginLeft: 'auto' }} aria-label="Delete selected clip"><Icon name="delete" />Delete Clip</button>
         </>}
       </div>
 
@@ -251,7 +252,7 @@ export default function Timeline({ project, onUpdateAnimation, onAddAnimation, o
                     {(obj ? obj.name : '?')}.{track.property}
                   </span>
                   <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{kfs.length}kf</span>
-                  <button className="btn btn-sm btn-danger" onClick={() => handleDeleteTrack(i)} style={{ fontSize: 9, padding: '0 3px', lineHeight: 1.2 }} title="Delete track">x</button>
+                  <button className="btn btn-sm btn-danger" onClick={() => handleDeleteTrack(i)} style={{ fontSize: 9, padding: '0 3px', lineHeight: 1.2 }} title="Delete track" aria-label={`Delete track ${i + 1}`}><Icon name="delete" /></button>
                 </div>
               );
             })}
