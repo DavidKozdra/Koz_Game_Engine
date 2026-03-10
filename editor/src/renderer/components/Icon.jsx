@@ -108,6 +108,8 @@ function glyph(name) {
       return <><path d="M3 6h2l3-3v10L5 10H3z" /><path d="M10 5.5a3 3 0 0 1 0 5" /><path d="M11.5 3.5a6 6 0 0 1 0 9" /></>;
     case 'objMusicSource':
       return <><circle cx="5" cy="11.5" r="1.8" /><circle cx="11" cy="10.5" r="1.8" /><path d="M6.8 11.5V4l6-1.5v8" /><path d="M6.8 6.5l6-1.5" /></>;
+    case 'objParticleEmitter':
+      return <><circle cx="8" cy="10" r="2" /><circle cx="5" cy="6" r="1.2" /><circle cx="11" cy="5" r="1" /><circle cx="9" cy="3" r="0.8" /><circle cx="4" cy="3.5" r="0.7" /><circle cx="12" cy="8" r="0.9" /><path d="M8 8V6M6.5 7.5l-1-1.5M9.5 7.5l1-1.5" /></>;
     default:
       return <circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none" />;
   }

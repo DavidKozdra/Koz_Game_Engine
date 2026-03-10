@@ -201,6 +201,7 @@ function createGameObject(name, x, y, opts = {}) {
   const isAudioType = type === 'audio_source' || type === 'music_source';
   const isLightingManagerType = type === 'lighting_manager';
   const isLightType = type === 'light';
+  const isParticleEmitterType = type === 'particle_emitter';
   const next = {
     id: genId('obj'), name: name || 'Object', type, x, y,
     parentId: null,
@@ -208,14 +209,14 @@ function createGameObject(name, x, y, opts = {}) {
       Transform: { x, y, rotation: 0, scaleX: 1, scaleY: 1 },
       Sprite: {
         assetId: null,
-        color: opts.color || (isLightingManagerType ? '#60a5fa' : (isLightType ? '#fbbf24' : '#4ade80')),
-        width: isLightingManagerType ? 20 : (isLightType ? 18 : 32),
-        height: isLightingManagerType ? 20 : (isLightType ? 18 : 32),
+        color: opts.color || (isParticleEmitterType ? '#fb923c' : (isLightingManagerType ? '#60a5fa' : (isLightType ? '#fbbf24' : '#4ade80'))),
+        width: isLightingManagerType ? 20 : (isLightType ? 18 : (isParticleEmitterType ? 16 : 32)),
+        height: isLightingManagerType ? 20 : (isLightType ? 18 : (isParticleEmitterType ? 16 : 32)),
       },
       Collider: { shape: isLightType ? 'circle' : 'rect', width: isLightingManagerType ? 20 : (isLightType ? 18 : 32), height: isLightingManagerType ? 20 : (isLightType ? 18 : 32) },
-      Collision: { enabled: !isLightType && !isLightingManagerType, isTrigger: false },
+      Collision: { enabled: !isLightType && !isLightingManagerType && !isParticleEmitterType, isTrigger: false },
       RigidBody: { enabled: false, weight: 1, friction: 0.4 },
-      Render: { layerId: opts.layerId || ((isLightType || isLightingManagerType) ? 'obj-fx' : 'obj-main'), visible: !isLightingManagerType, zIndex: 0 },
+      Render: { layerId: opts.layerId || ((isLightType || isLightingManagerType || isParticleEmitterType) ? 'obj-fx' : 'obj-main'), visible: !isLightingManagerType, zIndex: 0 },
       ScriptBindings: [],
       Animator: { clipId: null, autoplay: type === 'animator' },
       ...(isLightingManagerType ? {
@@ -248,6 +249,26 @@ function createGameObject(name, x, y, opts = {}) {
           loop: type === 'music_source',
           volume: 1,
           maxDistance: type === 'music_source' ? 0 : 320,
+        },
+      } : {}),
+      ...(isParticleEmitterType ? {
+        ParticleEmitter: {
+          enabled: true,
+          count: 24,
+          rate: 0,
+          burst: true,
+          life: 500,
+          speed: 80,
+          spreadAngle: 360,
+          direction: 270,
+          color: '#fb923c',
+          size: 4,
+          sizeEnd: 1,
+          gravity: 0,
+          drag: 0.98,
+          loop: true,
+          interval: 1000,
+          worldSpace: true,
         },
       } : {}),
     },
