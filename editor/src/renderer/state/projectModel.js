@@ -47,6 +47,7 @@ const DEFAULT_CLASSES = [
   { id: 'light', name: 'Light Object', baseType: 'light' },
   { id: 'audio_source', name: 'Audio Source', baseType: 'audio_source' },
   { id: 'music_source', name: 'Music Source', baseType: 'music_source' },
+  { id: 'particle_emitter', name: 'Particle Emitter', baseType: 'particle_emitter' },
 ];
 
 const DEFAULT_BUILD = {

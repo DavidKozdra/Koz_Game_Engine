@@ -23,6 +23,7 @@ const TYPE_ICON_MAP = {
   lighting_manager: 'objLightingManager',
   audio_source: 'objAudioSource',
   music_source: 'objMusicSource',
+  particle_emitter: 'objParticleEmitter',
 };
 
 const TYPE_COLOR_MAP = {
@@ -34,6 +35,7 @@ const TYPE_COLOR_MAP = {
   lighting_manager: '#f59e0b',
   audio_source: '#f472b6',
   music_source: '#c084fc',
+  particle_emitter: '#fb923c',
 };
 
 function objectTypeIcon(type, size) {

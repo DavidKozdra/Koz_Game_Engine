@@ -12,6 +12,7 @@ const AVAILABLE_COMPONENTS = [
   { id: 'RigidBody', label: 'RigidBody', defaults: { enabled: false, weight: 1, friction: 0.4 } },
   { id: 'Animator', label: 'Animator', defaults: { clipId: null, autoplay: false } },
   { id: 'Camera', label: 'Camera', defaults: { enabled: true, targetObjectId: null, speed: 8, offsetX: 0, offsetY: 0, deadZoneWidth: 180, deadZoneHeight: 120, lookAheadX: 0, lookAheadY: 0, visibleMargin: 40, followX: true, followY: true, clampToWorld: true, maxSpeed: 2000 } },
+  { id: 'ParticleEmitter', label: 'Particle Emitter', defaults: { enabled: true, count: 24, rate: 0, burst: true, life: 500, speed: 80, spreadAngle: 360, direction: 270, color: '#fb923c', size: 4, sizeEnd: 1, gravity: 0, drag: 0.98, loop: true, interval: 1000, worldSpace: true } },
 ];
 
 function CollapsibleSection({ title, defaultOpen = true, onRemove, children }) {
@@ -915,6 +916,75 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
               onChange={(e) => handleComponentChange('Light', 'height', Math.max(0, parseFloat(e.target.value) || 0))}
             />
             <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Used by 3D scenes</span>
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {components.ParticleEmitter && (
+        <CollapsibleSection title="Particle Emitter" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'ParticleEmitter') : undefined}>
+          <div className="field">
+            <label>Enabled</label>
+            <input type="checkbox" checked={components.ParticleEmitter.enabled !== false} onChange={(e) => handleComponentChange('ParticleEmitter', 'enabled', e.target.checked)} />
+          </div>
+          <div className="field">
+            <label>Count</label>
+            <input type="number" min="1" max="500" step="1" value={Number.isFinite(components.ParticleEmitter.count) ? components.ParticleEmitter.count : 24} onChange={(e) => handleComponentChange('ParticleEmitter', 'count', Math.max(1, Math.min(500, parseInt(e.target.value) || 1)))} />
+          </div>
+          <div className="field">
+            <label>Life (ms)</label>
+            <input type="number" min="50" step="50" value={Number.isFinite(components.ParticleEmitter.life) ? components.ParticleEmitter.life : 500} onChange={(e) => handleComponentChange('ParticleEmitter', 'life', Math.max(50, parseFloat(e.target.value) || 50))} />
+          </div>
+          <div className="field">
+            <label>Speed</label>
+            <input type="number" min="0" step="10" value={Number.isFinite(components.ParticleEmitter.speed) ? components.ParticleEmitter.speed : 80} onChange={(e) => handleComponentChange('ParticleEmitter', 'speed', Math.max(0, parseFloat(e.target.value) || 0))} />
+          </div>
+          <div className="field">
+            <label>Spread Angle</label>
+            <input type="number" min="0" max="360" step="5" value={Number.isFinite(components.ParticleEmitter.spreadAngle) ? components.ParticleEmitter.spreadAngle : 360} onChange={(e) => handleComponentChange('ParticleEmitter', 'spreadAngle', Math.max(0, Math.min(360, parseFloat(e.target.value) || 0)))} />
+          </div>
+          <div className="field">
+            <label>Direction</label>
+            <input type="number" min="0" max="360" step="5" value={Number.isFinite(components.ParticleEmitter.direction) ? components.ParticleEmitter.direction : 270} onChange={(e) => handleComponentChange('ParticleEmitter', 'direction', Math.max(0, Math.min(360, parseFloat(e.target.value) || 0)))} />
+            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>0=right, 90=down, 270=up</span>
+          </div>
+          <div className="field">
+            <label>Color</label>
+            <input type="color" value={components.ParticleEmitter.color || '#fb923c'} onChange={(e) => handleComponentChange('ParticleEmitter', 'color', e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Size</label>
+            <input type="number" min="1" max="64" step="1" value={Number.isFinite(components.ParticleEmitter.size) ? components.ParticleEmitter.size : 4} onChange={(e) => handleComponentChange('ParticleEmitter', 'size', Math.max(1, parseFloat(e.target.value) || 1))} />
+          </div>
+          <div className="field">
+            <label>Size End</label>
+            <input type="number" min="0" max="64" step="0.5" value={Number.isFinite(components.ParticleEmitter.sizeEnd) ? components.ParticleEmitter.sizeEnd : 1} onChange={(e) => handleComponentChange('ParticleEmitter', 'sizeEnd', Math.max(0, parseFloat(e.target.value) || 0))} />
+          </div>
+          <div className="field">
+            <label>Gravity</label>
+            <input type="number" step="10" value={Number.isFinite(components.ParticleEmitter.gravity) ? components.ParticleEmitter.gravity : 0} onChange={(e) => handleComponentChange('ParticleEmitter', 'gravity', parseFloat(e.target.value) || 0)} />
+          </div>
+          <div className="field">
+            <label>Drag</label>
+            <input type="number" min="0" max="1" step="0.01" value={Number.isFinite(components.ParticleEmitter.drag) ? components.ParticleEmitter.drag : 0.98} onChange={(e) => handleComponentChange('ParticleEmitter', 'drag', Math.max(0, Math.min(1, parseFloat(e.target.value) || 0)))} />
+          </div>
+          <div className="field">
+            <label>Burst</label>
+            <input type="checkbox" checked={!!components.ParticleEmitter.burst} onChange={(e) => handleComponentChange('ParticleEmitter', 'burst', e.target.checked)} />
+            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Emit all at once</span>
+          </div>
+          <div className="field">
+            <label>Loop</label>
+            <input type="checkbox" checked={components.ParticleEmitter.loop !== false} onChange={(e) => handleComponentChange('ParticleEmitter', 'loop', e.target.checked)} />
+          </div>
+          {components.ParticleEmitter.loop && (
+            <div className="field">
+              <label>Interval (ms)</label>
+              <input type="number" min="100" step="100" value={Number.isFinite(components.ParticleEmitter.interval) ? components.ParticleEmitter.interval : 1000} onChange={(e) => handleComponentChange('ParticleEmitter', 'interval', Math.max(100, parseFloat(e.target.value) || 100))} />
+            </div>
+          )}
+          <div className="field">
+            <label>World Space</label>
+            <input type="checkbox" checked={components.ParticleEmitter.worldSpace !== false} onChange={(e) => handleComponentChange('ParticleEmitter', 'worldSpace', e.target.checked)} />
           </div>
         </CollapsibleSection>
       )}
