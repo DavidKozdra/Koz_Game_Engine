@@ -39,12 +39,27 @@
         }
       }
 
-      // Create script instances for objects with ScriptBinding
+      // Create script instances for objects with ScriptBinding or ScriptBindings
       for (const obj of gameObjects) {
-        const binding = obj.meta && obj.meta.components && obj.meta.components.ScriptBinding;
-        if (binding && binding.scriptId && scripts[binding.scriptId]) {
-          const instance = createScriptInstance(scripts[binding.scriptId], obj);
+        const components = obj.meta && obj.meta.components;
+        // Support both legacy singular (ScriptBinding) and array form (ScriptBindings)
+        const legacyBinding = components && components.ScriptBinding;
+        const bindings = components && components.ScriptBindings;
+        
+        // Handle legacy single binding
+        if (legacyBinding && legacyBinding.scriptId && scripts[legacyBinding.scriptId]) {
+          const instance = createScriptInstance(scripts[legacyBinding.scriptId], obj);
           if (instance) scriptInstances.push(instance);
+        }
+        
+        // Handle array of bindings
+        if (Array.isArray(bindings)) {
+          for (const binding of bindings) {
+            if (binding && binding.active !== false && binding.scriptId && scripts[binding.scriptId]) {
+              const instance = createScriptInstance(scripts[binding.scriptId], obj);
+              if (instance) scriptInstances.push(instance);
+            }
+          }
         }
       }
     }

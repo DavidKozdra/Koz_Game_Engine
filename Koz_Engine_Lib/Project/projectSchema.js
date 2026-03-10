@@ -145,9 +145,11 @@
       y: y || 0,
       components: {
         Transform: { x: x || 0, y: y || 0, rotation: 0, scaleX: 1, scaleY: 1 },
+        Grid: { cols: opts.cols || 10, rows: opts.rows || 10, cellSize: opts.cellSize || 24, visible: true, layerId: null },
         Sprite: { assetId: null, color: opts.color || "#4ade80", width: opts.width || 32, height: opts.height || 32 },
         Collider: { shape: "rect", width: opts.width || 32, height: opts.height || 32 },
         ScriptBinding: { scriptId: null },
+        ScriptBindings: [],
         Animator: { clipId: null },
       },
     };

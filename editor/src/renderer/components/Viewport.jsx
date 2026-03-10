@@ -245,8 +245,11 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
         if (render.visible === false) continue;
         const ox = Number.isFinite(transform.x) ? transform.x : (Number.isFinite(obj.x) ? obj.x : 0);
         const oy = Number.isFinite(transform.y) ? transform.y : (Number.isFinite(obj.y) ? obj.y : 0);
-        const w = sprite.width || 32;
-        const h = sprite.height || 32;
+        const rotation = Number.isFinite(transform.rotation) ? transform.rotation : 0;
+        const scaleX = Number.isFinite(transform.scaleX) ? transform.scaleX : 1;
+        const scaleY = Number.isFinite(transform.scaleY) ? transform.scaleY : 1;
+        const w = (sprite.width || 32) * scaleX;
+        const h = (sprite.height || 32) * scaleY;
         let drawn = false;
         const frameIds = Array.isArray(sprite.frameAssetIds) ? sprite.frameAssetIds : [];
         const frameId = frameIds.length > 0
@@ -256,6 +259,11 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
         const sourceAsset = asset && asset.sourceAssetId ? assetById.get(asset.sourceAssetId) : null;
         const src = (sourceAsset && (sourceAsset.previewUrl || sourceAsset.url || sourceAsset.src))
           || (asset && (asset.previewUrl || asset.url || asset.src));
+        
+        ctx.save();
+        ctx.translate(ox + w / 2, oy + h / 2);
+        ctx.rotate((rotation * Math.PI) / 180);
+        
         if (src) {
           if (!imageCacheRef.current.has(src)) {
             const img = new Image();
@@ -265,25 +273,32 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
           const img = imageCacheRef.current.get(src);
           if (img && img.complete && img.naturalWidth > 0) {
             const rect = asset && asset.frameRect;
+            const drawW = sprite.width || 32;
+            const drawH = sprite.height || 32;
             if (rect && Number.isFinite(rect.x) && Number.isFinite(rect.y) && Number.isFinite(rect.w) && Number.isFinite(rect.h)) {
-              ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, ox, oy, w, h);
+              ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, -drawW / 2, -drawH / 2, drawW, drawH);
             } else {
-              ctx.drawImage(img, ox, oy, w, h);
+              ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
             }
             drawn = true;
           }
         }
         if (!drawn) {
           ctx.fillStyle = sprite.color || '#4ade80';
-          ctx.fillRect(ox, oy, w, h);
+          ctx.fillRect(-(sprite.width || 32) / 2, -(sprite.height || 32) / 2, sprite.width || 32, sprite.height || 32);
         }
+        ctx.restore();
 
-        // Selection highlight
+        // Selection highlight (in world space, accounting for transform)
         const isSelected = (editorState.selectedObjectIds || []).includes(obj.id) || editorState.selectedObjectId === obj.id;
         if (isSelected) {
+          ctx.save();
+          ctx.translate(ox + w / 2, oy + h / 2);
+          ctx.rotate((rotation * Math.PI) / 180);
           ctx.strokeStyle = '#3b82f6';
-          ctx.lineWidth = 2;
-          ctx.strokeRect(ox - 1, oy - 1, w + 2, h + 2);
+          ctx.lineWidth = 2 / zoom;
+          ctx.strokeRect(-(sprite.width || 32) / 2 - 1, -(sprite.height || 32) / 2 - 1, (sprite.width || 32) + 2, (sprite.height || 32) + 2);
+          ctx.restore();
         }
 
         // Name label
@@ -292,7 +307,6 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
         ctx.textAlign = 'center';
         ctx.fillText(obj.name || obj.id, ox + w / 2, oy - 4);
       }
-    }
 
     ctx.restore();
 
@@ -339,6 +353,8 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
       ctx.fillStyle = 'rgba(59,130,246,0.12)';
       ctx.fillRect(rx, ry, rw, rh);
     }
+  }
+
   }, [project, editorState, worldToScreen, screenToCell, canvasSize, hoveredGizmoPart]);
 
   // Resize observer — also triggers a repaint when canvas becomes visible again

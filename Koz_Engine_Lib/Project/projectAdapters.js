@@ -49,6 +49,9 @@
         shape: collider.shape || "rect",
         width: collider.width || sprite.width || 32,
         height: collider.height || sprite.height || 32,
+        rotation: transform.rotation || 0,
+        scaleX: transform.scaleX || 1,
+        scaleY: transform.scaleY || 1,
         meta: { name: obj.name, components: obj.components },
       });
     });
@@ -61,6 +64,7 @@
    */
   function gameObjectToProject(gameObject) {
     const components = (gameObject.meta && gameObject.meta.components) || {};
+    const existingTransform = components.Transform || {};
     return {
       id: gameObject.id,
       name: (gameObject.meta && gameObject.meta.name) || gameObject.type,
@@ -68,10 +72,17 @@
       x: gameObject.x,
       y: gameObject.y,
       components: {
-        Transform: { x: gameObject.x, y: gameObject.y, rotation: 0, scaleX: 1, scaleY: 1, ...(components.Transform || {}) },
+        Transform: { 
+          x: gameObject.x, 
+          y: gameObject.y, 
+          rotation: gameObject.rotation !== undefined ? gameObject.rotation : (existingTransform.rotation || 0),
+          scaleX: gameObject.scaleX !== undefined ? gameObject.scaleX : (existingTransform.scaleX || 1),
+          scaleY: gameObject.scaleY !== undefined ? gameObject.scaleY : (existingTransform.scaleY || 1),
+        },
         Sprite: components.Sprite || { assetId: null, color: "#4ade80", width: 32, height: 32 },
         Collider: components.Collider || { shape: gameObject.shape, width: gameObject.width, height: gameObject.height },
         ScriptBinding: components.ScriptBinding || { scriptId: null },
+        ScriptBindings: components.ScriptBindings || [],
         Animator: components.Animator || { clipId: null },
       },
     };
