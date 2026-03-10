@@ -13,9 +13,16 @@ const CELL_SIZE = 24;
 export function usePlayMode(project, onLog) {
   const stateRef = useRef(null);
   const canvasRef = useRef(null);
+  const uiRootRef = useRef(null);
   const rafRef = useRef(null);
   const keysRef = useRef(new Set());
   const imageCacheRef = useRef(new Map());
+  const globalsRef = useRef({
+    hasKozUIManager: false,
+    prevKozUIManager: undefined,
+    hasUiManager: false,
+    prevUiManager: undefined,
+  });
 
   const isPlaying = stateRef.current !== null && stateRef.current.running;
 
@@ -105,6 +112,7 @@ export function usePlayMode(project, onLog) {
       running: true,
       elapsed: 0,
       projectSnapshot: snapshot,
+      activeSceneId: snapshot.activeSceneId || (((snapshot.scenes || [])[0] || {}).id) || 'scene_main',
       world: snapshot.world,
       gameObjects,
       assetById,
@@ -117,10 +125,35 @@ export function usePlayMode(project, onLog) {
       worldSparse: null,
     };
 
+    const uiManager = createKozUIManager({
+      rootRef: uiRootRef,
+      onLog,
+      getContext: () => {
+        const scene = resolveRuntimeScene(state);
+        return {
+          elapsed: state.elapsed,
+          gameState: readGameState(),
+          sceneId: scene.id,
+          sceneName: scene.name,
+        };
+      },
+    });
+    state.uiManager = uiManager;
+    globalsRef.current = {
+      hasKozUIManager: Object.prototype.hasOwnProperty.call(window, 'KozUIManager'),
+      prevKozUIManager: window.KozUIManager,
+      hasUiManager: Object.prototype.hasOwnProperty.call(window, 'uiManager'),
+      prevUiManager: window.uiManager,
+    };
+    window.KozUIManager = uiManager;
+    window.uiManager = uiManager;
+
     // Engine API for scripts
     const engine = {
       gameObjects,
       elapsed: 0,
+      sceneId: state.activeSceneId,
+      uiManager,
       findObject: (id) => gameObjects.find(o => o.id === id) || null,
       findObjectsByType: (type) => gameObjects.filter(o => o.type === type),
       keyIsDown: (code) => keysRef.current.has(code),
@@ -162,8 +195,15 @@ export function usePlayMode(project, onLog) {
   }, [project, onLog]);
 
   const stop = useCallback(() => {
+    const state = stateRef.current;
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
+    if (state && state.uiManager && typeof state.uiManager.destroy === 'function') state.uiManager.destroy();
+    const saved = globalsRef.current;
+    if (saved.hasKozUIManager) window.KozUIManager = saved.prevKozUIManager;
+    else delete window.KozUIManager;
+    if (saved.hasUiManager) window.uiManager = saved.prevUiManager;
+    else delete window.uiManager;
     stateRef.current = null;
     onLog({ type: 'info', message: 'Play mode stopped', time: new Date().toLocaleTimeString() });
   }, [onLog]);
@@ -214,9 +254,13 @@ export function usePlayMode(project, onLog) {
       });
 
       // Engine API
+      const runtimeScene = resolveRuntimeScene(state);
+      state.activeSceneId = runtimeScene.id || state.activeSceneId;
       const engine = {
         gameObjects: state.gameObjects,
         elapsed: state.elapsed,
+        sceneId: state.activeSceneId,
+        uiManager: state.uiManager || null,
         findObject: (id) => state.gameObjects.find(o => o.id === id) || null,
         keyIsDown: (code) => keysRef.current.has(code),
       };
@@ -234,6 +278,14 @@ export function usePlayMode(project, onLog) {
           catch (e) { onLog({ type: 'error', message: `onUpdate error: ${e.message}`, time: new Date().toLocaleTimeString() }); }
         }
       });
+
+      if (state.uiManager && typeof state.uiManager.updateAll === 'function') {
+        try {
+          state.uiManager.updateAll({ dt, elapsed: state.elapsed, sceneId: state.activeSceneId, gameState: readGameState() });
+        } catch (e) {
+          onLog({ type: 'error', message: `UI update error: ${e.message}`, time: new Date().toLocaleTimeString() });
+        }
+      }
 
       // Sync obj.x/y <-> Transform.x/y (scripts may update either)
       state.gameObjects.forEach((obj, i) => {
@@ -420,7 +472,232 @@ export function usePlayMode(project, onLog) {
     };
   }, []);
 
-  return { canvasRef, isPlaying, start, stop, execute };
+  return { canvasRef, uiRootRef, isPlaying, start, stop, execute };
+}
+
+function createKozUIManager({ rootRef, onLog, getContext }) {
+  const screens = new Map();
+  const layers = new Map();
+
+  function resolveNode(node) {
+    if (!node) return null;
+    if (typeof HTMLElement !== 'undefined' && node instanceof HTMLElement) return node;
+    if (node.elt && typeof HTMLElement !== 'undefined' && node.elt instanceof HTMLElement) return node.elt;
+    return null;
+  }
+
+  function getRoot() {
+    const root = rootRef && rootRef.current;
+    if (!root) return null;
+    if (!root.style.position) root.style.position = 'absolute';
+    if (!root.style.inset) root.style.inset = '0';
+    if (!root.style.pointerEvents) root.style.pointerEvents = 'none';
+    return root;
+  }
+
+  function ensureLayer(layerId, order = 0) {
+    const id = layerId || 'default';
+    if (layers.has(id)) return layers.get(id);
+    const root = getRoot();
+    if (!root) return null;
+    const layer = document.createElement('div');
+    layer.dataset.uiLayer = id;
+    layer.style.position = 'absolute';
+    layer.style.inset = '0';
+    layer.style.zIndex = String(order);
+    layer.style.pointerEvents = 'none';
+    root.appendChild(layer);
+    layers.set(id, layer);
+    return layer;
+  }
+
+  function ensureContainer(screen) {
+    if (screen.container) return screen.container;
+    const root = getRoot();
+    if (!root) return null;
+    const ctx = getContext ? getContext() : {};
+    let node = null;
+    if (screen.def && typeof screen.def.create === 'function') {
+      try {
+        node = resolveNode(screen.def.create(ctx));
+      } catch (e) {
+        onLog({ type: 'error', message: `UI create error (${screen.id}): ${e.message}`, time: new Date().toLocaleTimeString() });
+      }
+    }
+    if (!node) {
+      node = document.createElement('div');
+      node.textContent = screen.id;
+    }
+    if (!node.id) node.id = screen.id;
+    node.dataset.uiScreen = screen.id;
+    node.style.display = 'none';
+    node.style.pointerEvents = node.style.pointerEvents || 'auto';
+    if (Number.isFinite(screen.def && screen.def.zIndex)) node.style.zIndex = String(screen.def.zIndex);
+    const layer = ensureLayer((screen.def && screen.def.layer) || 'default', (screen.def && screen.def.layerOrder) || 0);
+    if (layer) layer.appendChild(node);
+    screen.container = node;
+    return node;
+  }
+
+  function isValidForScene(screen, ctx) {
+    const def = screen.def || {};
+    const validScenes = Array.isArray(def.validScenes) ? def.validScenes : null;
+    if (!validScenes || validScenes.length === 0) return true;
+    return validScenes.some((scene) => scene === ctx.sceneId || scene === ctx.sceneName);
+  }
+
+  function isValidForState(screen, ctx) {
+    const def = screen.def || {};
+    const validStates = Array.isArray(def.validStates) ? def.validStates : null;
+    if (!validStates || validStates.length === 0) return true;
+    return validStates.includes(ctx.gameState);
+  }
+
+  function shouldShow(screen, ctx) {
+    if (!isValidForScene(screen, ctx)) return false;
+    if (!isValidForState(screen, ctx)) return false;
+    const def = screen.def || {};
+    if (typeof def.isVisible === 'function') {
+      try {
+        return !!def.isVisible(ctx);
+      } catch (e) {
+        onLog({ type: 'error', message: `UI visibility error (${screen.id}): ${e.message}`, time: new Date().toLocaleTimeString() });
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function showScreen(screen, ctx) {
+    const node = ensureContainer(screen);
+    if (!node) return;
+    if (screen.fadeTimer) {
+      clearTimeout(screen.fadeTimer);
+      screen.fadeTimer = null;
+    }
+    node.style.display = '';
+    if (!screen.visible && screen.def && typeof screen.def.show === 'function') {
+      try { screen.def.show.call(screen, ctx); }
+      catch (e) { onLog({ type: 'error', message: `UI show error (${screen.id}): ${e.message}`, time: new Date().toLocaleTimeString() }); }
+    }
+    screen.visible = true;
+  }
+
+  function hideScreen(screen, ctx) {
+    if (!screen.container) {
+      screen.visible = false;
+      return;
+    }
+    if (screen.visible && screen.def && typeof screen.def.hide === 'function') {
+      try { screen.def.hide.call(screen, ctx); }
+      catch (e) { onLog({ type: 'error', message: `UI hide error (${screen.id}): ${e.message}`, time: new Date().toLocaleTimeString() }); }
+    } else {
+      screen.container.style.display = 'none';
+    }
+    screen.visible = false;
+  }
+
+  const api = {
+    registerScreen(id, def = {}) {
+      if (!id) return null;
+      const existing = screens.get(id);
+      if (existing && existing.container && existing.container.parentElement) {
+        existing.container.parentElement.removeChild(existing.container);
+      }
+      if (existing && existing.fadeTimer) clearTimeout(existing.fadeTimer);
+      const screen = { id, def, container: null, visible: false, fadeTimer: null };
+      screens.set(id, screen);
+      if (def.createOnRegister !== false) ensureContainer(screen);
+      return api;
+    },
+    unregisterScreen(id) {
+      const screen = screens.get(id);
+      if (!screen) return;
+      if (screen.fadeTimer) clearTimeout(screen.fadeTimer);
+      if (screen.container && screen.container.parentElement) screen.container.parentElement.removeChild(screen.container);
+      screens.delete(id);
+    },
+    scheduleFadeHide(id, delay = 200) {
+      const screen = screens.get(id);
+      if (!screen || !screen.container) return;
+      if (screen.fadeTimer) clearTimeout(screen.fadeTimer);
+      screen.fadeTimer = setTimeout(() => {
+        if (!screen.visible && screen.container) screen.container.style.display = 'none';
+      }, Math.max(0, delay || 0));
+    },
+    updateAll(extra = {}) {
+      const ctx = { ...(getContext ? getContext() : {}), ...extra };
+      screens.forEach((screen) => {
+        const visible = shouldShow(screen, ctx);
+        if (visible) showScreen(screen, ctx);
+        else hideScreen(screen, ctx);
+        if (visible && screen.def && typeof screen.def.update === 'function') {
+          try { screen.def.update.call(screen, ctx); }
+          catch (e) { onLog({ type: 'error', message: `UI update callback error (${screen.id}): ${e.message}`, time: new Date().toLocaleTimeString() }); }
+        }
+      });
+    },
+    getScreen(id) {
+      const screen = screens.get(id);
+      return screen ? (screen.container || null) : null;
+    },
+    clear() {
+      screens.forEach((screen) => {
+        if (screen.fadeTimer) clearTimeout(screen.fadeTimer);
+        if (screen.container && screen.container.parentElement) {
+          screen.container.parentElement.removeChild(screen.container);
+        }
+      });
+      screens.clear();
+      layers.forEach((layer) => {
+        if (layer.parentElement) layer.parentElement.removeChild(layer);
+      });
+      layers.clear();
+    },
+    destroy() {
+      api.clear();
+    },
+  };
+
+  return api;
+}
+
+function resolveSceneName(projectSnapshot, sceneId) {
+  const scenes = Array.isArray(projectSnapshot && projectSnapshot.scenes) ? projectSnapshot.scenes : [];
+  const scene = scenes.find((entry) => entry.id === sceneId);
+  return scene ? scene.name : sceneId;
+}
+
+function readGameState() {
+  if (typeof window === 'undefined') return null;
+  const gsm = window.gameStateManager;
+  if (!gsm) return null;
+  if (typeof gsm.getState === 'function') return gsm.getState();
+  if (gsm.currentState !== undefined) return gsm.currentState;
+  if (gsm.state !== undefined) return gsm.state;
+  if (gsm.current !== undefined) return gsm.current;
+  return null;
+}
+
+function resolveRuntimeScene(state) {
+  const fallbackId = (state && state.activeSceneId) || 'scene_main';
+  const fallbackName = resolveSceneName(state && state.projectSnapshot, fallbackId);
+  if (typeof window === 'undefined' || !window.sceneManager) return { id: fallbackId, name: fallbackName };
+  const sm = window.sceneManager;
+  let active = null;
+  if (typeof sm.getActiveScene === 'function') active = sm.getActiveScene();
+  else if (sm.activeScene !== undefined) active = sm.activeScene;
+  else if (sm.currentScene !== undefined) active = sm.currentScene;
+  if (typeof active === 'string') {
+    return { id: active, name: resolveSceneName(state && state.projectSnapshot, active) };
+  }
+  if (active && typeof active === 'object') {
+    const id = active.id || active.sceneId || sm.activeSceneId || sm.currentSceneId || fallbackId;
+    const name = active.name || resolveSceneName(state && state.projectSnapshot, id);
+    return { id, name };
+  }
+  const id = sm.activeSceneId || sm.currentSceneId || fallbackId;
+  return { id, name: resolveSceneName(state && state.projectSnapshot, id) };
 }
 
 function sampleTrack(track, time) {
