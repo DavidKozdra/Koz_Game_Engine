@@ -1,7 +1,16 @@
 import React, { useEffect, useRef } from 'react';
 import Icon from './Icon.jsx';
 
-export default function Modal({ open, title, onClose, children, maxWidth = 460, minWidth = 340 }) {
+export default function Modal({
+  open,
+  title,
+  onClose,
+  children,
+  maxWidth = 460,
+  minWidth = 340,
+  showHeader = true,
+  resizable = true,
+}) {
   const backdropRef = useRef(null);
 
   useEffect(() => {
@@ -27,18 +36,20 @@ export default function Modal({ open, title, onClose, children, maxWidth = 460, 
         maxWidth: '92vw',
         maxHeight: '90vh',
         padding: 0, boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
-        resize: 'both',
+        resize: resizable ? 'both' : 'none',
         overflow: 'auto',
       }}>
-        <div style={{
-          padding: '12px 16px', borderBottom: '1px solid var(--border)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <span style={{ fontWeight: 600, fontSize: 13 }}>{title}</span>
-          <button onClick={onClose} aria-label="Close dialog" style={{
-            background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16, lineHeight: 1,
-          }}><Icon name="close" size={16} /></button>
-        </div>
+        {showHeader && (
+          <div style={{
+            padding: '12px 16px', borderBottom: '1px solid var(--border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <span style={{ fontWeight: 600, fontSize: 13 }}>{title}</span>
+            <button onClick={onClose} aria-label="Close dialog" style={{
+              background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16, lineHeight: 1,
+            }}><Icon name="close" size={16} /></button>
+          </div>
+        )}
         <div style={{ padding: '16px', overflow: 'auto' }}>
           {children}
         </div>
