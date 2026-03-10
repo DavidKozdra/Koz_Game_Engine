@@ -382,6 +382,30 @@ function buildExportHtml(project, projectJson, target, options = {}) {
         }
         return kfs[kfs.length - 1].value;
       }
+      function resolveWorldMetrics(world, cellSize) {
+        if (!world || !Array.isArray(world.grid)) return null;
+        var rows = Number.isFinite(world.rows) ? world.rows : world.grid.length;
+        var cols = Number.isFinite(world.cols) ? world.cols : ((world.grid[0] && world.grid[0].length) || 0);
+        if (rows <= 0 || cols <= 0) return null;
+        var offsetX = Number.isFinite(world.offsetX) ? world.offsetX : 0;
+        var offsetY = Number.isFinite(world.offsetY) ? world.offsetY : 0;
+        var minX = offsetX * cellSize;
+        var minY = offsetY * cellSize;
+        var width = cols * cellSize;
+        var height = rows * cellSize;
+        return {
+          rows: rows,
+          cols: cols,
+          offsetX: offsetX,
+          offsetY: offsetY,
+          minX: minX,
+          minY: minY,
+          maxX: minX + width,
+          maxY: minY + height,
+          width: width,
+          height: height,
+        };
+      }
       function resolvePlayCamera(cameraConfig, objects) {
         var fallback = cameraConfig || {};
         var cameraObject = objects.find(function(o) {
@@ -793,6 +817,19 @@ function buildExportHtml(project, projectJson, target, options = {}) {
         var runtimeScene = resolveRuntimeScene(activeSceneId);
         activeSceneId = runtimeScene.id || activeSceneId;
         engine.sceneId = activeSceneId;
+
+        var worldMetrics = resolveWorldMetrics(world, cellSize);
+        if (worldMetrics) {
+          engine.world = worldMetrics;
+          gameObjects.forEach(function(obj) {
+            if (Object.prototype.hasOwnProperty.call(obj, 'worldWidth')) obj.worldWidth = worldMetrics.width;
+            if (Object.prototype.hasOwnProperty.call(obj, 'worldHeight')) obj.worldHeight = worldMetrics.height;
+            if (Object.prototype.hasOwnProperty.call(obj, 'worldMinX')) obj.worldMinX = worldMetrics.minX;
+            if (Object.prototype.hasOwnProperty.call(obj, 'worldMinY')) obj.worldMinY = worldMetrics.minY;
+            if (Object.prototype.hasOwnProperty.call(obj, 'worldMaxX')) obj.worldMaxX = worldMetrics.maxX;
+            if (Object.prototype.hasOwnProperty.call(obj, 'worldMaxY')) obj.worldMaxY = worldMetrics.maxY;
+          });
+        }
 
         var prePositions = gameObjects.map(function(obj) {
           var t = (obj.components && obj.components.Transform) || {};

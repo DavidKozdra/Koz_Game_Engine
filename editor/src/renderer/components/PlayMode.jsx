@@ -265,6 +265,19 @@ export function usePlayMode(project, onLog) {
         keyIsDown: (code) => keysRef.current.has(code),
       };
 
+      const worldMetrics = resolveWorldMetrics(state.world, CELL_SIZE);
+      if (worldMetrics) {
+        engine.world = worldMetrics;
+        state.gameObjects.forEach((obj) => {
+          if (Object.prototype.hasOwnProperty.call(obj, 'worldWidth')) obj.worldWidth = worldMetrics.width;
+          if (Object.prototype.hasOwnProperty.call(obj, 'worldHeight')) obj.worldHeight = worldMetrics.height;
+          if (Object.prototype.hasOwnProperty.call(obj, 'worldMinX')) obj.worldMinX = worldMetrics.minX;
+          if (Object.prototype.hasOwnProperty.call(obj, 'worldMinY')) obj.worldMinY = worldMetrics.minY;
+          if (Object.prototype.hasOwnProperty.call(obj, 'worldMaxX')) obj.worldMaxX = worldMetrics.maxX;
+          if (Object.prototype.hasOwnProperty.call(obj, 'worldMaxY')) obj.worldMaxY = worldMetrics.maxY;
+        });
+      }
+
       // Snapshot positions before scripts so we can detect which was changed
       const prePositions = state.gameObjects.map((obj) => {
         const t = (obj.components && obj.components.Transform) || {};
@@ -716,6 +729,31 @@ function sampleTrack(track, time) {
     }
   }
   return kfs[kfs.length - 1].value;
+}
+
+function resolveWorldMetrics(world, cellSize = CELL_SIZE) {
+  if (!world || !Array.isArray(world.grid)) return null;
+  const rows = Number.isFinite(world.rows) ? world.rows : world.grid.length;
+  const cols = Number.isFinite(world.cols) ? world.cols : ((world.grid[0] && world.grid[0].length) || 0);
+  if (rows <= 0 || cols <= 0) return null;
+  const offsetX = Number.isFinite(world.offsetX) ? world.offsetX : 0;
+  const offsetY = Number.isFinite(world.offsetY) ? world.offsetY : 0;
+  const minX = offsetX * cellSize;
+  const minY = offsetY * cellSize;
+  const width = cols * cellSize;
+  const height = rows * cellSize;
+  return {
+    rows,
+    cols,
+    offsetX,
+    offsetY,
+    minX,
+    minY,
+    maxX: minX + width,
+    maxY: minY + height,
+    width,
+    height,
+  };
 }
 
 function resolveCellCollisions(state) {
