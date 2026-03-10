@@ -33,6 +33,11 @@ assert(project.world.rows === 8, 'world rows is 8');
 assert(project.world.grid.length === 8, 'grid has 8 rows');
 assert(project.world.grid[0].length === 10, 'grid row has 10 cols');
 assert(Array.isArray(project.objects), 'objects is array');
+assert(Array.isArray(project.scenes), 'scenes is array');
+assert(project.scenes.length === 1, 'default project has one scene');
+assert(project.activeSceneId === project.scenes[0].id, 'activeSceneId points at default scene');
+assert(project.scenes[0].world === project.world, 'top-level world aliases active scene world');
+assert(project.scenes[0].objects === project.objects, 'top-level objects alias active scene objects');
 assert(Array.isArray(project.scripts), 'scripts is array');
 assert(Array.isArray(project.animations), 'animations is array');
 
@@ -50,6 +55,8 @@ assert(badResult.errors.length > 0, 'has validation errors');
 const migrated = projectSchema.migrate({ cols: 5, rows: 5, grid: [[1,2],[3,4]], elements: [] });
 assert(migrated.schemaVersion === 1, 'migrated to v1');
 assert(migrated.world.cols === 5, 'preserved cols');
+assert(Array.isArray(migrated.scenes) && migrated.scenes.length === 1, 'legacy project migrated to one scene');
+assert(migrated.activeSceneId === migrated.scenes[0].id, 'migrated project has active scene');
 
 // Test 5: Create game object
 const obj = projectSchema.createGameObject('Player', 10, 20, { color: '#ff0000' });
@@ -107,17 +114,18 @@ const runtime = gameRuntimeLib.createGameRuntime({
 });
 
 const testProject = projectSchema.createDefaultProject({ name: 'Runtime Test', cols: 5, rows: 5 });
-testProject.objects.push(projectSchema.createGameObject('TestObj', 0, 0));
+testProject.scenes[0].objects.push(projectSchema.createGameObject('TestObj', 0, 0));
 testProject.scripts.push({
   id: 'test_script',
   name: 'TestScript',
   source: 'function onInit(self, engine) { self.initCalled = true; }\nfunction onUpdate(self, engine, dt) { self.x += 1; }',
 });
-testProject.objects[0].components.ScriptBinding.scriptId = 'test_script';
+testProject.scenes[0].objects[0].components.ScriptBinding.scriptId = 'test_script';
 
 runtime.loadProject(testProject);
 assert(runtime.worldSpace.cols === 5, 'runtime world loaded');
 assert(runtime.gameObjects.length === 1, 'runtime has 1 object');
+assert(runtime.activeSceneId === testProject.activeSceneId, 'runtime tracks active scene');
 
 runtime.init();
 assert(runtime.running === true, 'runtime is running');

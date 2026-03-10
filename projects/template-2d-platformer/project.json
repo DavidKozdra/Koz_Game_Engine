@@ -1,0 +1,280 @@
+{
+  "schemaVersion": 1,
+  "meta": {
+    "name": "Template - 2D Platformer",
+    "version": "1.0.0",
+    "resolution": {
+      "width": 960,
+      "height": 540
+    },
+    "engineVersion": "0.1.0"
+  },
+  "activeSceneId": "scene_level_one",
+  "world": {
+    "cols": 20,
+    "rows": 12,
+    "defaultCell": 0,
+    "grid": [
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0],
+      [0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    ],
+    "elements": [],
+    "meta": {}
+  },
+  "objects": [
+    {
+      "id": "obj_game_state",
+      "name": "Game State",
+      "type": "controller",
+      "x": 0,
+      "y": 0,
+      "components": {
+        "Transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 },
+        "Sprite": { "assetId": null, "color": "#0f172a", "width": 1, "height": 1 },
+        "Collider": { "shape": "rect", "width": 1, "height": 1 },
+        "ScriptBinding": { "scriptId": null },
+        "ScriptBindings": [
+          {
+            "scriptId": "script_menu_overlay",
+            "active": true,
+            "properties": {
+              "title": "2D Platformer",
+              "subtitle": "Scene-first platformer template",
+              "instructions": "Move with A/D or arrows. Jump with Space, W, or Up.",
+              "actionLabel": "Start Run",
+              "note": "Includes a second scene for menu/layout testing. Full scene transitions land in the next milestone."
+            }
+          },
+          {
+            "scriptId": "script_platformer_hud",
+            "active": true,
+            "properties": {}
+          }
+        ],
+        "Animator": { "clipId": null }
+      }
+    },
+    {
+      "id": "obj_player",
+      "name": "Player",
+      "type": "player",
+      "x": 48,
+      "y": 120,
+      "components": {
+        "Transform": { "x": 48, "y": 120, "rotation": 0, "scaleX": 1, "scaleY": 1 },
+        "Sprite": { "assetId": null, "color": "#f8fafc", "width": 22, "height": 30 },
+        "Collider": { "shape": "rect", "width": 22, "height": 30 },
+        "Collision": { "enabled": true, "isTrigger": false },
+        "RigidBody": { "enabled": true, "weight": 1, "friction": 0.2 },
+        "ScriptBinding": { "scriptId": "script_player_controller" },
+        "ScriptBindings": [],
+        "Animator": { "clipId": null }
+      }
+    },
+    {
+      "id": "obj_goal",
+      "name": "Goal",
+      "type": "goal",
+      "x": 396,
+      "y": 180,
+      "components": {
+        "Transform": { "x": 396, "y": 180, "rotation": 0, "scaleX": 1, "scaleY": 1 },
+        "Sprite": { "assetId": null, "color": "#22c55e", "width": 24, "height": 48 },
+        "Collider": { "shape": "rect", "width": 24, "height": 48 },
+        "Collision": { "enabled": true, "isTrigger": true },
+        "ScriptBinding": { "scriptId": null },
+        "ScriptBindings": [],
+        "Animator": { "clipId": null }
+      }
+    }
+  ],
+  "scenes": [
+    {
+      "id": "scene_menu",
+      "name": "Main Menu",
+      "world": {
+        "cols": 1,
+        "rows": 1,
+        "defaultCell": 0,
+        "grid": [[0]],
+        "elements": [],
+        "meta": {}
+      },
+      "objects": [
+        {
+          "id": "obj_menu_state",
+          "name": "Menu State",
+          "type": "controller",
+          "x": 0,
+          "y": 0,
+          "components": {
+            "Transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 },
+            "Sprite": { "assetId": null, "color": "#0f172a", "width": 1, "height": 1 },
+            "Collider": { "shape": "rect", "width": 1, "height": 1 },
+            "ScriptBinding": { "scriptId": null },
+            "ScriptBindings": [
+              {
+                "scriptId": "script_menu_overlay",
+                "active": true,
+                "properties": {
+                  "title": "Platformer Menu Scene",
+                  "subtitle": "Secondary scene for scene-browser testing",
+                  "instructions": "This scene is intentionally light. Switch back to Level One in the scene browser to play.",
+                  "actionLabel": "Hide Overlay",
+                  "note": "Current runtime still boots a single active scene at a time."
+                }
+              }
+            ],
+            "Animator": { "clipId": null }
+          }
+        }
+      ]
+    },
+    {
+      "id": "scene_level_one",
+      "name": "Level One",
+      "world": {
+        "cols": 20,
+        "rows": 12,
+        "defaultCell": 0,
+        "grid": [
+          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0],
+          [0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        ],
+        "elements": [],
+        "meta": {}
+      },
+      "objects": [
+        {
+          "id": "obj_game_state",
+          "name": "Game State",
+          "type": "controller",
+          "x": 0,
+          "y": 0,
+          "components": {
+            "Transform": { "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1 },
+            "Sprite": { "assetId": null, "color": "#0f172a", "width": 1, "height": 1 },
+            "Collider": { "shape": "rect", "width": 1, "height": 1 },
+            "ScriptBinding": { "scriptId": null },
+            "ScriptBindings": [
+              {
+                "scriptId": "script_menu_overlay",
+                "active": true,
+                "properties": {
+                  "title": "2D Platformer",
+                  "subtitle": "Scene-first platformer template",
+                  "instructions": "Move with A/D or arrows. Jump with Space, W, or Up.",
+                  "actionLabel": "Start Run",
+                  "note": "Includes a second scene for menu/layout testing. Full scene transitions land in the next milestone."
+                }
+              },
+              {
+                "scriptId": "script_platformer_hud",
+                "active": true,
+                "properties": {}
+              }
+            ],
+            "Animator": { "clipId": null }
+          }
+        },
+        {
+          "id": "obj_player",
+          "name": "Player",
+          "type": "player",
+          "x": 48,
+          "y": 120,
+          "components": {
+            "Transform": { "x": 48, "y": 120, "rotation": 0, "scaleX": 1, "scaleY": 1 },
+            "Sprite": { "assetId": null, "color": "#f8fafc", "width": 22, "height": 30 },
+            "Collider": { "shape": "rect", "width": 22, "height": 30 },
+            "Collision": { "enabled": true, "isTrigger": false },
+            "RigidBody": { "enabled": true, "weight": 1, "friction": 0.2 },
+            "ScriptBinding": { "scriptId": "script_player_controller" },
+            "ScriptBindings": [],
+            "Animator": { "clipId": null }
+          }
+        },
+        {
+          "id": "obj_goal",
+          "name": "Goal",
+          "type": "goal",
+          "x": 396,
+          "y": 180,
+          "components": {
+            "Transform": { "x": 396, "y": 180, "rotation": 0, "scaleX": 1, "scaleY": 1 },
+            "Sprite": { "assetId": null, "color": "#22c55e", "width": 24, "height": 48 },
+            "Collider": { "shape": "rect", "width": 24, "height": 48 },
+            "Collision": { "enabled": true, "isTrigger": true },
+            "ScriptBinding": { "scriptId": null },
+            "ScriptBindings": [],
+            "Animator": { "clipId": null }
+          }
+        }
+      ]
+    }
+  ],
+  "animations": [],
+  "scripts": [
+    {
+      "id": "script_menu_overlay",
+      "name": "MainMenuOverlay",
+      "language": "javascript",
+      "source": "function onInit(self, engine) {\n  if (typeof self.started !== 'boolean') self.started = false;\n  if (typeof self.completed !== 'boolean') self.completed = false;\n  var manager = engine.uiManager || (typeof KozUIManager !== 'undefined' ? KozUIManager : null) || (typeof uiManager !== 'undefined' ? uiManager : null);\n  if (!manager) return;\n  manager.registerScreen(self.id + '_menu', {\n    layer: 'hud',\n    layerOrder: 100,\n    isVisible: function() { return !self.started; },\n    create: function() {\n      var wrap = document.createElement('div');\n      wrap.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg, rgba(15,23,42,0.88), rgba(2,6,23,0.94));pointer-events:auto;font-family:Trebuchet MS,sans-serif;';\n      var card = document.createElement('div');\n      card.style.cssText = 'width:min(520px,92vw);padding:28px 26px;border-radius:18px;background:rgba(15,23,42,0.96);border:1px solid rgba(148,163,184,0.25);box-shadow:0 24px 80px rgba(0,0,0,0.45);color:#e2e8f0;';\n      var title = document.createElement('h1');\n      title.textContent = props.title || 'Koz Template';\n      title.style.cssText = 'margin:0 0 8px;font-size:34px;';\n      var subtitle = document.createElement('p');\n      subtitle.textContent = props.subtitle || '';\n      subtitle.style.cssText = 'margin:0 0 14px;color:#94a3b8;line-height:1.4;';\n      var instructions = document.createElement('p');\n      instructions.textContent = props.instructions || '';\n      instructions.style.cssText = 'margin:0 0 18px;color:#cbd5e1;line-height:1.5;';\n      var button = document.createElement('button');\n      button.textContent = props.actionLabel || 'Start';\n      button.style.cssText = 'padding:12px 18px;border:none;border-radius:999px;background:#22c55e;color:#052e16;font-weight:700;cursor:pointer;';\n      button.onclick = function() {\n        self.started = true;\n        self.completed = false;\n        if (typeof self.onStartGame === 'function') self.onStartGame();\n      };\n      var note = document.createElement('p');\n      note.textContent = props.note || '';\n      note.style.cssText = 'margin:14px 0 0;color:#64748b;font-size:12px;line-height:1.5;';\n      card.appendChild(title);\n      if (subtitle.textContent) card.appendChild(subtitle);\n      if (instructions.textContent) card.appendChild(instructions);\n      card.appendChild(button);\n      if (note.textContent) card.appendChild(note);\n      wrap.appendChild(card);\n      return wrap;\n    }\n  });\n}\n\nfunction onUpdate(self, engine, dt) {}\n"
+    },
+    {
+      "id": "script_platformer_hud",
+      "name": "PlatformerHud",
+      "language": "javascript",
+      "source": "function onInit(self, engine) {\n  var manager = engine.uiManager || (typeof KozUIManager !== 'undefined' ? KozUIManager : null) || (typeof uiManager !== 'undefined' ? uiManager : null);\n  self.onStartGame = function() {\n    var player = engine.findObject('obj_player');\n    if (!player) return;\n    player.x = player.spawnX || 48;\n    player.y = player.spawnY || 120;\n    player.vx = 0;\n    player.vy = 0;\n    player.grounded = false;\n  };\n  if (!manager) return;\n  manager.registerScreen(self.id + '_hud', {\n    layer: 'hud',\n    layerOrder: 10,\n    isVisible: function() { return !!self.started; },\n    create: function() {\n      var panel = document.createElement('div');\n      panel.style.cssText = 'position:absolute;left:16px;top:16px;padding:10px 12px;border-radius:12px;background:rgba(15,23,42,0.76);color:#e2e8f0;font-family:Trebuchet MS,sans-serif;pointer-events:none;';\n      panel.innerHTML = '<div id=\"platformerStatus\" style=\"font-size:14px;font-weight:700;\"></div><div style=\"margin-top:4px;font-size:12px;color:#94a3b8;\">Reach the green goal block.</div>';\n      return panel;\n    },\n    update: function() {\n      var status = document.getElementById('platformerStatus');\n      var player = engine.findObject('obj_player');\n      if (!status) return;\n      if (self.completed) status.textContent = 'Goal reached. Press Start to run it again.';\n      else status.textContent = 'Player ' + Math.round(player ? player.x : 0) + ', ' + Math.round(player ? player.y : 0);\n    }\n  });\n}\n\nfunction onUpdate(self, engine, dt) {}\n"
+    },
+    {
+      "id": "script_player_controller",
+      "name": "PlatformerPlayerController",
+      "language": "javascript",
+      "source": "function onInit(self, engine) {\n  self.vx = 0;\n  self.vy = 0;\n  self.grounded = false;\n  self.spawnX = self.x;\n  self.spawnY = self.y;\n}\n\nfunction overlaps(a, b) {\n  return !!(a && b && a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y);\n}\n\nfunction onUpdate(self, engine, dt) {\n  var game = engine.findObject('obj_game_state');\n  if (!game || !game.started || game.completed) return;\n  var left = keyIsDown(65) || keyIsDown(LEFT_ARROW);\n  var right = keyIsDown(68) || keyIsDown(RIGHT_ARROW);\n  var jump = keyIsDown(SPACE) || keyIsDown(87) || keyIsDown(UP_ARROW);\n\n  self.vx = 0;\n  if (left && !right) self.vx = -160;\n  if (right && !left) self.vx = 160;\n  if (self.grounded && jump && !self.jumpLatch) {\n    self.vy = -340;\n    self.jumpLatch = true;\n  }\n  if (!jump) self.jumpLatch = false;\n\n  self.vy += 880 * dt;\n  self.x += self.vx * dt;\n  self.y += self.vy * dt;\n\n  if (self.y > 340) {\n    self.x = self.spawnX;\n    self.y = self.spawnY;\n    self.vx = 0;\n    self.vy = 0;\n  }\n\n  var goal = engine.findObject('obj_goal');\n  if (overlaps(self, goal)) {\n    game.completed = true;\n    game.started = false;\n  }\n}\n"
+    }
+  ],
+  "assets": [],
+  "build": {
+    "profile": "web-prod",
+    "pwa": false
+  },
+  "camera": {
+    "targetObjectId": "obj_player",
+    "speed": 10,
+    "zoom": 1,
+    "minZoom": 0.5,
+    "maxZoom": 3,
+    "offsetX": 0,
+    "offsetY": -40,
+    "deadZoneWidth": 120,
+    "deadZoneHeight": 90,
+    "lookAheadX": 0,
+    "lookAheadY": 0,
+    "visibleMargin": 48,
+    "followX": true,
+    "followY": true,
+    "clampToWorld": true,
+    "maxSpeed": 1600
+  }
+}
