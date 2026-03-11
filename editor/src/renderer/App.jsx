@@ -14,6 +14,15 @@ import Modal from './components/Modal.jsx';
 import Icon from './components/Icon.jsx';
 import { ensureProjectShape, applyProjectPatch, normalizeCellTypeId, getBrushValue } from './state/projectModel.js';
 import { buildExportHtml } from './lib/exportHtml.js';
+import {
+  getBrowserProjectCapabilities,
+  getBrowserProjectsRootLabel,
+  importBrowserProjectFromFile,
+  listBrowserProjects,
+  loadBrowserProject,
+  saveBrowserProject,
+  saveBrowserProjectAs,
+} from './lib/browserProjects.js';
 import template2dPlatformer from '../../../projects/template-2d-platformer/project.json';
 import template2dAdventurePlatformer from '../../../projects/template-2d-adventure-platformer/project.json';
 import template2dClicker from '../../../projects/template-2d-clicker/project.json';
@@ -569,11 +578,27 @@ function formatProjectTimestamp(ts) {
   return date.toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function getRendererApi() {
+  return typeof window !== 'undefined' && window.api ? window.api : null;
+}
+
+function normalizeProjectFile(fileInfo = {}) {
+  return {
+    projectPath: fileInfo.projectPath || null,
+    folderPath: fileInfo.folderPath || null,
+    name: fileInfo.name || null,
+    browserProjectId: fileInfo.browserProjectId || null,
+    storageKind: fileInfo.storageKind || null,
+    fileHandle: fileInfo.fileHandle || null,
+    fileName: fileInfo.fileName || null,
+  };
+}
+
 function App() {
   // All hooks must be called unconditionally and in the same order
   const [project, setProject] = useState(null);
   const [showProjectSelector, setShowProjectSelector] = useState(true);
-  const [projectFile, setProjectFile] = useState({ projectPath: null, folderPath: null, name: null });
+  const [projectFile, setProjectFile] = useState(() => normalizeProjectFile());
   const [availableProjects, setAvailableProjects] = useState([]);
   const [projectsRoot, setProjectsRoot] = useState(null);
   const [newProjectName, setNewProjectName] = useState('Untitled Project');
@@ -628,6 +653,21 @@ function App() {
   const selectedProjectTemplate = useMemo(() => {
     return PROJECT_TEMPLATES.find((template) => template.id === newProjectTemplate) || PROJECT_TEMPLATES[0];
   }, [newProjectTemplate]);
+  const browserProjectCapabilities = useMemo(() => getBrowserProjectCapabilities(), []);
+  const rendererApi = getRendererApi();
+  const isElectronProjectMode = !!(rendererApi && typeof rendererApi.listProjects === 'function');
+  const loadFromFileLabel = isElectronProjectMode
+    ? 'Load From File'
+    : browserProjectCapabilities.canOpenFilePicker
+      ? 'Open Project File'
+      : 'Import Project File';
+  const projectSaveHint = isElectronProjectMode
+    ? 'Save writes into the projects folder directly, so template creation is an instant clone.'
+    : browserProjectCapabilities.hasLocalStorage && browserProjectCapabilities.canSaveFilePicker
+      ? 'Browser mode keeps a local storage copy of each project and can also save JSON files back to disk.'
+      : browserProjectCapabilities.hasLocalStorage
+        ? 'Browser mode keeps projects in local storage and can import or export project JSON files.'
+        : 'Browser mode can import and download project JSON files, but persistent browser storage is unavailable.';
   const sortedProjects = useMemo(() => {
     return [...(availableProjects || [])].sort((a, b) => {
       const tA = Number(a && a.updatedAt) || 0;
@@ -652,11 +692,18 @@ function App() {
   }, []);
 
   const refreshProjects = useCallback(() => {
-    const api = window.api;
-    if (!api || typeof api.listProjects !== 'function') return;
-    api.listProjects().then((result) => {
+    const api = getRendererApi();
+    if (api && typeof api.listProjects === 'function') {
+      api.listProjects().then((result) => {
+        if (!result || !result.ok) return;
+        setProjectsRoot(result.root || null);
+        setAvailableProjects(Array.isArray(result.projects) ? result.projects : []);
+      });
+      return;
+    }
+    listBrowserProjects().then((result) => {
       if (!result || !result.ok) return;
-      setProjectsRoot(result.root || null);
+      setProjectsRoot(result.root || getBrowserProjectsRootLabel());
       setAvailableProjects(Array.isArray(result.projects) ? result.projects : []);
     });
   }, []);
@@ -1369,11 +1416,10 @@ def on_update(self, engine, dt):
         sceneId: nextSceneId,
         camera: createFramedCamera(withSceneView(next, nextSceneId), DEFAULT_EDITOR_CAMERA),
       }));
-      setProjectFile({
-        projectPath: fileInfo.projectPath || null,
-        folderPath: fileInfo.folderPath || null,
+      setProjectFile(normalizeProjectFile({
+        ...fileInfo,
         name: (next.meta && next.meta.name) || fileInfo.name || null,
-      });
+      }));
       setShowProjectSelector(false);
       undoStackRef.current = [];
       redoStackRef.current = [];
@@ -1382,106 +1428,152 @@ def on_update(self, engine, dt):
     }
   }, []);
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     if (!project) return;
     const normalized = ensureProjectShape(project);
     const json = JSON.stringify(normalized, null, 2);
-    const api = window.api;
+    const api = getRendererApi();
     if (api && typeof api.saveProject === 'function') {
-      api.saveProject({
+      const result = await api.saveProject({
         projectPath: projectFile.projectPath,
         name: normalized.meta && normalized.meta.name ? normalized.meta.name : newProjectName,
         projectJson: json,
-      }).then((result) => {
-        if (!result || !result.ok) {
-          if (!(result && result.canceled)) alert(`Save failed: ${(result && result.error) || 'Unknown error'}`);
-          return;
-        }
-        setProjectFile({
-          projectPath: result.projectPath || null,
-          folderPath: result.folderPath || null,
-          name: result.name || (normalized.meta && normalized.meta.name) || null,
-        });
-        refreshProjects();
-        showToast('Project saved');
       });
+      if (!result || !result.ok) {
+        if (!(result && result.canceled)) alert(`Save failed: ${(result && result.error) || 'Unknown error'}`);
+        return;
+      }
+      setProjectFile(normalizeProjectFile({
+        ...projectFile,
+        projectPath: result.projectPath || null,
+        folderPath: result.folderPath || null,
+        name: result.name || (normalized.meta && normalized.meta.name) || null,
+        storageKind: 'electron',
+      }));
+      refreshProjects();
+      showToast('Project saved');
       return;
     }
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = (normalized.meta.name || 'project') + '.json'; a.click();
-    URL.revokeObjectURL(url);
-    showToast('Project saved');
-  }, [project, projectFile.projectPath, newProjectName, refreshProjects, showToast]);
+    const result = await saveBrowserProject({
+      projectJson: json,
+      name: normalized.meta && normalized.meta.name ? normalized.meta.name : newProjectName,
+      browserProjectId: projectFile.browserProjectId || projectFile.projectPath,
+      fileHandle: projectFile.fileHandle || null,
+      fileName: projectFile.fileName || null,
+      storageKind: projectFile.storageKind || null,
+      folderPath: projectFile.folderPath || null,
+    });
+    if (!result || !result.ok) {
+      if (!(result && result.canceled)) alert(`Save failed: ${(result && result.error) || 'Unknown error'}`);
+      return;
+    }
+    setProjectFile(normalizeProjectFile({
+      ...projectFile,
+      ...result,
+      name: result.name || (normalized.meta && normalized.meta.name) || null,
+    }));
+    refreshProjects();
+    showToast(result.downloaded ? 'Project downloaded' : 'Project saved');
+  }, [project, projectFile, newProjectName, refreshProjects, showToast]);
 
-  const handleSaveAs = useCallback(() => {
+  const handleSaveAs = useCallback(async () => {
     if (!project) return;
     const normalized = ensureProjectShape(project);
     const json = JSON.stringify(normalized, null, 2);
-    const api = window.api;
+    const api = getRendererApi();
     if (api && typeof api.saveProjectAs === 'function') {
-      api.saveProjectAs({
+      const result = await api.saveProjectAs({
         name: normalized.meta && normalized.meta.name ? normalized.meta.name : newProjectName,
         projectJson: json,
-      }).then((result) => {
-        if (!result || !result.ok) {
-          if (!(result && result.canceled)) alert(`Save As failed: ${(result && result.error) || 'Unknown error'}`);
-          return;
-        }
-        setProjectFile({
-          projectPath: result.projectPath || null,
-          folderPath: result.folderPath || null,
-          name: result.name || (normalized.meta && normalized.meta.name) || null,
-        });
-        refreshProjects();
       });
+      if (!result || !result.ok) {
+        if (!(result && result.canceled)) alert(`Save As failed: ${(result && result.error) || 'Unknown error'}`);
+        return;
+      }
+      setProjectFile(normalizeProjectFile({
+        ...projectFile,
+        projectPath: result.projectPath || null,
+        folderPath: result.folderPath || null,
+        name: result.name || (normalized.meta && normalized.meta.name) || null,
+        storageKind: 'electron',
+      }));
+      refreshProjects();
+      showToast('Project saved');
       return;
     }
-    handleSave();
-  }, [project, newProjectName, handleSave, refreshProjects]);
+    const result = await saveBrowserProjectAs({
+      projectJson: json,
+      name: normalized.meta && normalized.meta.name ? normalized.meta.name : newProjectName,
+      browserProjectId: projectFile.browserProjectId || projectFile.projectPath,
+      fileHandle: projectFile.fileHandle || null,
+      fileName: projectFile.fileName || null,
+    });
+    if (!result || !result.ok) {
+      if (!(result && result.canceled)) alert(`Save As failed: ${(result && result.error) || 'Unknown error'}`);
+      return;
+    }
+    setProjectFile(normalizeProjectFile({
+      ...projectFile,
+      ...result,
+      name: result.name || (normalized.meta && normalized.meta.name) || null,
+    }));
+    refreshProjects();
+    showToast(result.downloaded ? 'Project downloaded' : 'Project saved');
+  }, [project, projectFile, newProjectName, refreshProjects, showToast]);
 
   const handleLoad = useCallback(() => {
     refreshProjects();
     setShowProjectSelector(true);
   }, [refreshProjects]);
 
-  const handleLoadFromFile = useCallback(() => {
-    const api = window.api;
+  const handleLoadFromFile = useCallback(async () => {
+    const api = getRendererApi();
     if (api && typeof api.openProjectDialog === 'function') {
-      api.openProjectDialog().then((result) => {
-        if (!result || !result.ok) {
-          if (!(result && result.canceled)) alert(`Load failed: ${(result && result.error) || 'Unknown error'}`);
-          return;
-        }
-        openProjectFromContent(result.content, {
-          projectPath: result.projectPath || null,
-          folderPath: result.folderPath || null,
-          name: null,
-        });
+      const result = await api.openProjectDialog();
+      if (!result || !result.ok) {
+        if (!(result && result.canceled)) alert(`Load failed: ${(result && result.error) || 'Unknown error'}`);
+        return;
+      }
+      openProjectFromContent(result.content, {
+        projectPath: result.projectPath || null,
+        folderPath: result.folderPath || null,
+        name: null,
       });
       return;
     }
-  }, [openProjectFromContent]);
+    const result = await importBrowserProjectFromFile();
+    if (!result || !result.ok) {
+      if (!(result && result.canceled)) alert(`Load failed: ${(result && result.error) || 'Unknown error'}`);
+      return;
+    }
+    openProjectFromContent(result.content, result);
+    refreshProjects();
+  }, [openProjectFromContent, refreshProjects]);
 
-  const handleLoadProjectFromList = useCallback((item) => {
-    const api = window.api;
+  const handleLoadProjectFromList = useCallback(async (item) => {
+    const api = getRendererApi();
     if (!item) return;
     if (api && typeof api.loadProject === 'function') {
-      api.loadProject(item.projectPath).then((result) => {
-        if (!result || !result.ok) return;
-        openProjectFromContent(result.content, { projectPath: result.projectPath, folderPath: result.folderPath, name: item.name });
-      });
+      const result = await api.loadProject(item.projectPath);
+      if (!result || !result.ok) return;
+      openProjectFromContent(result.content, { projectPath: result.projectPath, folderPath: result.folderPath, name: item.name });
       return;
     }
+    const result = await loadBrowserProject(item.projectPath || item.browserProjectId);
+    if (!result || !result.ok) {
+      alert(`Load failed: ${(result && result.error) || 'Unknown error'}`);
+      return;
+    }
+    openProjectFromContent(result.content, result);
   }, [openProjectFromContent]);
 
-  const handleNew = useCallback(() => {
+  const handleNew = useCallback(async () => {
     const name = (newProjectName || 'Untitled Project').trim() || 'Untitled Project';
     const nextProject = createProjectFromTemplate(newProjectTemplate, { name });
     const nextSceneId = guessInitialEditorSceneId(nextProject);
     setProject(nextProject);
     setShowProjectSelector(false);
-    setProjectFile({ projectPath: null, folderPath: null, name });
+    setProjectFile(normalizeProjectFile({ name }));
     updateEditor({
       selectedObjectId: null,
       selectedObjectIds: [],
@@ -1492,23 +1584,32 @@ def on_update(self, engine, dt):
     });
     undoStackRef.current = [];
     redoStackRef.current = [];
-    const api = window.api;
+    const api = getRendererApi();
     if (api && typeof api.saveProject === 'function') {
-      api.saveProject({
+      const result = await api.saveProject({
         projectPath: null,
         name,
         projectJson: JSON.stringify(nextProject, null, 2),
-      }).then((result) => {
-        if (!result || !result.ok) return;
-        setProjectFile({
-          projectPath: result.projectPath || null,
-          folderPath: result.folderPath || null,
-          name: result.name || name,
-        });
-        refreshProjects();
       });
+      if (!result || !result.ok) return;
+      setProjectFile(normalizeProjectFile({
+        projectPath: result.projectPath || null,
+        folderPath: result.folderPath || null,
+        name: result.name || name,
+        storageKind: 'electron',
+      }));
+      refreshProjects();
+      return;
     }
-  }, [updateEditor, newProjectName, newProjectTemplate, refreshProjects]);
+    if (!browserProjectCapabilities.hasLocalStorage) return;
+    const result = await saveBrowserProject({
+      projectJson: JSON.stringify(nextProject, null, 2),
+      name,
+    });
+    if (!result || !result.ok) return;
+    setProjectFile(normalizeProjectFile({ ...result, name: result.name || name }));
+    refreshProjects();
+  }, [updateEditor, newProjectName, newProjectTemplate, refreshProjects, browserProjectCapabilities.hasLocalStorage]);
 
   const handlePatchProject = useCallback((patch) => {
     setProject((prev) => applyProjectPatch(prev, patch, { sceneId: editorState.sceneId }));
@@ -1759,7 +1860,7 @@ def on_update(self, engine, dt):
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.1 }}>Project Hub</div>
                   <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {projectsRoot || 'Using current projects folder'}
+                    {projectsRoot || (isElectronProjectMode ? 'Using current projects folder' : getBrowserProjectsRootLabel())}
                   </div>
                 </div>
               </div>
@@ -1835,12 +1936,12 @@ def on_update(self, engine, dt):
                     ? 'Create Blank Project'
                     : `Create ${selectedProjectTemplate.label}`}
                 </button>
-                <button className="btn btn-lg" style={{ width: '100%', justifyContent: 'center' }} onClick={handleLoadFromFile} aria-label="Load project from file dialog">
+                <button className="btn btn-lg" style={{ width: '100%', justifyContent: 'center' }} onClick={handleLoadFromFile} aria-label={loadFromFileLabel}>
                   <Icon name="load" />
-                  Load From File
+                  {loadFromFileLabel}
                 </button>
                 <div style={{ color: 'var(--text-muted)', fontSize: 11, lineHeight: 1.35 }}>
-                  Save uses the projects folder directly, so template creation is an instant clone.
+                  {projectSaveHint}
                 </div>
               </div>
 

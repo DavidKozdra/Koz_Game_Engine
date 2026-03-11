@@ -47,6 +47,9 @@ async function main() {
   assert(html.includes('prefabId: obj.prefabId || null'), 'export runtime preserves prefab ids on runtime objects');
   assert(html.includes('findObjectById: function(value) { return findObjectById(value); }'), 'export runtime exposes an explicit id lookup helper');
   assert(html.includes("findObjectByType: function(type) { return findObjectsByType(type)[0] || null; }"), 'export runtime exposes a singular type lookup helper');
+  assert(html.includes('function resolveKeyCode(event) {'), 'export runtime normalizes browser keyboard events');
+  assert(html.includes('keys.clear();'), 'export runtime clears stale key state during scene transitions or blur');
+  assert(!moduleSource.includes("if (typeof obj.grounded === 'boolean') obj.grounded = false;"), 'export runtime does not clear grounded state before tile resolution');
   assert(playModeSource.includes("findObjectById: (value) => findRuntimeObjectById(runtimeState.gameObjects, value)"), 'editor play runtime exposes an explicit id lookup helper');
   assert(playModeSource.includes("findObjectByType: (type) => findRuntimeObjectsByType(runtimeState.gameObjects, type)[0] || null"), 'editor play runtime exposes a singular type lookup helper');
   assert(playModeSource.includes('components: JSON.parse(JSON.stringify(obj.components || {}))'), 'editor play runtime clones scene component data before mutation');
