@@ -6,6 +6,10 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createProjectAdaptersApi() {
   const DEFAULT_SCENE_ID = "scene_main";
 
+  function clone(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
   function createFallbackScene(project) {
     const source = project && typeof project === "object" ? project : {};
     return {
@@ -85,7 +89,7 @@
         rotation: transform.rotation || 0,
         scaleX: transform.scaleX || 1,
         scaleY: transform.scaleY || 1,
-        meta: { name: obj.name, components: obj.components },
+        meta: { name: obj.name, components: clone(obj.components || {}) },
       });
     });
   }

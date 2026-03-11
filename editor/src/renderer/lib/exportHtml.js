@@ -196,7 +196,7 @@ function exportRuntimeMain() {
       width: width * scaleX,
       height: height * scaleY,
       color: s.color || '#4ade80',
-      components: obj.components || {},
+      components: clone(obj.components || {}),
     });
   }
 

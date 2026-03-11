@@ -121,7 +121,7 @@ export function usePlayMode(project, onLog) {
         width: sw * tsx,
         height: sh * tsy,
         color: (obj.components && obj.components.Sprite && obj.components.Sprite.color) || '#4ade80',
-        components: obj.components || {},
+        components: JSON.parse(JSON.stringify(obj.components || {})),
       };
     };
     const clearSceneCss = () => {

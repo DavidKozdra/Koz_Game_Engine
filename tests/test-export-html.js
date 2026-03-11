@@ -24,6 +24,8 @@ async function main() {
 
   const modulePath = path.join(__dirname, '..', 'editor', 'src', 'renderer', 'lib', 'exportHtml.js');
   const moduleSource = fs.readFileSync(modulePath, 'utf8');
+  const playModePath = path.join(__dirname, '..', 'editor', 'src', 'renderer', 'components', 'PlayMode.jsx');
+  const playModeSource = fs.readFileSync(playModePath, 'utf8');
   const moduleUrl = `data:text/javascript;base64,${Buffer.from(moduleSource).toString('base64')}`;
   const { buildExportHtml } = await import(moduleUrl);
   const projectPath = path.join(__dirname, '..', 'projects', 'template-3d-fps-shell', 'project.json');
@@ -41,6 +43,8 @@ async function main() {
   assert(html.includes('createParticleSystem'), 'export runtime includes particle support');
   assert(html.includes('particles:'), 'export runtime exposes particle helpers to scripts');
   assert(html.includes('storage:'), 'export runtime exposes storage helpers to scripts');
+  assert(html.includes('components: clone(obj.components || {})'), 'export runtime clones scene component data before mutation');
+  assert(playModeSource.includes('components: JSON.parse(JSON.stringify(obj.components || {}))'), 'editor play runtime clones scene component data before mutation');
   assert(html.includes("source: 'engine-fallback'"), 'export runtime includes engine fallback camera metadata');
   assert(html.includes('webgl-3d'), 'export runtime contains the WebGL render mode');
 

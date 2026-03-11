@@ -136,6 +136,8 @@ const goInstances = projectAdapters.projectToGameObjects(gameObjectLib.GameObjec
 assert(goInstances.length === 1, 'created 1 game object');
 assert(goInstances[0].x === 50, 'game object x');
 assert(goInstances[0].meta.name === 'Hero', 'game object name in meta');
+goInstances[0].meta.components.Transform.x = 999;
+assert(projectObjs[0].components.Transform.x === 50, 'adapter clones component data for runtime objects');
 
 const backToProject = projectAdapters.gameObjectToProject(goInstances[0]);
 assert(backToProject.name === 'Hero', 'round-tripped name');
@@ -175,6 +177,7 @@ runtime.update(0.016);
 runtime.update(0.016);
 const liveRuntimeObject = runtime.gameObjects.find((entry) => entry && entry.meta && entry.meta.name === 'TestObj');
 assert(liveRuntimeObject && liveRuntimeObject.x === 3, 'script moved object 3 units');
+assert(runtimeTestObject.components.Transform.x === 0, 'runtime updates do not mutate source project object transforms');
 
 runtime.stop();
 assert(runtime.running === false, 'runtime stopped');
