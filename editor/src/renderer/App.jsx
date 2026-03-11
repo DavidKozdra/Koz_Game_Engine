@@ -12,7 +12,17 @@ import { usePlayMode } from './components/PlayMode.jsx';
 import KozLogo from './components/KozLogo.jsx';
 import Modal from './components/Modal.jsx';
 import Icon from './components/Icon.jsx';
-import { ensureProjectShape, applyProjectPatch, normalizeCellTypeId, getBrushValue } from './state/projectModel.js';
+import {
+  ensureProjectShape,
+  applyProjectPatch,
+  normalizeCellTypeId,
+  getBrushValue,
+  clearPrefabOverridePath,
+  createPrefabFromObject,
+  createPrefabInstance,
+  createPrefabVariantFromObject,
+  materializePrefabObject,
+} from './state/projectModel.js';
 import { buildExportHtml } from './lib/exportHtml.js';
 import {
   getBrowserProjectCapabilities,
@@ -398,60 +408,14 @@ function createGameObject(name, x, y, opts = {}) {
   return next;
 }
 
-function instantiateFromPrefab(prefab, projectView, x, y) {
-  const sourceById = (projectView && projectView.objects || []).find((o) => o.id === prefab.sourceObjectId) || null;
-  const source = prefab && prefab.object ? prefab.object : sourceById;
-  if (!source) return createGameObject(prefab && prefab.name ? prefab.name : 'Object', x, y);
-
-  const obj = JSON.parse(JSON.stringify(source));
-  obj.id = genId('obj');
-  obj.name = (prefab && prefab.name) || obj.name || 'Object';
-  obj.prefabId = prefab.id;
-  obj.parentId = null;
-  obj.x = x;
-  obj.y = y;
-  obj.components = obj.components || {};
-  const t = obj.components.Transform || {};
-  obj.components.Transform = {
-    ...t,
+function instantiateFromPrefab(prefab, _projectView, x, y) {
+  return createPrefabInstance(prefab, {
+    id: genId('obj'),
     x,
     y,
-    rotation: Number.isFinite(t.rotation) ? t.rotation : 0,
-    scaleX: Number.isFinite(t.scaleX) ? t.scaleX : 1,
-    scaleY: Number.isFinite(t.scaleY) ? t.scaleY : 1,
-  };
-
-  if (obj.type === 'camera' || obj.components.Camera) {
-    obj.type = 'camera';
-    obj.components.Camera = {
-      enabled: (obj.components.Camera && obj.components.Camera.enabled) !== false,
-      targetObjectId: (obj.components.Camera && obj.components.Camera.targetObjectId) || null,
-      speed: (obj.components.Camera && Number.isFinite(obj.components.Camera.speed)) ? obj.components.Camera.speed : 8,
-      offsetX: (obj.components.Camera && Number.isFinite(obj.components.Camera.offsetX)) ? obj.components.Camera.offsetX : 0,
-      offsetY: (obj.components.Camera && Number.isFinite(obj.components.Camera.offsetY)) ? obj.components.Camera.offsetY : 0,
-      deadZoneWidth: (obj.components.Camera && Number.isFinite(obj.components.Camera.deadZoneWidth)) ? obj.components.Camera.deadZoneWidth : 180,
-      deadZoneHeight: (obj.components.Camera && Number.isFinite(obj.components.Camera.deadZoneHeight)) ? obj.components.Camera.deadZoneHeight : 120,
-      lookAheadX: (obj.components.Camera && Number.isFinite(obj.components.Camera.lookAheadX)) ? obj.components.Camera.lookAheadX : 0,
-      lookAheadY: (obj.components.Camera && Number.isFinite(obj.components.Camera.lookAheadY)) ? obj.components.Camera.lookAheadY : 0,
-      visibleMargin: (obj.components.Camera && Number.isFinite(obj.components.Camera.visibleMargin)) ? obj.components.Camera.visibleMargin : 40,
-      followX: (obj.components.Camera && obj.components.Camera.followX) !== false,
-      followY: (obj.components.Camera && obj.components.Camera.followY) !== false,
-      clampToWorld: (obj.components.Camera && obj.components.Camera.clampToWorld) !== false,
-      maxSpeed: (obj.components.Camera && Number.isFinite(obj.components.Camera.maxSpeed)) ? obj.components.Camera.maxSpeed : 2000,
-    };
-    obj.components.Render = {
-      layerId: (obj.components.Render && obj.components.Render.layerId) || 'obj-main',
-      visible: false,
-      zIndex: (obj.components.Render && Number.isFinite(obj.components.Render.zIndex)) ? obj.components.Render.zIndex : 0,
-    };
-    delete obj.components.Sprite;
-    delete obj.components.Collider;
-    delete obj.components.Collision;
-    delete obj.components.RigidBody;
-    delete obj.components.Animator;
-  }
-
-  return obj;
+    parentId: null,
+    editorFolder: 'Root',
+  });
 }
 
 function stripAssetsForExport(project) {
@@ -592,6 +556,14 @@ function normalizeProjectFile(fileInfo = {}) {
     fileHandle: fileInfo.fileHandle || null,
     fileName: fileInfo.fileName || null,
   };
+}
+
+function rematerializePrefabInstance(prefab, objectLike, patch = {}) {
+  const nextObject = objectLike && typeof objectLike === 'object'
+    ? { ...objectLike, ...patch }
+    : null;
+  if (!nextObject || !prefab || nextObject.id === prefab.sourceObjectId) return nextObject;
+  return materializePrefabObject(prefab, nextObject);
 }
 
 function App() {
@@ -1160,17 +1132,20 @@ function App() {
     if (!source) return;
     // Don't create duplicate if already linked to a prefab
     if (source.prefabId) return;
-    const prefabId = `prefab_${Date.now().toString(36)}`;
-    const nextPrefab = {
-      id: prefabId,
+    const nextPrefab = createPrefabFromObject(source, {
+      id: `prefab_${Date.now().toString(36)}`,
       name: `${source.name || source.type || 'Object'} Prefab`,
-      sourceObjectId: source.id,
-      object: JSON.parse(JSON.stringify(source)),
-    };
+    });
     setProject((prev) => {
       const updated = mutateActiveScene(prev, ({ world, objects }) => ({
         world,
-        objects: objects.map((o) => o.id === objId ? { ...o, prefabId } : o),
+        objects: objects.map((o) => o.id === objId ? {
+          ...o,
+          prefabId: nextPrefab.id,
+          prefabRevision: nextPrefab.revision,
+          variantId: null,
+          prefabOverrides: {},
+        } : o),
       }));
       return { ...updated, prefabs: [...((updated.prefabs) || []), nextPrefab] };
     });
@@ -1179,9 +1154,205 @@ function App() {
   const handleUnlinkPrefab = useCallback((objId) => {
     setProject((prev) => mutateActiveScene(prev, ({ world, objects }) => ({
       world,
-      objects: objects.map((o) => o.id === objId ? { ...o, prefabId: undefined } : o),
+      objects: objects.map((o) => {
+        if (o.id !== objId) return o;
+        const next = { ...o };
+        delete next.prefabId;
+        delete next.prefabRevision;
+        delete next.variantId;
+        delete next.prefabOverrides;
+        return next;
+      }),
     })));
   }, [mutateActiveScene]);
+
+  const handleSelectPrefabVariant = useCallback((objId, variantId) => {
+    setProject((prev) => {
+      const base = ensureProjectShape(prev);
+      return mutateActiveScene(base, ({ world, objects }) => ({
+        world,
+        objects: objects.map((o) => {
+          if (o.id !== objId || !o.prefabId) return o;
+          const prefab = (base.prefabs || []).find((entry) => entry && entry.id === o.prefabId);
+          if (!prefab || o.id === prefab.sourceObjectId) return o;
+          return rematerializePrefabInstance(prefab, o, {
+            variantId: variantId || null,
+          }) || o;
+        }),
+      }));
+    });
+  }, [mutateActiveScene]);
+
+  const handleResetPrefabOverrides = useCallback((objId) => {
+    setProject((prev) => {
+      const base = ensureProjectShape(prev);
+      return mutateActiveScene(base, ({ world, objects }) => ({
+        world,
+        objects: objects.map((o) => {
+          if (o.id !== objId || !o.prefabId) return o;
+          const prefab = (base.prefabs || []).find((entry) => entry && entry.id === o.prefabId);
+          if (!prefab || o.id === prefab.sourceObjectId) return o;
+          return rematerializePrefabInstance(prefab, o, {
+            prefabOverrides: {},
+          }) || o;
+        }),
+      }));
+    });
+  }, [mutateActiveScene]);
+
+  const handleResetPrefabOverridePath = useCallback((objId, path) => {
+    if (!path) return;
+    setProject((prev) => {
+      const base = ensureProjectShape(prev);
+      return mutateActiveScene(base, ({ world, objects }) => ({
+        world,
+        objects: objects.map((o) => {
+          if (o.id !== objId || !o.prefabId) return o;
+          const prefab = (base.prefabs || []).find((entry) => entry && entry.id === o.prefabId);
+          if (!prefab || o.id === prefab.sourceObjectId) return o;
+          const nextOverrides = clearPrefabOverridePath(o.prefabOverrides, path);
+          return rematerializePrefabInstance(prefab, o, {
+            prefabOverrides: nextOverrides,
+          }) || o;
+        }),
+      }));
+    });
+  }, [mutateActiveScene]);
+
+  const handleEditPrefabSource = useCallback((prefabId) => {
+    if (!prefabId || !project) return;
+    const normalized = ensureProjectShape(project);
+    const prefab = (normalized.prefabs || []).find((entry) => entry && entry.id === prefabId);
+    if (!prefab || !prefab.sourceObjectId) {
+      showToast('Prefab source is unavailable.');
+      return;
+    }
+    const sourceScene = (normalized.scenes || []).find((scene) => (
+      scene && Array.isArray(scene.objects) && scene.objects.some((obj) => obj && obj.id === prefab.sourceObjectId)
+    ));
+    const sourceObject = sourceScene && (sourceScene.objects || []).find((obj) => obj && obj.id === prefab.sourceObjectId);
+    if (!sourceScene || !sourceObject) {
+      showToast(`Prefab source object is missing for ${prefab.name || prefab.id}.`);
+      return;
+    }
+    setMainTab('world');
+    setEditorState((prev) => ({
+      ...prev,
+      sceneId: sourceScene.id,
+      selectedObjectId: sourceObject.id,
+      selectedObjectIds: [sourceObject.id],
+      activeTool: 'select',
+      camera: createFramedCamera(withSceneView(normalized, sourceScene.id), prev.camera),
+    }));
+    showToast(`Editing source for ${prefab.name || sourceObject.name || prefab.id}.`);
+  }, [project, showToast]);
+
+  const handleRenamePrefabVariant = useCallback((prefabId, variantId) => {
+    if (!project || !prefabId || !variantId) return;
+    const prefab = (project.prefabs || []).find((entry) => entry && entry.id === prefabId);
+    const variant = prefab && Array.isArray(prefab.variants)
+      ? prefab.variants.find((entry) => entry && entry.id === variantId)
+      : null;
+    if (!prefab || !variant) return;
+    const suggestedName = variant.name || 'Variant';
+    const nextName = typeof window !== 'undefined' && typeof window.prompt === 'function'
+      ? window.prompt('Rename variant', suggestedName)
+      : suggestedName;
+    if (!nextName || !nextName.trim() || nextName.trim() === suggestedName) return;
+    setProject((prev) => {
+      const base = ensureProjectShape(prev);
+      return ensureProjectShape({
+        ...base,
+        prefabs: (base.prefabs || []).map((entry) => {
+          if (!entry || entry.id !== prefabId) return entry;
+          return {
+            ...entry,
+            variants: (entry.variants || []).map((candidate) => (
+              candidate && candidate.id === variantId
+                ? { ...candidate, name: nextName.trim() }
+                : candidate
+            )),
+          };
+        }),
+      });
+    });
+  }, [project]);
+
+  const handleDeletePrefabVariant = useCallback((prefabId, variantId) => {
+    if (!project || !prefabId || !variantId) return;
+    const prefab = (project.prefabs || []).find((entry) => entry && entry.id === prefabId);
+    const variant = prefab && Array.isArray(prefab.variants)
+      ? prefab.variants.find((entry) => entry && entry.id === variantId)
+      : null;
+    if (!prefab || !variant) return;
+    const confirmed = typeof window === 'undefined' || typeof window.confirm !== 'function'
+      ? true
+      : window.confirm(`Delete prefab variant "${variant.name}"? Instances using it will keep their current values as local overrides.`);
+    if (!confirmed) return;
+    setProject((prev) => {
+      const base = ensureProjectShape(prev);
+      return ensureProjectShape({
+        ...base,
+        prefabs: (base.prefabs || []).map((entry) => {
+          if (!entry || entry.id !== prefabId) return entry;
+          return {
+            ...entry,
+            variants: (entry.variants || []).filter((candidate) => candidate && candidate.id !== variantId),
+          };
+        }),
+        scenes: (base.scenes || []).map((scene) => ({
+          ...scene,
+          objects: (scene.objects || []).map((obj) => (
+            obj && obj.prefabId === prefabId && obj.variantId === variantId
+              ? { ...obj, variantId: null }
+              : obj
+          )),
+        })),
+      });
+    });
+    showToast(`Deleted variant ${variant.name}.`);
+  }, [project, showToast]);
+
+  const handleSavePrefabVariantFromObject = useCallback((objId) => {
+    const source = (projectView && projectView.objects || []).find((o) => o.id === objId);
+    if (!source || !source.prefabId) return;
+    const prefab = (project && project.prefabs || []).find((entry) => entry && entry.id === source.prefabId);
+    if (!prefab || source.id === prefab.sourceObjectId) return;
+    const suggestedName = `${source.name || prefab.name || 'Variant'} Variant`;
+    const variantName = typeof window !== 'undefined' && typeof window.prompt === 'function'
+      ? window.prompt('Variant name', suggestedName)
+      : suggestedName;
+    if (!variantName || !variantName.trim()) return;
+    const nextVariant = createPrefabVariantFromObject(prefab, source, { name: variantName.trim() });
+    if (!nextVariant) return;
+    setProject((prev) => {
+      const base = ensureProjectShape(prev);
+      const updated = mutateActiveScene(base, ({ world, objects }) => ({
+        world,
+        objects: objects.map((o) => {
+          if (o.id !== objId || o.prefabId !== prefab.id) return o;
+          const currentPrefab = (base.prefabs || []).find((entry) => entry && entry.id === prefab.id);
+          if (!currentPrefab) return o;
+          const variants = Array.isArray(currentPrefab.variants)
+            ? currentPrefab.variants.filter((variant) => variant && variant.id !== nextVariant.id)
+            : [];
+          const nextPrefab = { ...currentPrefab, variants: [...variants, nextVariant] };
+          return rematerializePrefabInstance(nextPrefab, o, {
+            variantId: nextVariant.id,
+            prefabOverrides: {},
+          }) || o;
+        }),
+      }));
+      return {
+        ...updated,
+        prefabs: (updated.prefabs || []).map((entry) => {
+          if (!entry || entry.id !== prefab.id) return entry;
+          const variants = Array.isArray(entry.variants) ? entry.variants.filter((variant) => variant && variant.id !== nextVariant.id) : [];
+          return { ...entry, variants: [...variants, nextVariant] };
+        }),
+      };
+    });
+  }, [project, projectView, mutateActiveScene]);
 
   // ---- Scripts ----
   const handleUpdateScript = useCallback((id, patch) => {
@@ -2192,6 +2363,10 @@ def on_update(self, engine, dt):
                   onSelectObject={handleSelectObject}
                   onSelectScene={handleSelectScene}
                   onSetStartScene={handleSetStartScene}
+                  onEditPrefabSource={handleEditPrefabSource}
+                  onRenamePrefabVariant={handleRenamePrefabVariant}
+                  onDeletePrefabVariant={handleDeletePrefabVariant}
+                  onSavePrefabVariantFromObject={handleSavePrefabVariantFromObject}
                 />
               </div>
             )}
@@ -2234,6 +2409,11 @@ def on_update(self, engine, dt):
               onRemoveComponent={handleRemoveComponent}
               onCreatePrefabFromObject={handleCreatePrefabFromObject}
               onUnlinkPrefab={handleUnlinkPrefab}
+              onEditPrefabSource={handleEditPrefabSource}
+              onSelectPrefabVariant={handleSelectPrefabVariant}
+              onResetPrefabOverrides={handleResetPrefabOverrides}
+              onResetPrefabOverridePath={handleResetPrefabOverridePath}
+              onSavePrefabVariantFromObject={handleSavePrefabVariantFromObject}
             />
           </div>
         </div>

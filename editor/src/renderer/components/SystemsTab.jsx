@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import AssetsSceneBrowser from './AssetsSceneBrowser.jsx';
+import { createPrefabFromObject } from '../state/projectModel.js';
 
 function idFromName(name, fallback) {
   return (name || fallback || 'item').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || fallback || 'item';
@@ -44,7 +45,20 @@ function clearSceneWorld(world) {
   };
 }
 
-export default function SystemsTab({ mode = 'assets', project, selectedObjectId, selectedSceneId, onPatchProject, onSelectObject, onSelectScene, onSetStartScene }) {
+export default function SystemsTab({
+  mode = 'assets',
+  project,
+  selectedObjectId,
+  selectedSceneId,
+  onPatchProject,
+  onSelectObject,
+  onSelectScene,
+  onSetStartScene,
+  onEditPrefabSource,
+  onRenamePrefabVariant,
+  onDeletePrefabVariant,
+  onSavePrefabVariantFromObject,
+}) {
   const [cellTypeName, setCellTypeName] = useState('');
   const [themeName, setThemeName] = useState((project && project.editorTheme) || 'slate');
   const [pluginName, setPluginName] = useState('');
@@ -116,17 +130,29 @@ export default function SystemsTab({ mode = 'assets', project, selectedObjectId,
   function addPrefabFromSelected() {
     if (!selectedObject) return;
     patch({
-      prefabs: [...project.prefabs, {
+      prefabs: [...project.prefabs, createPrefabFromObject(selectedObject, {
         id: `prefab_${Date.now().toString(36)}`,
         name: `${selectedObject.name || selectedObject.type} Prefab`,
-        sourceObjectId: selectedObject.id,
-        object: JSON.parse(JSON.stringify(selectedObject)),
-      }],
+      })],
     });
   }
 
   function removePrefab(id) {
-    patch({ prefabs: project.prefabs.filter((p) => p.id !== id) });
+    patch({
+      prefabs: project.prefabs.filter((p) => p.id !== id),
+      scenes: (project.scenes || []).map((scene) => ({
+        ...scene,
+        objects: (scene.objects || []).map((obj) => {
+          if (!obj || obj.prefabId !== id) return obj;
+          const next = { ...obj };
+          delete next.prefabId;
+          delete next.prefabRevision;
+          delete next.variantId;
+          delete next.prefabOverrides;
+          return next;
+        }),
+      })),
+    });
   }
 
   function updateBuildTarget(field, value) {
@@ -339,6 +365,11 @@ export default function SystemsTab({ mode = 'assets', project, selectedObjectId,
         showScenes={false}
         showImages={true}
         showPrefabs={true}
+        onEditPrefabSource={onEditPrefabSource}
+        onDeletePrefab={removePrefab}
+        onRenamePrefabVariant={onRenamePrefabVariant}
+        onDeletePrefabVariant={onDeletePrefabVariant}
+        onSavePrefabVariantFromObject={onSavePrefabVariantFromObject}
         title="Assets"
       />
 
@@ -420,19 +451,13 @@ export default function SystemsTab({ mode = 'assets', project, selectedObjectId,
       </div>
 
       <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
-        <h3>Prefabs</h3>
+        <h3>Prefab Tools</h3>
         <div style={{ marginBottom: 8 }}>
           <button className="btn btn-sm" onClick={addPrefabFromSelected} disabled={!selectedObject}>Save Selected As Prefab</button>
           {!selectedObject && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-muted)' }}>Select an object first</span>}
         </div>
-        <div>
-          {(project.prefabs || []).map((prefab) => (
-            <div key={prefab.id} className="field">
-              <span style={{ flex: 1 }}>{prefab.name}</span>
-              <button className="btn btn-sm btn-danger" onClick={() => removePrefab(prefab.id)}>Delete</button>
-            </div>
-          ))}
-          {(project.prefabs || []).length === 0 && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>No prefabs saved.</div>}
+        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+          Detailed prefab source and variant management now lives in the prefab browser above.
         </div>
       </div>
     </div>

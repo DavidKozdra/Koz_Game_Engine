@@ -85,7 +85,7 @@ export default function ObjectList({ project, editorState, onSelectObject, onAdd
       preview: null,
     }));
     const prefabTemplates = prefabs.map((prefab) => {
-      const obj = prefab.object || null;
+      const obj = prefab.baseObject || prefab.object || null;
       const type = (obj && obj.type) || 'generic';
       const sprite = obj && obj.components && obj.components.Sprite;
       const asset = sprite && sprite.assetId ? imageAssetById.get(sprite.assetId) : null;

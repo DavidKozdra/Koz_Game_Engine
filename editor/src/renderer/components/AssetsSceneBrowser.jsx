@@ -68,11 +68,17 @@ export default function AssetsSceneBrowser({
   onPatchProject,
   onSelectScene,
   onSetStartScene,
+  selectedObjectId = null,
   selectedSceneId = null,
   showScenes = true,
   showImages = true,
   showPrefabs = true,
   showAudio = true,
+  onEditPrefabSource,
+  onDeletePrefab,
+  onRenamePrefabVariant,
+  onDeletePrefabVariant,
+  onSavePrefabVariantFromObject,
   title = 'Assets',
 }) {
   const [expanded, setExpanded] = useState({ scenes: true, images: true, prefabs: true, audio: true });
@@ -101,6 +107,38 @@ export default function AssetsSceneBrowser({
   const prefabs = project.prefabs || [];
   const bootSceneId = project.activeSceneId || (scenes[0] && scenes[0].id) || null;
   const currentSceneId = selectedSceneId || bootSceneId;
+  const allSceneObjects = useMemo(() => (
+    scenes.flatMap((scene) => ((scene && Array.isArray(scene.objects)) ? scene.objects : []).map((obj) => ({ scene, obj })))
+  ), [scenes]);
+  const selectedObject = useMemo(() => {
+    if (!selectedObjectId) return null;
+    const entry = allSceneObjects.find(({ obj }) => obj && obj.id === selectedObjectId);
+    return entry ? entry.obj : null;
+  }, [allSceneObjects, selectedObjectId]);
+  const prefabUsage = useMemo(() => {
+    const usageByPrefab = new Map();
+    const usageByVariant = new Map();
+    const sourceSceneByPrefab = new Map();
+    const sourceObjectIds = new Map(prefabs.map((prefab) => [prefab.id, prefab.sourceObjectId || null]));
+
+    allSceneObjects.forEach(({ scene, obj }) => {
+      if (!obj) return;
+      if (obj.prefabId) {
+        usageByPrefab.set(obj.prefabId, (usageByPrefab.get(obj.prefabId) || 0) + 1);
+        if (obj.variantId) {
+          const variantKey = `${obj.prefabId}::${obj.variantId}`;
+          usageByVariant.set(variantKey, (usageByVariant.get(variantKey) || 0) + 1);
+        }
+      }
+      sourceObjectIds.forEach((sourceObjectId, prefabId) => {
+        if (sourceObjectId && obj.id === sourceObjectId && !sourceSceneByPrefab.has(prefabId)) {
+          sourceSceneByPrefab.set(prefabId, scene);
+        }
+      });
+    });
+
+    return { usageByPrefab, usageByVariant, sourceSceneByPrefab };
+  }, [allSceneObjects, prefabs]);
 
   function toggle(key) {
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -451,8 +489,92 @@ export default function AssetsSceneBrowser({
             <div style={{ display: 'grid', gap: 4 }}>
               {prefabs.length === 0 && <div style={{ color: '#94a3b8', fontSize: 11 }}>No prefabs yet.</div>}
               {prefabs.map((prefab) => (
-                <div key={prefab.id} style={{ padding: '4px 6px', border: '1px solid var(--border)', borderRadius: 4, background: '#111827', color: '#cbd5e1', fontSize: 12 }}>
-                  {prefab.name}
+                <div key={prefab.id} style={{ padding: '8px', border: '1px solid var(--border)', borderRadius: 6, background: '#111827', color: '#cbd5e1', fontSize: 12, display: 'grid', gap: 8 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 8, alignItems: 'start' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{prefab.name}</div>
+                      <div style={{ fontSize: 10, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{prefab.id}</div>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6 }}>
+                      <button
+                        className="btn btn-sm"
+                        onClick={() => onEditPrefabSource && onEditPrefabSource(prefab.id)}
+                        disabled={!onEditPrefabSource}
+                        title="Jump to the source object for this prefab"
+                      >
+                        Source
+                      </button>
+                      <button
+                        className="btn btn-sm"
+                        onClick={() => selectedObject && onSavePrefabVariantFromObject && onSavePrefabVariantFromObject(selectedObject.id)}
+                        disabled={!selectedObject || selectedObject.prefabId !== prefab.id || selectedObject.id === prefab.sourceObjectId || !onSavePrefabVariantFromObject}
+                        title={selectedObject && selectedObject.prefabId === prefab.id && selectedObject.id !== prefab.sourceObjectId
+                          ? 'Save the selected linked instance as a reusable prefab variant'
+                          : 'Select a linked instance of this prefab to capture a variant'}
+                      >
+                        Use Selected
+                      </button>
+                      <button
+                        className="btn btn-sm btn-danger"
+                        onClick={() => onDeletePrefab && onDeletePrefab(prefab.id)}
+                        disabled={!onDeletePrefab}
+                        title="Delete this prefab"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 11, color: '#94a3b8' }}>
+                    <span>Rev {prefab.revision || 1}</span>
+                    <span>Instances {prefabUsage.usageByPrefab.get(prefab.id) || 0}</span>
+                    <span>Variants {Array.isArray(prefab.variants) ? prefab.variants.length : 0}</span>
+                    <span>Source {prefabUsage.sourceSceneByPrefab.get(prefab.id)?.name || 'Missing'}</span>
+                  </div>
+                  <div style={{ display: 'grid', gap: 4 }}>
+                    {Array.isArray(prefab.variants) && prefab.variants.length > 0 ? prefab.variants.map((variant) => {
+                      const isSelectedVariant = selectedObject && selectedObject.prefabId === prefab.id && selectedObject.variantId === variant.id;
+                      return (
+                        <div
+                          key={variant.id}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'minmax(0, 1fr) auto auto',
+                            gap: 6,
+                            alignItems: 'center',
+                            padding: '6px 8px',
+                            border: isSelectedVariant ? '1px solid rgba(59,130,246,0.8)' : '1px solid rgba(148,163,184,0.2)',
+                            borderRadius: 4,
+                            background: isSelectedVariant ? 'rgba(59,130,246,0.12)' : '#0f172a',
+                          }}
+                        >
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{variant.name}</div>
+                            <div style={{ fontSize: 10, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {variant.id} · Used {prefabUsage.usageByVariant.get(`${prefab.id}::${variant.id}`) || 0}
+                            </div>
+                          </div>
+                          <button
+                            className="btn btn-sm"
+                            onClick={() => onRenamePrefabVariant && onRenamePrefabVariant(prefab.id, variant.id)}
+                            disabled={!onRenamePrefabVariant}
+                            title="Rename this variant"
+                          >
+                            Rename
+                          </button>
+                          <button
+                            className="btn btn-sm btn-danger"
+                            onClick={() => onDeletePrefabVariant && onDeletePrefabVariant(prefab.id, variant.id)}
+                            disabled={!onDeletePrefabVariant}
+                            title="Delete this variant"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      );
+                    }) : (
+                      <div style={{ color: '#94a3b8', fontSize: 11 }}>No variants yet. Select a linked instance and use “Use Selected” to capture one.</div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

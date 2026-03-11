@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react';
 import Modal from './Modal.jsx';
 import Icon from './Icon.jsx';
 
+const PREFAB_DELETE_KEY = '__kozPrefabDelete';
+
 const AVAILABLE_COMPONENTS = [
   { id: 'Grid', label: 'Grid', icon: 'grid', color: '#60a5fa', defaults: { cols: 10, rows: 10, cellSize: 24, visible: true, layerId: null } },
   { id: 'Sprite', label: 'Sprite', icon: 'objSprite', color: '#a78bfa', defaults: { assetId: null, color: '#4ade80', width: 32, height: 32, frameAssetIds: [], fps: 8 } },
@@ -55,7 +57,52 @@ function CollapsibleSection({ title, defaultOpen = true, onRemove, children }) {
   );
 }
 
-export default function Inspector({ project, editorState, onUpdateObject, onUpdateComponent, onRemoveComponent, onCreatePrefabFromObject, onUnlinkPrefab }) {
+function collectPrefabOverridePaths(value, prefix = '') {
+  if (Array.isArray(value)) return prefix ? [prefix] : [];
+  if (!value || typeof value !== 'object') return prefix ? [prefix] : [];
+  if (value[PREFAB_DELETE_KEY] === true) return prefix ? [prefix] : [];
+  const keys = Object.keys(value).filter((key) => key !== PREFAB_DELETE_KEY);
+  if (keys.length === 0) return [];
+  return keys.flatMap((key) => {
+    const nextPrefix = prefix ? `${prefix}.${key}` : key;
+    return collectPrefabOverridePaths(value[key], nextPrefix);
+  });
+}
+
+function hasPrefabOverridePath(overrides, path) {
+  const segments = String(path || '').split('.').filter(Boolean);
+  if (segments.length === 0) return false;
+  let current = overrides;
+  for (let index = 0; index < segments.length; index += 1) {
+    if (!current || typeof current !== 'object') return index > 0;
+    if (current[PREFAB_DELETE_KEY] === true) return true;
+    const segment = segments[index];
+    if (!Object.prototype.hasOwnProperty.call(current, segment)) return false;
+    current = current[segment];
+  }
+  return current !== undefined;
+}
+
+function formatPrefabOverridePath(path) {
+  return String(path || '')
+    .replace(/^components\./, '')
+    .replace(/\.frameAssetIds$/, '.frames');
+}
+
+export default function Inspector({
+  project,
+  editorState,
+  onUpdateObject,
+  onUpdateComponent,
+  onRemoveComponent,
+  onCreatePrefabFromObject,
+  onUnlinkPrefab,
+  onEditPrefabSource,
+  onSelectPrefabVariant,
+  onResetPrefabOverrides,
+  onResetPrefabOverridePath,
+  onSavePrefabVariantFromObject,
+}) {
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [imageQuery, setImageQuery] = useState('');
   const [showAudioPicker, setShowAudioPicker] = useState(false);
@@ -76,6 +123,14 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
   const selectedImageAsset = components.Sprite && components.Sprite.assetId ? imageAssetById.get(components.Sprite.assetId) : null;
   const selectedAudioAsset = components.Sound && components.Sound.assetId ? audioAssetById.get(components.Sound.assetId) : null;
   const linkedPrefab = obj && obj.prefabId ? (project.prefabs || []).find((p) => p.id === obj.prefabId) : null;
+  const prefabVariants = linkedPrefab && Array.isArray(linkedPrefab.variants) ? linkedPrefab.variants : [];
+  const hasPrefabOverrides = !!(obj && obj.prefabOverrides && Object.keys(obj.prefabOverrides).length > 0);
+  const isPrefabSourceObject = !!(linkedPrefab && obj && obj.id === linkedPrefab.sourceObjectId);
+  const isLinkedPrefabInstance = !!(linkedPrefab && obj && obj.id !== linkedPrefab.sourceObjectId);
+  const overridePaths = useMemo(() => collectPrefabOverridePaths(obj && obj.prefabOverrides ? obj.prefabOverrides : {}), [obj]);
+  const selectedVariant = useMemo(() => (
+    prefabVariants.find((variant) => variant && variant.id === obj?.variantId) || null
+  ), [prefabVariants, obj]);
   const filteredImages = useMemo(() => {
     const q = imageQuery.trim().toLowerCase();
     if (!q) return imageAssets;
@@ -173,19 +228,169 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
     updateBindings(updated);
   }
 
+  function renderFieldLabel(text, path, options = {}) {
+    const style = options.style || undefined;
+    if (!linkedPrefab || !isLinkedPrefabInstance || !path) {
+      return <label style={style}>{text}</label>;
+    }
+    if (options.local === true) {
+      return (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, ...style }}>
+          <span>{text}</span>
+          <span
+            style={{
+              marginLeft: 'auto',
+              fontSize: 9,
+              lineHeight: 1.4,
+              textTransform: 'uppercase',
+              letterSpacing: 0.4,
+              color: '#cbd5e1',
+              border: '1px solid rgba(203,213,225,0.25)',
+              borderRadius: 999,
+              padding: '0 4px',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Local
+          </span>
+        </label>
+      );
+    }
+    const overridden = hasPrefabOverridePath(obj.prefabOverrides, path);
+    return (
+      <label style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, ...style }}>
+        <span>{text}</span>
+        <span
+          style={{
+            marginLeft: 'auto',
+            fontSize: 9,
+            lineHeight: 1.4,
+            textTransform: 'uppercase',
+            letterSpacing: 0.4,
+            color: overridden ? '#fde68a' : '#93c5fd',
+            border: `1px solid ${overridden ? 'rgba(253,230,138,0.45)' : 'rgba(147,197,253,0.35)'}`,
+            borderRadius: 999,
+            padding: '0 4px',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {overridden ? 'Override' : 'Prefab'}
+        </span>
+        {overridden && onResetPrefabOverridePath && (
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onResetPrefabOverridePath(obj.id, path);
+            }}
+            style={{ fontSize: 9, padding: '0 4px' }}
+            title={`Reset ${text} to the prefab value`}
+          >
+            Reset
+          </button>
+        )}
+      </label>
+    );
+  }
+
   return (
     <div>
       {/* Prefab status bar — always on top */}
       {linkedPrefab ? (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px',
+          display: 'grid', gap: 8, padding: '6px 8px',
           background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.35)',
           borderRadius: 6, marginBottom: 6, fontSize: 11,
         }}>
-          <span style={{ color: 'var(--accent)', fontWeight: 600 }}>Prefab:</span>
-          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{linkedPrefab.name}</span>
-          <button className="btn btn-sm" onClick={() => onUnlinkPrefab && onUnlinkPrefab(obj.id)}
-            style={{ fontSize: 10, padding: '1px 6px' }} title="Unlink this object from its prefab">Unlink</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <span style={{ color: 'var(--accent)', fontWeight: 600 }}>Prefab:</span>
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{linkedPrefab.name}</span>
+            <span style={{ color: 'var(--text-muted)' }}>{isPrefabSourceObject ? 'SOURCE' : (hasPrefabOverrides ? 'OVERRIDDEN' : 'IN SYNC')}</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto auto auto', gap: 6, alignItems: 'center' }}>
+            <select
+              value={obj.variantId || ''}
+              onChange={(e) => onSelectPrefabVariant && onSelectPrefabVariant(obj.id, e.target.value || null)}
+              style={{ width: '100%' }}
+              disabled={isPrefabSourceObject}
+            >
+              <option value="">Base Prefab</option>
+              {prefabVariants.map((variant) => (
+                <option key={variant.id} value={variant.id}>{variant.name}</option>
+              ))}
+            </select>
+            <button
+              className="btn btn-sm"
+              onClick={() => onSavePrefabVariantFromObject && onSavePrefabVariantFromObject(obj.id)}
+              disabled={isPrefabSourceObject}
+              style={{ fontSize: 10, padding: '1px 6px' }}
+              title={isPrefabSourceObject ? 'Prefab source objects already define the base values.' : "Save this object's current prefab differences as a reusable variant"}
+            >
+              Save Variant
+            </button>
+            <button
+              className="btn btn-sm"
+              onClick={() => onResetPrefabOverrides && onResetPrefabOverrides(obj.id)}
+              disabled={isPrefabSourceObject || !hasPrefabOverrides}
+              style={{ fontSize: 10, padding: '1px 6px' }}
+              title="Reset this instance back to the prefab or selected variant"
+            >
+              Revert
+            </button>
+            <button
+              className="btn btn-sm"
+              onClick={() => onEditPrefabSource && onEditPrefabSource(linkedPrefab.id)}
+              disabled={isPrefabSourceObject}
+              style={{ fontSize: 10, padding: '1px 6px' }}
+              title={isPrefabSourceObject ? 'Already editing the prefab source object.' : 'Jump to the source object that drives this prefab'}
+            >
+              Edit Source
+            </button>
+            <button
+              className="btn btn-sm"
+              onClick={() => onUnlinkPrefab && onUnlinkPrefab(obj.id)}
+              disabled={isPrefabSourceObject}
+              style={{ fontSize: 10, padding: '1px 6px' }}
+              title={isPrefabSourceObject ? 'The source object stays linked to its prefab definition.' : 'Unlink this object from its prefab'}
+            >
+              Unlink
+            </button>
+          </div>
+          {isPrefabSourceObject ? (
+            <div style={{ color: 'var(--text-muted)' }}>
+              This object is the prefab source. Changes here propagate to every linked instance.
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: 6 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, color: 'var(--text-muted)' }}>
+                <span>Revision {obj.prefabRevision || linkedPrefab.revision} / {linkedPrefab.revision}</span>
+                <span>Variant {selectedVariant ? selectedVariant.name : 'Base Prefab'}</span>
+                <span>Overrides {overridePaths.length}</span>
+              </div>
+              {overridePaths.length > 0 ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {overridePaths.map((path) => (
+                    <button
+                      key={path}
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() => onResetPrefabOverridePath && onResetPrefabOverridePath(obj.id, path)}
+                      style={{ fontSize: 10, padding: '1px 6px' }}
+                      title={`Reset ${formatPrefabOverridePath(path)} to the prefab value`}
+                    >
+                      {formatPrefabOverridePath(path)}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: 'var(--text-muted)' }}>
+                  This instance is inheriting all prefab values directly.
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <div style={{ marginBottom: 6 }}>
@@ -199,7 +404,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
       <div className="panel-section">
         <h3>Inspector</h3>
         <div className="field">
-          <label>Name</label>
+          {renderFieldLabel('Name', 'name')}
           <input type="text" value={obj.name || ''} onChange={handleNameChange} />
         </div>
         <div className="field">
@@ -207,11 +412,11 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
           <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{obj.id}</span>
         </div>
         <div className="field">
-          <label>Type</label>
+          {renderFieldLabel('Type', 'type')}
           <input type="text" value={obj.type || 'generic'} onChange={(e) => onUpdateObject(obj.id, { type: e.target.value })} />
         </div>
         <div className="field">
-          <label>Parent</label>
+          {renderFieldLabel('Parent', 'parentId', { local: true })}
           <select
             value={obj.parentId || ''}
             onChange={(e) => onUpdateObject(obj.id, { parentId: e.target.value || null })}
@@ -237,28 +442,28 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
       {components.Transform && (
         <CollapsibleSection title="Transform">
           <div className="field">
-            <label>X</label>
+            {renderFieldLabel('X', 'components.Transform.x', { local: true })}
             <input type="number" value={components.Transform.x || 0}
               onChange={(e) => handleComponentChange('Transform', 'x', parseFloat(e.target.value) || 0)} />
           </div>
           <div className="field">
-            <label>Y</label>
+            {renderFieldLabel('Y', 'components.Transform.y', { local: true })}
             <input type="number" value={components.Transform.y || 0}
               onChange={(e) => handleComponentChange('Transform', 'y', parseFloat(e.target.value) || 0)} />
           </div>
           <div className="field">
-            <label>Rotation</label>
+            {renderFieldLabel('Rotation', 'components.Transform.rotation', { local: true })}
             <input type="number" value={components.Transform.rotation || 0}
               onChange={(e) => handleComponentChange('Transform', 'rotation', parseFloat(e.target.value) || 0)} />
             <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>deg</span>
           </div>
           <div className="field">
-            <label>Scale X</label>
+            {renderFieldLabel('Scale X', 'components.Transform.scaleX', { local: true })}
             <input type="number" step="0.1" value={components.Transform.scaleX ?? 1}
               onChange={(e) => handleComponentChange('Transform', 'scaleX', parseFloat(e.target.value) || 1)} />
           </div>
           <div className="field">
-            <label>Scale Y</label>
+            {renderFieldLabel('Scale Y', 'components.Transform.scaleY', { local: true })}
             <input type="number" step="0.1" value={components.Transform.scaleY ?? 1}
               onChange={(e) => handleComponentChange('Transform', 'scaleY', parseFloat(e.target.value) || 1)} />
           </div>
@@ -269,27 +474,27 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
       {components.Grid && (
         <CollapsibleSection title="Grid" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'Grid') : undefined}>
           <div className="field">
-            <label>Columns</label>
+            {renderFieldLabel('Columns', 'components.Grid.cols')}
             <input type="number" value={components.Grid.cols || 10}
               onChange={(e) => handleComponentChange('Grid', 'cols', parseInt(e.target.value, 10) || 10)} />
           </div>
           <div className="field">
-            <label>Rows</label>
+            {renderFieldLabel('Rows', 'components.Grid.rows')}
             <input type="number" value={components.Grid.rows || 10}
               onChange={(e) => handleComponentChange('Grid', 'rows', parseInt(e.target.value, 10) || 10)} />
           </div>
           <div className="field">
-            <label>Cell Size</label>
+            {renderFieldLabel('Cell Size', 'components.Grid.cellSize')}
             <input type="number" value={components.Grid.cellSize || 24}
               onChange={(e) => handleComponentChange('Grid', 'cellSize', parseInt(e.target.value, 10) || 24)} />
           </div>
           <div className="field">
-            <label>Visible</label>
+            {renderFieldLabel('Visible', 'components.Grid.visible')}
             <input type="checkbox" checked={components.Grid.visible !== false}
               onChange={(e) => handleComponentChange('Grid', 'visible', e.target.checked)} />
           </div>
           <div className="field">
-            <label>Layer</label>
+            {renderFieldLabel('Layer', 'components.Grid.layerId')}
             <select
               value={components.Grid.layerId || ''}
               onChange={(e) => handleComponentChange('Grid', 'layerId', e.target.value || null)}
@@ -312,7 +517,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             </div>
           )}
           <div className="field">
-            <label>Image</label>
+            {renderFieldLabel('Image', 'components.Sprite.assetId')}
             <div style={{ display: 'flex', flex: 1, gap: 6, alignItems: 'center' }}>
               <button className="btn btn-sm" onClick={() => setShowImagePicker(true)}>Select Image</button>
               <span style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -330,22 +535,22 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             </div>
           </div>
           <div className="field">
-            <label>Color</label>
+            {renderFieldLabel('Color', 'components.Sprite.color')}
             <input type="color" value={components.Sprite.color || '#4ade80'}
               onChange={(e) => handleComponentChange('Sprite', 'color', e.target.value)} />
           </div>
           <div className="field">
-            <label>Width</label>
+            {renderFieldLabel('Width', 'components.Sprite.width')}
             <input type="number" value={components.Sprite.width || 32}
               onChange={(e) => handleComponentChange('Sprite', 'width', parseInt(e.target.value, 10) || 32)} />
           </div>
           <div className="field">
-            <label>Height</label>
+            {renderFieldLabel('Height', 'components.Sprite.height')}
             <input type="number" value={components.Sprite.height || 32}
               onChange={(e) => handleComponentChange('Sprite', 'height', parseInt(e.target.value, 10) || 32)} />
           </div>
           <div className="field">
-            <label>Frames</label>
+            {renderFieldLabel('Frames', 'components.Sprite.frameAssetIds')}
             <input
               type="text"
               value={Array.isArray(components.Sprite.frameAssetIds) ? components.Sprite.frameAssetIds.join(',') : ''}
@@ -354,7 +559,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>FPS</label>
+            {renderFieldLabel('FPS', 'components.Sprite.fps')}
             <input
               type="number"
               value={components.Sprite.fps || 8}
@@ -485,7 +690,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
       {components.Collider && (
         <CollapsibleSection title="Collider" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'Collider') : undefined}>
           <div className="field">
-            <label>Shape</label>
+            {renderFieldLabel('Shape', 'components.Collider.shape')}
             <select value={components.Collider.shape || 'rect'}
               onChange={(e) => handleComponentChange('Collider', 'shape', e.target.value)}>
               <option value="rect">Rectangle</option>
@@ -493,12 +698,12 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             </select>
           </div>
           <div className="field">
-            <label>Width</label>
+            {renderFieldLabel('Width', 'components.Collider.width')}
             <input type="number" value={components.Collider.width || 32}
               onChange={(e) => handleComponentChange('Collider', 'width', parseInt(e.target.value, 10) || 32)} />
           </div>
           <div className="field">
-            <label>Height</label>
+            {renderFieldLabel('Height', 'components.Collider.height')}
             <input type="number" value={components.Collider.height || 32}
               onChange={(e) => handleComponentChange('Collider', 'height', parseInt(e.target.value, 10) || 32)} />
           </div>
@@ -509,12 +714,12 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
       {components.Collision && (
         <CollapsibleSection title="Collision" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'Collision') : undefined}>
           <div className="field">
-            <label>Enabled</label>
+            {renderFieldLabel('Enabled', 'components.Collision.enabled')}
             <input type="checkbox" checked={components.Collision.enabled !== false}
               onChange={(e) => handleComponentChange('Collision', 'enabled', e.target.checked)} />
           </div>
           <div className="field">
-            <label>Trigger</label>
+            {renderFieldLabel('Trigger', 'components.Collision.isTrigger')}
             <input type="checkbox" checked={!!components.Collision.isTrigger}
               onChange={(e) => handleComponentChange('Collision', 'isTrigger', e.target.checked)} />
           </div>
@@ -525,17 +730,17 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
       {components.RigidBody && (
         <CollapsibleSection title="RigidBody" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'RigidBody') : undefined}>
           <div className="field">
-            <label>Enabled</label>
+            {renderFieldLabel('Enabled', 'components.RigidBody.enabled')}
             <input type="checkbox" checked={!!components.RigidBody.enabled}
               onChange={(e) => handleComponentChange('RigidBody', 'enabled', e.target.checked)} />
           </div>
           <div className="field">
-            <label>Weight</label>
+            {renderFieldLabel('Weight', 'components.RigidBody.weight')}
             <input type="number" value={components.RigidBody.weight || 0}
               onChange={(e) => handleComponentChange('RigidBody', 'weight', parseFloat(e.target.value) || 0)} />
           </div>
           <div className="field">
-            <label>Friction</label>
+            {renderFieldLabel('Friction', 'components.RigidBody.friction')}
             <input type="number" value={components.RigidBody.friction || 0}
               onChange={(e) => handleComponentChange('RigidBody', 'friction', parseFloat(e.target.value) || 0)} />
           </div>
@@ -546,7 +751,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
       {components.Render && (
         <CollapsibleSection title="Render">
           <div className="field">
-            <label>Layer</label>
+            {renderFieldLabel('Layer', 'components.Render.layerId')}
             <select
               value={components.Render.layerId || 'obj-main'}
               onChange={(e) => handleComponentChange('Render', 'layerId', e.target.value)}
@@ -557,12 +762,12 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             </select>
           </div>
           <div className="field">
-            <label>Visible</label>
+            {renderFieldLabel('Visible', 'components.Render.visible')}
             <input type="checkbox" checked={components.Render.visible !== false}
               onChange={(e) => handleComponentChange('Render', 'visible', e.target.checked)} />
           </div>
           <div className="field">
-            <label>Z Index</label>
+            {renderFieldLabel('Z Index', 'components.Render.zIndex')}
             <input type="number" value={components.Render.zIndex || 0}
               onChange={(e) => handleComponentChange('Render', 'zIndex', parseInt(e.target.value, 10) || 0)} />
           </div>
@@ -573,7 +778,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
       {components.Camera && (
         <CollapsibleSection title="Camera" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'Camera') : undefined}>
           <div className="field">
-            <label>Enabled</label>
+            {renderFieldLabel('Enabled', 'components.Camera.enabled')}
             <input
               type="checkbox"
               checked={components.Camera.enabled !== false}
@@ -581,7 +786,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Speed</label>
+            {renderFieldLabel('Speed', 'components.Camera.speed')}
             <input
               type="number"
               value={components.Camera.speed || 8}
@@ -589,7 +794,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Offset X</label>
+            {renderFieldLabel('Offset X', 'components.Camera.offsetX')}
             <input
               type="number"
               value={components.Camera.offsetX || 0}
@@ -601,7 +806,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Offset Y</label>
+            {renderFieldLabel('Offset Y', 'components.Camera.offsetY')}
             <input
               type="number"
               value={components.Camera.offsetY || 0}
@@ -613,7 +818,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>DeadZone W</label>
+            {renderFieldLabel('DeadZone W', 'components.Camera.deadZoneWidth')}
             <input
               type="number"
               value={components.Camera.deadZoneWidth || 0}
@@ -625,7 +830,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>DeadZone H</label>
+            {renderFieldLabel('DeadZone H', 'components.Camera.deadZoneHeight')}
             <input
               type="number"
               value={components.Camera.deadZoneHeight || 0}
@@ -637,7 +842,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>LookAhead X</label>
+            {renderFieldLabel('LookAhead X', 'components.Camera.lookAheadX')}
             <input
               type="number"
               value={components.Camera.lookAheadX || 0}
@@ -649,7 +854,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>LookAhead Y</label>
+            {renderFieldLabel('LookAhead Y', 'components.Camera.lookAheadY')}
             <input
               type="number"
               value={components.Camera.lookAheadY || 0}
@@ -661,7 +866,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Margin</label>
+            {renderFieldLabel('Margin', 'components.Camera.visibleMargin')}
             <input
               type="number"
               value={components.Camera.visibleMargin || 0}
@@ -673,7 +878,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Max Speed</label>
+            {renderFieldLabel('Max Speed', 'components.Camera.maxSpeed')}
             <input
               type="number"
               value={components.Camera.maxSpeed || 2000}
@@ -685,13 +890,13 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Follow X</label>
+            {renderFieldLabel('Follow X', 'components.Camera.followX')}
             <input
               type="checkbox"
               checked={components.Camera.followX !== false}
               onChange={(e) => handleComponentChange('Camera', 'followX', e.target.checked)}
             />
-            <label>Follow Y</label>
+            {renderFieldLabel('Follow Y', 'components.Camera.followY')}
             <input
               type="checkbox"
               checked={components.Camera.followY !== false}
@@ -699,7 +904,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Clamp</label>
+            {renderFieldLabel('Clamp', 'components.Camera.clampToWorld')}
             <input
               type="checkbox"
               checked={components.Camera.clampToWorld !== false}
@@ -707,7 +912,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Target</label>
+            {renderFieldLabel('Target', 'components.Camera.targetObjectId')}
             <select
               value={components.Camera.targetObjectId || ''}
               onChange={(e) => handleComponentChange('Camera', 'targetObjectId', e.target.value || null)}
@@ -719,7 +924,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             </select>
           </div>
           <div className="field">
-            <label>Quick Set</label>
+            {renderFieldLabel('Quick Set', 'components.Camera.targetObjectId')}
             <button
               className="btn btn-sm"
               onClick={() => {
@@ -743,7 +948,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             </div>
           )}
           <div className="field">
-            <label>File</label>
+            {renderFieldLabel('File', 'components.Sound.assetId')}
             <div style={{ display: 'flex', flex: 1, gap: 6, alignItems: 'center' }}>
               <button className="btn btn-sm" onClick={() => setShowAudioPicker(true)}>Select Audio</button>
               <span style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -761,7 +966,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             </div>
           </div>
           <div className="field">
-            <label>Category</label>
+            {renderFieldLabel('Category', 'components.Sound.category')}
             <select
               value={components.Sound.category === 'music' ? 'music' : 'sfx'}
               onChange={(e) => handleComponentChange('Sound', 'category', e.target.value === 'music' ? 'music' : 'sfx')}
@@ -771,7 +976,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             </select>
           </div>
           <div className="field">
-            <label>Volume</label>
+            {renderFieldLabel('Volume', 'components.Sound.volume')}
             <input
               type="number"
               min="0"
@@ -782,7 +987,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Max Dist</label>
+            {renderFieldLabel('Max Dist', 'components.Sound.maxDistance')}
             <input
               type="number"
               min="0"
@@ -793,7 +998,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>0 = global</span>
           </div>
           <div className="field">
-            <label>Autoplay</label>
+            {renderFieldLabel('Autoplay', 'components.Sound.autoplay')}
             <input
               type="checkbox"
               checked={!!components.Sound.autoplay}
@@ -801,7 +1006,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Loop</label>
+            {renderFieldLabel('Loop', 'components.Sound.loop')}
             <input
               type="checkbox"
               checked={!!components.Sound.loop}
@@ -814,7 +1019,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
       {components.LightingManager && (
         <CollapsibleSection title="Lighting Manager" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'LightingManager') : undefined}>
           <div className="field">
-            <label>Enabled</label>
+            {renderFieldLabel('Enabled', 'components.LightingManager.enabled')}
             <input
               type="checkbox"
               checked={components.LightingManager.enabled === true}
@@ -822,7 +1027,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Ambient</label>
+            {renderFieldLabel('Ambient', 'components.LightingManager.ambientColor')}
             <input
               type="color"
               value={components.LightingManager.ambientColor || '#0b1220'}
@@ -830,7 +1035,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Ambient %</label>
+            {renderFieldLabel('Ambient %', 'components.LightingManager.ambientIntensity')}
             <input
               type="number"
               min="0"
@@ -841,7 +1046,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Darkness %</label>
+            {renderFieldLabel('Darkness %', 'components.LightingManager.overlayOpacity')}
             <input
               type="number"
               min="0"
@@ -852,7 +1057,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Fog</label>
+            {renderFieldLabel('Fog', 'components.LightingManager.fogColor')}
             <input
               type="color"
               value={components.LightingManager.fogColor || '#07111d'}
@@ -860,7 +1065,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Fog %</label>
+            {renderFieldLabel('Fog %', 'components.LightingManager.fogDensity')}
             <input
               type="number"
               min="0"
@@ -876,7 +1081,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
       {components.Light && (
         <CollapsibleSection title="Light" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'Light') : undefined}>
           <div className="field">
-            <label>Enabled</label>
+            {renderFieldLabel('Enabled', 'components.Light.enabled')}
             <input
               type="checkbox"
               checked={components.Light.enabled !== false}
@@ -884,7 +1089,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Color</label>
+            {renderFieldLabel('Color', 'components.Light.color')}
             <input
               type="color"
               value={components.Light.color || '#ffd27a'}
@@ -892,7 +1097,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Intensity</label>
+            {renderFieldLabel('Intensity', 'components.Light.intensity')}
             <input
               type="number"
               min="0"
@@ -903,7 +1108,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Radius</label>
+            {renderFieldLabel('Radius', 'components.Light.radius')}
             <input
               type="number"
               min="1"
@@ -913,7 +1118,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Falloff</label>
+            {renderFieldLabel('Falloff', 'components.Light.falloff')}
             <input
               type="number"
               min="0"
@@ -924,7 +1129,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Offset X</label>
+            {renderFieldLabel('Offset X', 'components.Light.offsetX')}
             <input
               type="number"
               step="1"
@@ -933,7 +1138,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Offset Y</label>
+            {renderFieldLabel('Offset Y', 'components.Light.offsetY')}
             <input
               type="number"
               step="1"
@@ -942,7 +1147,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
             />
           </div>
           <div className="field">
-            <label>Height</label>
+            {renderFieldLabel('Height', 'components.Light.height')}
             <input
               type="number"
               min="0"
@@ -958,67 +1163,67 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
       {components.ParticleEmitter && (
         <CollapsibleSection title="Particle Emitter" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'ParticleEmitter') : undefined}>
           <div className="field">
-            <label>Enabled</label>
+            {renderFieldLabel('Enabled', 'components.ParticleEmitter.enabled')}
             <input type="checkbox" checked={components.ParticleEmitter.enabled !== false} onChange={(e) => handleComponentChange('ParticleEmitter', 'enabled', e.target.checked)} />
           </div>
           <div className="field">
-            <label>Count</label>
+            {renderFieldLabel('Count', 'components.ParticleEmitter.count')}
             <input type="number" min="1" max="500" step="1" value={Number.isFinite(components.ParticleEmitter.count) ? components.ParticleEmitter.count : 24} onChange={(e) => handleComponentChange('ParticleEmitter', 'count', Math.max(1, Math.min(500, parseInt(e.target.value) || 1)))} />
           </div>
           <div className="field">
-            <label>Life (ms)</label>
+            {renderFieldLabel('Life (ms)', 'components.ParticleEmitter.life')}
             <input type="number" min="50" step="50" value={Number.isFinite(components.ParticleEmitter.life) ? components.ParticleEmitter.life : 500} onChange={(e) => handleComponentChange('ParticleEmitter', 'life', Math.max(50, parseFloat(e.target.value) || 50))} />
           </div>
           <div className="field">
-            <label>Speed</label>
+            {renderFieldLabel('Speed', 'components.ParticleEmitter.speed')}
             <input type="number" min="0" step="10" value={Number.isFinite(components.ParticleEmitter.speed) ? components.ParticleEmitter.speed : 80} onChange={(e) => handleComponentChange('ParticleEmitter', 'speed', Math.max(0, parseFloat(e.target.value) || 0))} />
           </div>
           <div className="field">
-            <label>Spread Angle</label>
+            {renderFieldLabel('Spread Angle', 'components.ParticleEmitter.spreadAngle')}
             <input type="number" min="0" max="360" step="5" value={Number.isFinite(components.ParticleEmitter.spreadAngle) ? components.ParticleEmitter.spreadAngle : 360} onChange={(e) => handleComponentChange('ParticleEmitter', 'spreadAngle', Math.max(0, Math.min(360, parseFloat(e.target.value) || 0)))} />
           </div>
           <div className="field">
-            <label>Direction</label>
+            {renderFieldLabel('Direction', 'components.ParticleEmitter.direction')}
             <input type="number" min="0" max="360" step="5" value={Number.isFinite(components.ParticleEmitter.direction) ? components.ParticleEmitter.direction : 270} onChange={(e) => handleComponentChange('ParticleEmitter', 'direction', Math.max(0, Math.min(360, parseFloat(e.target.value) || 0)))} />
             <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>0=right, 90=down, 270=up</span>
           </div>
           <div className="field">
-            <label>Color</label>
+            {renderFieldLabel('Color', 'components.ParticleEmitter.color')}
             <input type="color" value={components.ParticleEmitter.color || '#fb923c'} onChange={(e) => handleComponentChange('ParticleEmitter', 'color', e.target.value)} />
           </div>
           <div className="field">
-            <label>Size</label>
+            {renderFieldLabel('Size', 'components.ParticleEmitter.size')}
             <input type="number" min="1" max="64" step="1" value={Number.isFinite(components.ParticleEmitter.size) ? components.ParticleEmitter.size : 4} onChange={(e) => handleComponentChange('ParticleEmitter', 'size', Math.max(1, parseFloat(e.target.value) || 1))} />
           </div>
           <div className="field">
-            <label>Size End</label>
+            {renderFieldLabel('Size End', 'components.ParticleEmitter.sizeEnd')}
             <input type="number" min="0" max="64" step="0.5" value={Number.isFinite(components.ParticleEmitter.sizeEnd) ? components.ParticleEmitter.sizeEnd : 1} onChange={(e) => handleComponentChange('ParticleEmitter', 'sizeEnd', Math.max(0, parseFloat(e.target.value) || 0))} />
           </div>
           <div className="field">
-            <label>Gravity</label>
+            {renderFieldLabel('Gravity', 'components.ParticleEmitter.gravity')}
             <input type="number" step="10" value={Number.isFinite(components.ParticleEmitter.gravity) ? components.ParticleEmitter.gravity : 0} onChange={(e) => handleComponentChange('ParticleEmitter', 'gravity', parseFloat(e.target.value) || 0)} />
           </div>
           <div className="field">
-            <label>Drag</label>
+            {renderFieldLabel('Drag', 'components.ParticleEmitter.drag')}
             <input type="number" min="0" max="1" step="0.01" value={Number.isFinite(components.ParticleEmitter.drag) ? components.ParticleEmitter.drag : 0.98} onChange={(e) => handleComponentChange('ParticleEmitter', 'drag', Math.max(0, Math.min(1, parseFloat(e.target.value) || 0)))} />
           </div>
           <div className="field">
-            <label>Burst</label>
+            {renderFieldLabel('Burst', 'components.ParticleEmitter.burst')}
             <input type="checkbox" checked={!!components.ParticleEmitter.burst} onChange={(e) => handleComponentChange('ParticleEmitter', 'burst', e.target.checked)} />
             <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Emit all at once</span>
           </div>
           <div className="field">
-            <label>Loop</label>
+            {renderFieldLabel('Loop', 'components.ParticleEmitter.loop')}
             <input type="checkbox" checked={components.ParticleEmitter.loop !== false} onChange={(e) => handleComponentChange('ParticleEmitter', 'loop', e.target.checked)} />
           </div>
           {components.ParticleEmitter.loop && (
             <div className="field">
-              <label>Interval (ms)</label>
+              {renderFieldLabel('Interval (ms)', 'components.ParticleEmitter.interval')}
               <input type="number" min="100" step="100" value={Number.isFinite(components.ParticleEmitter.interval) ? components.ParticleEmitter.interval : 1000} onChange={(e) => handleComponentChange('ParticleEmitter', 'interval', Math.max(100, parseFloat(e.target.value) || 100))} />
             </div>
           )}
           <div className="field">
-            <label>World Space</label>
+            {renderFieldLabel('World Space', 'components.ParticleEmitter.worldSpace')}
             <input type="checkbox" checked={components.ParticleEmitter.worldSpace !== false} onChange={(e) => handleComponentChange('ParticleEmitter', 'worldSpace', e.target.checked)} />
           </div>
         </CollapsibleSection>
@@ -1141,7 +1346,7 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
       {components.Animator && (
         <CollapsibleSection title="Animator" onRemove={onRemoveComponent ? () => onRemoveComponent(obj.id, 'Animator') : undefined}>
           <div className="field">
-            <label>Clip</label>
+            {renderFieldLabel('Clip', 'components.Animator.clipId')}
             <select
               value={components.Animator.clipId || ''}
               onChange={(e) => handleComponentChange('Animator', 'clipId', e.target.value || null)}

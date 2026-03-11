@@ -134,6 +134,7 @@ function normalizeRenderMode(value, fallback = '2d') {
 }
 
 function clone(v) {
+  if (v === undefined) return undefined;
   return JSON.parse(JSON.stringify(v));
 }
 
@@ -319,6 +320,422 @@ function defaultSceneFromProject(projectLike) {
   };
 }
 
+const PREFAB_DELETE_KEY = '__kozPrefabDelete';
+
+function isPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function createPrefabDeleteMarker() {
+  return { [PREFAB_DELETE_KEY]: true };
+}
+
+function isPrefabDeleteMarker(value) {
+  return isPlainObject(value) && value[PREFAB_DELETE_KEY] === true;
+}
+
+function stripPrefabLinkFields(objectLike) {
+  const next = clone(objectLike || {});
+  if (!next || typeof next !== 'object') return {};
+  delete next.prefabId;
+  delete next.prefabRevision;
+  delete next.variantId;
+  delete next.prefabOverrides;
+  return next;
+}
+
+function stripInstanceLocalFields(objectLike) {
+  const next = stripPrefabLinkFields(objectLike);
+  delete next.id;
+  delete next.parentId;
+  delete next.x;
+  delete next.y;
+  delete next.editorFolder;
+  if (next.components && typeof next.components === 'object') {
+    next.components = clone(next.components);
+    delete next.components.Transform;
+    if (Object.keys(next.components).length === 0) delete next.components;
+  }
+  return next;
+}
+
+function applyPrefabPatch(baseValue, patchValue) {
+  if (patchValue === undefined) return clone(baseValue);
+  if (isPrefabDeleteMarker(patchValue)) return undefined;
+  if (Array.isArray(patchValue)) return clone(patchValue);
+  if (!isPlainObject(patchValue)) return clone(patchValue);
+
+  const base = isPlainObject(baseValue) ? clone(baseValue) : {};
+  Object.keys(patchValue).forEach((key) => {
+    const nextValue = applyPrefabPatch(base[key], patchValue[key]);
+    if (nextValue === undefined && isPrefabDeleteMarker(patchValue[key])) {
+      delete base[key];
+    } else {
+      base[key] = nextValue;
+    }
+  });
+  return base;
+}
+
+function diffPrefabPatch(baseValue, nextValue) {
+  if (Array.isArray(baseValue) || Array.isArray(nextValue)) {
+    return JSON.stringify(baseValue) === JSON.stringify(nextValue) ? undefined : clone(nextValue);
+  }
+  if (isPlainObject(baseValue) && isPlainObject(nextValue)) {
+    const patch = {};
+    const keys = new Set([...Object.keys(baseValue), ...Object.keys(nextValue)]);
+    keys.forEach((key) => {
+      const hasBase = Object.prototype.hasOwnProperty.call(baseValue, key);
+      const hasNext = Object.prototype.hasOwnProperty.call(nextValue, key);
+      if (!hasNext) {
+        if (hasBase) patch[key] = createPrefabDeleteMarker();
+        return;
+      }
+      const childPatch = diffPrefabPatch(baseValue[key], nextValue[key]);
+      if (childPatch !== undefined) patch[key] = childPatch;
+    });
+    return Object.keys(patch).length > 0 ? patch : undefined;
+  }
+  return JSON.stringify(baseValue) === JSON.stringify(nextValue) ? undefined : clone(nextValue);
+}
+
+function prefabVariantId(name, fallback) {
+  return String(name || fallback || 'variant')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || fallback || 'variant';
+}
+
+function normalizePrefabVariant(variant, index) {
+  const source = variant && typeof variant === 'object' ? variant : {};
+  const values = isPlainObject(source.values)
+    ? clone(source.values)
+    : (isPlainObject(source.patch) ? clone(source.patch) : {});
+  const name = source.name || `Variant ${index + 1}`;
+  return {
+    id: source.id || `variant_${prefabVariantId(name, String(index + 1))}`,
+    name,
+    values,
+  };
+}
+
+function collectProjectObjectsById(projectLike) {
+  const map = new Map();
+  const addObject = (obj) => {
+    if (!obj || !obj.id) return;
+    map.set(obj.id, obj);
+  };
+  (projectLike && Array.isArray(projectLike.objects) ? projectLike.objects : []).forEach(addObject);
+  (projectLike && Array.isArray(projectLike.scenes) ? projectLike.scenes : []).forEach((scene) => {
+    (scene && Array.isArray(scene.objects) ? scene.objects : []).forEach(addObject);
+  });
+  return map;
+}
+
+function getPrefabVariant(prefab, variantId) {
+  if (!prefab || !variantId || !Array.isArray(prefab.variants)) return null;
+  return prefab.variants.find((variant) => variant && variant.id === variantId) || null;
+}
+
+function getPrefabBaseComparable(prefab, variantId = null) {
+  let base = stripInstanceLocalFields(prefab && prefab.baseObject ? prefab.baseObject : (prefab && prefab.object ? prefab.object : {}));
+  const variant = getPrefabVariant(prefab, variantId);
+  if (variant && isPlainObject(variant.values)) {
+    base = applyPrefabPatch(base, variant.values);
+  }
+  return base || {};
+}
+
+function materializePrefabObject(prefab, objectLike) {
+  if (!prefab || !objectLike || typeof objectLike !== 'object') return clone(objectLike || {});
+
+  const source = clone(objectLike);
+  let resolved = stripPrefabLinkFields(prefab.baseObject || prefab.object || {});
+  const variant = getPrefabVariant(prefab, source.variantId);
+  if (variant && isPlainObject(variant.values)) {
+    resolved = applyPrefabPatch(resolved, variant.values) || {};
+  }
+  if (isPlainObject(source.prefabOverrides)) {
+    resolved = applyPrefabPatch(resolved, source.prefabOverrides) || {};
+  }
+
+  const localTransform = source.components && source.components.Transform ? clone(source.components.Transform) : null;
+  const transform = localTransform || (resolved.components && resolved.components.Transform ? clone(resolved.components.Transform) : null) || {
+    x: Number.isFinite(source.x) ? source.x : 0,
+    y: Number.isFinite(source.y) ? source.y : 0,
+    rotation: 0,
+    scaleX: 1,
+    scaleY: 1,
+  };
+  const x = Number.isFinite(source.x) ? source.x : (Number.isFinite(transform.x) ? transform.x : 0);
+  const y = Number.isFinite(source.y) ? source.y : (Number.isFinite(transform.y) ? transform.y : 0);
+
+  resolved.id = source.id || resolved.id;
+  resolved.prefabId = prefab.id;
+  resolved.prefabRevision = prefab.revision;
+  resolved.variantId = typeof source.variantId === 'string' && source.variantId ? source.variantId : null;
+  resolved.prefabOverrides = isPlainObject(source.prefabOverrides) ? clone(source.prefabOverrides) : {};
+  resolved.parentId = Object.prototype.hasOwnProperty.call(source, 'parentId') ? source.parentId : (resolved.parentId || null);
+  resolved.editorFolder = source.editorFolder || resolved.editorFolder || 'Root';
+  resolved.x = x;
+  resolved.y = y;
+  resolved.components = resolved.components && typeof resolved.components === 'object' ? resolved.components : {};
+  resolved.components.Transform = {
+    ...(resolved.components.Transform || {}),
+    ...transform,
+    x,
+    y,
+  };
+  return resolved;
+}
+
+function derivePrefabOverrides(prefab, objectLike) {
+  if (!prefab || !objectLike || typeof objectLike !== 'object') return {};
+  const baseComparable = getPrefabBaseComparable(prefab, objectLike.variantId);
+  const nextComparable = stripInstanceLocalFields(objectLike);
+  const patch = diffPrefabPatch(baseComparable, nextComparable);
+  return isPlainObject(patch) ? patch : {};
+}
+
+function clearPrefabOverridePath(prefabOverrides, path) {
+  const source = isPlainObject(prefabOverrides) ? clone(prefabOverrides) : {};
+  const segments = Array.isArray(path)
+    ? path.map((segment) => String(segment || '').trim()).filter(Boolean)
+    : String(path || '').split('.').map((segment) => segment.trim()).filter(Boolean);
+
+  if (segments.length === 0) return source;
+
+  function clearNode(node, depth) {
+    if (!isPlainObject(node)) return node;
+    const next = clone(node);
+    const key = segments[depth];
+    if (!Object.prototype.hasOwnProperty.call(next, key)) return next;
+    if (depth >= segments.length - 1) {
+      delete next[key];
+      return next;
+    }
+    const child = clearNode(next[key], depth + 1);
+    if (isPlainObject(child) && Object.keys(child).length > 0) next[key] = child;
+    else delete next[key];
+    return next;
+  }
+
+  const cleared = clearNode(source, 0);
+  return isPlainObject(cleared) ? cleared : {};
+}
+
+function normalizePrefabRecord(prefab, objectById, index) {
+  const source = prefab && typeof prefab === 'object' ? prefab : {};
+  const previousBaseObject = stripPrefabLinkFields(source.baseObject || source.object || {});
+  const sourceObject = source.sourceObjectId ? objectById.get(source.sourceObjectId) : null;
+  const nextBaseObject = stripPrefabLinkFields(sourceObject || source.baseObject || source.object || {});
+  const baseObject = Object.keys(nextBaseObject).length > 0 ? nextBaseObject : previousBaseObject;
+  const sourceObjectId = source.sourceObjectId || baseObject.id || `obj_prefab_${index + 1}`;
+  const revisionChanged = sourceObject
+    && JSON.stringify(stripInstanceLocalFields(previousBaseObject || {})) !== JSON.stringify(stripInstanceLocalFields(baseObject || {}));
+  const previousRevision = Number.isFinite(source.revision) ? Math.max(1, source.revision) : 1;
+  const revision = revisionChanged ? previousRevision + 1 : previousRevision;
+  const normalizedBaseObject = {
+    ...baseObject,
+    id: baseObject.id || sourceObjectId,
+  };
+  return {
+    ...source,
+    id: source.id || `prefab_${index + 1}`,
+    name: source.name || `${normalizedBaseObject.name || normalizedBaseObject.type || 'Object'} Prefab`,
+    sourceObjectId,
+    revision,
+    baseObject: normalizedBaseObject,
+    object: clone(normalizedBaseObject),
+    variants: Array.isArray(source.variants) ? source.variants.map(normalizePrefabVariant) : [],
+  };
+}
+
+function createPrefabFromObject(sourceObject, options = {}) {
+  const source = stripPrefabLinkFields(sourceObject || {});
+  const prefabId = options.id || `prefab_${Date.now().toString(36)}`;
+  return {
+    id: prefabId,
+    name: options.name || `${source.name || source.type || 'Object'} Prefab`,
+    sourceObjectId: source.id || options.sourceObjectId || `obj_${prefabId}`,
+    revision: Number.isFinite(options.revision) ? Math.max(1, options.revision) : 1,
+    baseObject: source,
+    object: clone(source),
+    variants: Array.isArray(options.variants) ? options.variants.map(normalizePrefabVariant) : [],
+  };
+}
+
+function createPrefabInstance(prefab, options = {}) {
+  const baseObject = prefab && (prefab.baseObject || prefab.object) ? clone(prefab.baseObject || prefab.object) : {};
+  const baseTransform = baseObject.components && baseObject.components.Transform ? clone(baseObject.components.Transform) : { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 };
+  const x = Number.isFinite(options.x) ? options.x : (Number.isFinite(baseTransform.x) ? baseTransform.x : 0);
+  const y = Number.isFinite(options.y) ? options.y : (Number.isFinite(baseTransform.y) ? baseTransform.y : 0);
+  return materializePrefabObject(prefab, {
+    ...baseObject,
+    id: options.id || baseObject.id,
+    parentId: options.parentId !== undefined ? options.parentId : null,
+    editorFolder: options.editorFolder || 'Root',
+    x,
+    y,
+    components: {
+      ...(baseObject.components || {}),
+      Transform: {
+        ...baseTransform,
+        x,
+        y,
+      },
+    },
+    prefabId: prefab && prefab.id ? prefab.id : null,
+    prefabRevision: prefab && Number.isFinite(prefab.revision) ? prefab.revision : 1,
+    variantId: typeof options.variantId === 'string' && options.variantId ? options.variantId : null,
+    prefabOverrides: isPlainObject(options.prefabOverrides) ? clone(options.prefabOverrides) : {},
+  });
+}
+
+function createPrefabVariantFromObject(prefab, objectLike, options = {}) {
+  const source = objectLike && typeof objectLike === 'object' ? objectLike : null;
+  if (!prefab || !source) return null;
+  const name = String(options.name || '').trim() || `Variant ${(Array.isArray(prefab.variants) ? prefab.variants.length : 0) + 1}`;
+  const id = options.id || `variant_${prefabVariantId(name, Date.now().toString(36))}`;
+  const values = derivePrefabOverrides({
+    ...prefab,
+    variants: [],
+  }, {
+    ...source,
+    variantId: null,
+  });
+  return {
+    id,
+    name,
+    values,
+  };
+}
+
+function normalizeProjectObject(objectLike, prefabById) {
+  const sourceObject = objectLike && typeof objectLike === 'object' ? clone(objectLike) : {};
+  const prefab = sourceObject.prefabId && prefabById ? prefabById.get(sourceObject.prefabId) : null;
+  let obj = prefab ? sourceObject : stripPrefabLinkFields(sourceObject);
+
+  if (prefab) {
+    const isSourceObject = obj.id === prefab.sourceObjectId;
+    obj.variantId = typeof obj.variantId === 'string' && obj.variantId && getPrefabVariant(prefab, obj.variantId) ? obj.variantId : null;
+    const hasStoredOverrides = isPlainObject(obj.prefabOverrides);
+    const isStaleMaterialization = Number.isFinite(obj.prefabRevision) && obj.prefabRevision < prefab.revision;
+    obj.prefabOverrides = isSourceObject
+      ? {}
+      : (hasStoredOverrides
+        ? (isStaleMaterialization ? clone(obj.prefabOverrides) : derivePrefabOverrides(prefab, obj))
+        : (obj.variantId && !Number.isFinite(obj.prefabRevision) ? {} : derivePrefabOverrides(prefab, obj)));
+    obj = materializePrefabObject(prefab, obj);
+  }
+
+  const components = obj.components || {};
+  if (obj.type === 'camera' || components.Camera) {
+    const t = components.Transform || { x: obj.x || 0, y: obj.y || 0, rotation: 0, scaleX: 1, scaleY: 1 };
+    return {
+      ...obj,
+      editorFolder: obj.editorFolder || 'Root',
+      components: {
+        Transform: {
+          x: Number.isFinite(t.x) ? t.x : (obj.x || 0),
+          y: Number.isFinite(t.y) ? t.y : (obj.y || 0),
+          rotation: Number.isFinite(t.rotation) ? t.rotation : 0,
+          scaleX: Number.isFinite(t.scaleX) ? t.scaleX : 1,
+          scaleY: Number.isFinite(t.scaleY) ? t.scaleY : 1,
+        },
+        Camera: {
+          enabled: (components.Camera && components.Camera.enabled) !== false,
+          targetObjectId: (components.Camera && components.Camera.targetObjectId) || null,
+          speed: (components.Camera && Number.isFinite(components.Camera.speed)) ? components.Camera.speed : 8,
+          offsetX: (components.Camera && Number.isFinite(components.Camera.offsetX)) ? components.Camera.offsetX : 0,
+          offsetY: (components.Camera && Number.isFinite(components.Camera.offsetY)) ? components.Camera.offsetY : 0,
+          deadZoneWidth: (components.Camera && Number.isFinite(components.Camera.deadZoneWidth)) ? components.Camera.deadZoneWidth : 180,
+          deadZoneHeight: (components.Camera && Number.isFinite(components.Camera.deadZoneHeight)) ? components.Camera.deadZoneHeight : 120,
+          lookAheadX: (components.Camera && Number.isFinite(components.Camera.lookAheadX)) ? components.Camera.lookAheadX : 0,
+          lookAheadY: (components.Camera && Number.isFinite(components.Camera.lookAheadY)) ? components.Camera.lookAheadY : 0,
+          visibleMargin: (components.Camera && Number.isFinite(components.Camera.visibleMargin)) ? components.Camera.visibleMargin : 40,
+          followX: (components.Camera && components.Camera.followX) !== false,
+          followY: (components.Camera && components.Camera.followY) !== false,
+          clampToWorld: (components.Camera && components.Camera.clampToWorld) !== false,
+          maxSpeed: (components.Camera && Number.isFinite(components.Camera.maxSpeed)) ? components.Camera.maxSpeed : 2000,
+        },
+        Render: {
+          layerId: (components.Render && components.Render.layerId) || obj.layerId || 'obj-main',
+          visible: false,
+          zIndex: (components.Render && Number.isFinite(components.Render.zIndex)) ? components.Render.zIndex : 0,
+        },
+        ScriptBindings: Array.isArray(components.ScriptBindings) ? components.ScriptBindings : [],
+      },
+    };
+  }
+
+  return {
+    ...obj,
+    editorFolder: obj.editorFolder || 'Root',
+    components: {
+      ...components,
+      Render: {
+        layerId: (components.Render && components.Render.layerId) || obj.layerId || 'obj-main',
+        visible: (components.Render && components.Render.visible) !== false,
+        zIndex: (components.Render && Number.isFinite(components.Render.zIndex)) ? components.Render.zIndex : 0,
+      },
+      Collision: {
+        enabled: (components.Collision && components.Collision.enabled) !== false,
+        isTrigger: !!(components.Collision && components.Collision.isTrigger),
+      },
+      RigidBody: {
+        enabled: !!(components.RigidBody && components.RigidBody.enabled),
+        weight: (components.RigidBody && Number.isFinite(components.RigidBody.weight)) ? components.RigidBody.weight : 1,
+        friction: (components.RigidBody && Number.isFinite(components.RigidBody.friction)) ? components.RigidBody.friction : 0.4,
+      },
+      ...(components.Sound ? {
+        Sound: {
+          ...clone(DEFAULT_SOUND),
+          ...components.Sound,
+          category: components.Sound.category === 'music' ? 'music' : 'sfx',
+          volume: Number.isFinite(components.Sound.volume) ? Math.max(0, Math.min(1, components.Sound.volume)) : 1,
+          maxDistance: Number.isFinite(components.Sound.maxDistance) ? Math.max(0, components.Sound.maxDistance) : 0,
+          loop: !!components.Sound.loop,
+          autoplay: !!components.Sound.autoplay,
+          assetId: components.Sound.assetId || null,
+        },
+      } : {}),
+      ...((obj.type === 'light' || components.Light) ? {
+        Light: {
+          ...clone(DEFAULT_LIGHT_COMPONENT),
+          ...(components.Light || {}),
+          enabled: (components.Light && components.Light.enabled) !== false,
+          color: (components.Light && components.Light.color) || DEFAULT_LIGHT_COMPONENT.color,
+          intensity: clamp01(components.Light && components.Light.intensity, DEFAULT_LIGHT_COMPONENT.intensity),
+          radius: Number.isFinite(components.Light && components.Light.radius) ? Math.max(1, components.Light.radius) : DEFAULT_LIGHT_COMPONENT.radius,
+          falloff: clamp01(components.Light && components.Light.falloff, DEFAULT_LIGHT_COMPONENT.falloff),
+          offsetX: Number.isFinite(components.Light && components.Light.offsetX) ? components.Light.offsetX : DEFAULT_LIGHT_COMPONENT.offsetX,
+          offsetY: Number.isFinite(components.Light && components.Light.offsetY) ? components.Light.offsetY : DEFAULT_LIGHT_COMPONENT.offsetY,
+          height: Number.isFinite(components.Light && components.Light.height) ? Math.max(0, components.Light.height) : DEFAULT_LIGHT_COMPONENT.height,
+        },
+      } : {}),
+      ...((obj.type === 'lighting_manager' || components.LightingManager) ? {
+        LightingManager: normalizeLightingManagerComponent(components.LightingManager),
+        Render: {
+          layerId: (components.Render && components.Render.layerId) || obj.layerId || 'obj-fx',
+          visible: !!(components.Render && components.Render.visible),
+          zIndex: (components.Render && Number.isFinite(components.Render.zIndex)) ? components.Render.zIndex : 0,
+        },
+        Collision: {
+          enabled: false,
+          isTrigger: false,
+        },
+        RigidBody: {
+          enabled: false,
+          weight: (components.RigidBody && Number.isFinite(components.RigidBody.weight)) ? components.RigidBody.weight : 1,
+          friction: (components.RigidBody && Number.isFinite(components.RigidBody.friction)) ? components.RigidBody.friction : 0.4,
+        },
+      } : {}),
+    },
+  };
+}
+
 function ensureProjectShape(project) {
   if (!project || typeof project !== 'object') return project;
   const next = clone(project);
@@ -350,6 +767,13 @@ function ensureProjectShape(project) {
       objects,
     };
   });
+  const objectById = collectProjectObjectsById(next);
+  next.prefabs = next.prefabs.map((prefab, index) => normalizePrefabRecord(prefab, objectById, index));
+  const prefabById = new Map(next.prefabs.map((prefab) => [prefab.id, prefab]));
+  next.scenes = next.scenes.map((scene) => ({
+    ...scene,
+    objects: (scene.objects || []).map((obj) => normalizeProjectObject(obj, prefabById)),
+  }));
   if (!next.activeSceneId) next.activeSceneId = next.scenes[0].id;
   const activeScene = next.scenes.find((s) => s.id === next.activeSceneId) || next.scenes[0];
   if (activeScene) {
@@ -379,113 +803,8 @@ function ensureProjectShape(project) {
   next.scripting.engines = { javascript: true, lua: false, python: false, ...next.scripting.engines };
 
   next.world = normalizeWorld(next.world);
-
   if (Array.isArray(next.objects)) {
-    next.objects = next.objects.map((obj) => {
-      const components = obj.components || {};
-      if (obj.type === 'camera' || components.Camera) {
-        const t = components.Transform || { x: obj.x || 0, y: obj.y || 0, rotation: 0, scaleX: 1, scaleY: 1 };
-        return {
-          ...obj,
-          editorFolder: obj.editorFolder || 'Root',
-          components: {
-            Transform: {
-              x: Number.isFinite(t.x) ? t.x : (obj.x || 0),
-              y: Number.isFinite(t.y) ? t.y : (obj.y || 0),
-              rotation: Number.isFinite(t.rotation) ? t.rotation : 0,
-              scaleX: Number.isFinite(t.scaleX) ? t.scaleX : 1,
-              scaleY: Number.isFinite(t.scaleY) ? t.scaleY : 1,
-            },
-            Camera: {
-              enabled: (components.Camera && components.Camera.enabled) !== false,
-              targetObjectId: (components.Camera && components.Camera.targetObjectId) || null,
-              speed: (components.Camera && Number.isFinite(components.Camera.speed)) ? components.Camera.speed : 8,
-              offsetX: (components.Camera && Number.isFinite(components.Camera.offsetX)) ? components.Camera.offsetX : 0,
-              offsetY: (components.Camera && Number.isFinite(components.Camera.offsetY)) ? components.Camera.offsetY : 0,
-              deadZoneWidth: (components.Camera && Number.isFinite(components.Camera.deadZoneWidth)) ? components.Camera.deadZoneWidth : 180,
-              deadZoneHeight: (components.Camera && Number.isFinite(components.Camera.deadZoneHeight)) ? components.Camera.deadZoneHeight : 120,
-              lookAheadX: (components.Camera && Number.isFinite(components.Camera.lookAheadX)) ? components.Camera.lookAheadX : 0,
-              lookAheadY: (components.Camera && Number.isFinite(components.Camera.lookAheadY)) ? components.Camera.lookAheadY : 0,
-              visibleMargin: (components.Camera && Number.isFinite(components.Camera.visibleMargin)) ? components.Camera.visibleMargin : 40,
-              followX: (components.Camera && components.Camera.followX) !== false,
-              followY: (components.Camera && components.Camera.followY) !== false,
-              clampToWorld: (components.Camera && components.Camera.clampToWorld) !== false,
-              maxSpeed: (components.Camera && Number.isFinite(components.Camera.maxSpeed)) ? components.Camera.maxSpeed : 2000,
-            },
-            Render: {
-              layerId: (components.Render && components.Render.layerId) || obj.layerId || 'obj-main',
-              visible: false,
-              zIndex: (components.Render && Number.isFinite(components.Render.zIndex)) ? components.Render.zIndex : 0,
-            },
-            ScriptBindings: Array.isArray(components.ScriptBindings) ? components.ScriptBindings : [],
-          },
-        };
-      }
-      return {
-        ...obj,
-        editorFolder: obj.editorFolder || 'Root',
-        components: {
-          ...components,
-          Render: {
-            layerId: (components.Render && components.Render.layerId) || obj.layerId || 'obj-main',
-            visible: (components.Render && components.Render.visible) !== false,
-            zIndex: (components.Render && Number.isFinite(components.Render.zIndex)) ? components.Render.zIndex : 0,
-          },
-          Collision: {
-            enabled: (components.Collision && components.Collision.enabled) !== false,
-            isTrigger: !!(components.Collision && components.Collision.isTrigger),
-          },
-          RigidBody: {
-            enabled: !!(components.RigidBody && components.RigidBody.enabled),
-            weight: (components.RigidBody && Number.isFinite(components.RigidBody.weight)) ? components.RigidBody.weight : 1,
-            friction: (components.RigidBody && Number.isFinite(components.RigidBody.friction)) ? components.RigidBody.friction : 0.4,
-          },
-          ...(components.Sound ? {
-            Sound: {
-              ...clone(DEFAULT_SOUND),
-              ...components.Sound,
-              category: components.Sound.category === 'music' ? 'music' : 'sfx',
-              volume: Number.isFinite(components.Sound.volume) ? Math.max(0, Math.min(1, components.Sound.volume)) : 1,
-              maxDistance: Number.isFinite(components.Sound.maxDistance) ? Math.max(0, components.Sound.maxDistance) : 0,
-              loop: !!components.Sound.loop,
-              autoplay: !!components.Sound.autoplay,
-              assetId: components.Sound.assetId || null,
-            },
-          } : {}),
-          ...((obj.type === 'light' || components.Light) ? {
-            Light: {
-              ...clone(DEFAULT_LIGHT_COMPONENT),
-              ...(components.Light || {}),
-              enabled: (components.Light && components.Light.enabled) !== false,
-              color: (components.Light && components.Light.color) || DEFAULT_LIGHT_COMPONENT.color,
-              intensity: clamp01(components.Light && components.Light.intensity, DEFAULT_LIGHT_COMPONENT.intensity),
-              radius: Number.isFinite(components.Light && components.Light.radius) ? Math.max(1, components.Light.radius) : DEFAULT_LIGHT_COMPONENT.radius,
-              falloff: clamp01(components.Light && components.Light.falloff, DEFAULT_LIGHT_COMPONENT.falloff),
-              offsetX: Number.isFinite(components.Light && components.Light.offsetX) ? components.Light.offsetX : DEFAULT_LIGHT_COMPONENT.offsetX,
-              offsetY: Number.isFinite(components.Light && components.Light.offsetY) ? components.Light.offsetY : DEFAULT_LIGHT_COMPONENT.offsetY,
-              height: Number.isFinite(components.Light && components.Light.height) ? Math.max(0, components.Light.height) : DEFAULT_LIGHT_COMPONENT.height,
-            },
-          } : {}),
-          ...((obj.type === 'lighting_manager' || components.LightingManager) ? {
-            LightingManager: normalizeLightingManagerComponent(components.LightingManager),
-            Render: {
-              layerId: (components.Render && components.Render.layerId) || obj.layerId || 'obj-fx',
-              visible: !!(components.Render && components.Render.visible),
-              zIndex: (components.Render && Number.isFinite(components.Render.zIndex)) ? components.Render.zIndex : 0,
-            },
-            Collision: {
-              enabled: false,
-              isTrigger: false,
-            },
-            RigidBody: {
-              enabled: false,
-              weight: (components.RigidBody && Number.isFinite(components.RigidBody.weight)) ? components.RigidBody.weight : 1,
-              friction: (components.RigidBody && Number.isFinite(components.RigidBody.friction)) ? components.RigidBody.friction : 0.4,
-            },
-          } : {}),
-        },
-      };
-    });
+    next.objects = next.objects.map((obj) => normalizeProjectObject(obj, prefabById));
   }
 
   if (Array.isArray(next.assets)) {
@@ -564,7 +883,15 @@ export {
   DEFAULT_SCENE_LIGHTING,
   DEFAULT_LIGHTING_MANAGER_COMPONENT,
   DEFAULT_LIGHT_COMPONENT,
+  createPrefabFromObject,
+  createPrefabInstance,
+  createPrefabVariantFromObject,
+  clearPrefabOverridePath,
+  derivePrefabOverrides,
   ensureProjectShape,
+  getPrefabVariant,
+  materializePrefabObject,
+  normalizeProjectObject,
   applyProjectPatch,
   normalizeCellTypeId,
   getCellType,
