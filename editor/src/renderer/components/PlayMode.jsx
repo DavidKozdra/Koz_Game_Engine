@@ -249,7 +249,7 @@ export function usePlayMode(project, onLog) {
       },
     };
     state.storageApi = createPlayStorageApi(snapshot);
-    state.particleSystem = createPlayParticleSystem();
+    state.particleSystem = createPlayParticleSystem(assetById, imageCacheRef);
     state.render3D = createInitialPlay3DState(state);
     stateRef.current = state;
     syncCanvasMode(state.renderMode);
@@ -2049,7 +2049,7 @@ function createPlayStorageApi(projectSnapshot) {
   };
 }
 
-function createPlayParticleSystem() {
+function createPlayParticleSystem(assetById, imageCacheRef) {
   const particles = [];
   const emitterTimers = new Map();
 
@@ -2060,24 +2060,59 @@ function createPlayParticleSystem() {
     return null;
   }
 
+  function randRange(min, max) { return min + Math.random() * (max - min); }
+
   function emitAt(x, y, config = {}) {
     const count = Math.max(1, Math.min(500, Math.floor(Number(config.count) || 24)));
     const direction = ((Number(config.direction) || 0) * Math.PI) / 180;
     const spread = (Math.max(0, Math.min(360, Number(config.spreadAngle) || 360)) * Math.PI) / 180;
-    const baseSpeed = Math.max(0, Number(config.speed) || 80);
-    const life = Math.max(50, Number(config.life) || 500) / 1000;
-    const sizeStart = Math.max(1, Number(config.size) || 4);
-    const sizeEnd = Math.max(0, Number(config.sizeEnd) || 1);
-    const gravity = Number(config.gravity) || 0;
     const drag = clamp01(Number(config.drag) || 0.98);
-    const color = config.color || '#fb923c';
     const screen = config.worldSpace === false;
+    const colors = Array.isArray(config.colors) && config.colors.length > 0 ? config.colors : null;
+    const baseColor = config.color || '#fb923c';
+
+    // Range-capable values: use min/max if provided, else fall back to single value
+    const hasSpeedRange = Number.isFinite(config.speedMin) && Number.isFinite(config.speedMax);
+    const speedLo = hasSpeedRange ? Math.max(0, config.speedMin) : null;
+    const speedHi = hasSpeedRange ? Math.max(0, config.speedMax) : null;
+    const baseSpeed = Math.max(0, Number(config.speed) || 80);
+
+    const hasSizeRange = Number.isFinite(config.sizeMin) && Number.isFinite(config.sizeMax);
+    const sizeLo = hasSizeRange ? Math.max(1, config.sizeMin) : null;
+    const sizeHi = hasSizeRange ? Math.max(1, config.sizeMax) : null;
+    const baseSize = Math.max(1, Number(config.size) || 4);
+
+    const hasSizeEndRange = Number.isFinite(config.sizeEndMin) && Number.isFinite(config.sizeEndMax);
+    const sizeEndLo = hasSizeEndRange ? Math.max(0, config.sizeEndMin) : null;
+    const sizeEndHi = hasSizeEndRange ? Math.max(0, config.sizeEndMax) : null;
+    const baseSizeEnd = Math.max(0, Number(config.sizeEnd) || 1);
+
+    const hasLifeRange = Number.isFinite(config.lifeMin) && Number.isFinite(config.lifeMax);
+    const lifeLo = hasLifeRange ? Math.max(50, config.lifeMin) / 1000 : null;
+    const lifeHi = hasLifeRange ? Math.max(50, config.lifeMax) / 1000 : null;
+    const baseLife = Math.max(50, Number(config.life) || 500) / 1000;
+
+    const hasGravRange = Number.isFinite(config.gravityMin) && Number.isFinite(config.gravityMax);
+    const gravLo = hasGravRange ? config.gravityMin : null;
+    const gravHi = hasGravRange ? config.gravityMax : null;
+    const baseGravity = Number(config.gravity) || 0;
+
+    // Image particle support
+    const imageId = config.image || null;
+
+    // Rotation
+    const baseRotation = ((Number(config.rotation) || 0) * Math.PI) / 180;
+    const hasRotSpeedRange = Number.isFinite(config.rotationSpeedMin) && Number.isFinite(config.rotationSpeedMax);
+    const rotSpeedLo = hasRotSpeedRange ? (config.rotationSpeedMin * Math.PI) / 180 : null;
+    const rotSpeedHi = hasRotSpeedRange ? (config.rotationSpeedMax * Math.PI) / 180 : null;
+    const baseRotSpeed = ((Number(config.rotationSpeed) || 0) * Math.PI) / 180;
 
     for (let i = 0; i < count; i += 1) {
       const angle = spread >= Math.PI * 2
         ? Math.random() * Math.PI * 2
         : (direction - (spread * 0.5)) + (Math.random() * spread);
-      const speed = baseSpeed * (0.35 + Math.random() * 0.85);
+      const speed = hasSpeedRange ? randRange(speedLo, speedHi) : baseSpeed * (0.35 + Math.random() * 0.85);
+      const life = hasLifeRange ? randRange(lifeLo, lifeHi) : baseLife;
       particles.push({
         x,
         y,
@@ -2085,12 +2120,15 @@ function createPlayParticleSystem() {
         vy: Math.sin(angle) * speed,
         life,
         maxLife: life,
-        sizeStart,
-        sizeEnd,
-        gravity,
+        sizeStart: hasSizeRange ? randRange(sizeLo, sizeHi) : baseSize,
+        sizeEnd: hasSizeEndRange ? randRange(sizeEndLo, sizeEndHi) : baseSizeEnd,
+        gravity: hasGravRange ? randRange(gravLo, gravHi) : baseGravity,
         drag,
-        color,
+        color: colors ? colors[Math.floor(Math.random() * colors.length)] : baseColor,
         screen,
+        imageId,
+        rot: baseRotation,
+        rotSpeed: hasRotSpeedRange ? randRange(rotSpeedLo, rotSpeedHi) : baseRotSpeed,
       });
     }
     return count;
@@ -2161,6 +2199,7 @@ function createPlayParticleSystem() {
         particle.vy += particle.gravity * dt;
         particle.x += particle.vx * dt;
         particle.y += particle.vy * dt;
+        if (particle.rotSpeed) particle.rot += particle.rotSpeed * dt;
       }
     },
     renderWorld(ctx, offsetX = 0, offsetY = 0) {
@@ -2168,11 +2207,33 @@ function createPlayParticleSystem() {
         if (particle.screen) return;
         const progress = 1 - (particle.life / particle.maxLife);
         const size = particle.sizeStart + ((particle.sizeEnd - particle.sizeStart) * progress);
+        const alpha = clamp01(particle.life / particle.maxLife);
+        const px = particle.x - offsetX;
+        const py = particle.y - offsetY;
         ctx.save();
-        ctx.globalAlpha = clamp01(particle.life / particle.maxLife);
+        ctx.globalAlpha = alpha;
+        if (particle.imageId) {
+          const asset = assetById.get(particle.imageId);
+          const src = asset && (asset.previewUrl || asset.url || asset.src);
+          if (src) {
+            if (!imageCacheRef.current.has(src)) {
+              const img = new Image();
+              img.src = src;
+              imageCacheRef.current.set(src, img);
+            }
+            const img = imageCacheRef.current.get(src);
+            if (img && img.complete && img.naturalWidth > 0) {
+              ctx.translate(px, py);
+              if (particle.rot) ctx.rotate(particle.rot);
+              ctx.drawImage(img, -size * 0.5, -size * 0.5, size, size);
+              ctx.restore();
+              return;
+            }
+          }
+        }
         ctx.fillStyle = particle.color;
         ctx.beginPath();
-        ctx.arc(particle.x - offsetX, particle.y - offsetY, Math.max(0.5, size * 0.5), 0, Math.PI * 2);
+        ctx.arc(px, py, Math.max(0.5, size * 0.5), 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       });
@@ -2182,8 +2243,28 @@ function createPlayParticleSystem() {
         if (!particle.screen) return;
         const progress = 1 - (particle.life / particle.maxLife);
         const size = particle.sizeStart + ((particle.sizeEnd - particle.sizeStart) * progress);
+        const alpha = clamp01(particle.life / particle.maxLife);
         ctx.save();
-        ctx.globalAlpha = clamp01(particle.life / particle.maxLife);
+        ctx.globalAlpha = alpha;
+        if (particle.imageId) {
+          const asset = assetById.get(particle.imageId);
+          const src = asset && (asset.previewUrl || asset.url || asset.src);
+          if (src) {
+            if (!imageCacheRef.current.has(src)) {
+              const img = new Image();
+              img.src = src;
+              imageCacheRef.current.set(src, img);
+            }
+            const img = imageCacheRef.current.get(src);
+            if (img && img.complete && img.naturalWidth > 0) {
+              ctx.translate(particle.x, particle.y);
+              if (particle.rot) ctx.rotate(particle.rot);
+              ctx.drawImage(img, -size * 0.5, -size * 0.5, size, size);
+              ctx.restore();
+              return;
+            }
+          }
+        }
         ctx.fillStyle = particle.color;
         ctx.beginPath();
         ctx.arc(particle.x, particle.y, Math.max(0.5, size * 0.5), 0, Math.PI * 2);

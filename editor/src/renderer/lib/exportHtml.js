@@ -760,6 +760,8 @@ function exportRuntimeMain() {
     var particles = [];
     var emitterTimers = new Map();
 
+    function randRange(min, max) { return min + Math.random() * (max - min); }
+
     function resolveObject(target, objects) {
       if (!target) return null;
       if (typeof target === 'string') return (objects || []).find(function(obj) { return obj.id === target; }) || null;
@@ -772,21 +774,51 @@ function exportRuntimeMain() {
       var count = Math.max(1, Math.min(500, Math.floor(Number(config.count) || 24)));
       var direction = ((Number(config.direction) || 0) * Math.PI) / 180;
       var spread = (Math.max(0, Math.min(360, Number(config.spreadAngle) || 360)) * Math.PI) / 180;
-      var baseSpeed = Math.max(0, Number(config.speed) || 80);
-      var life = Math.max(50, Number(config.life) || 500) / 1000;
-      var sizeStart = Math.max(1, Number(config.size) || 4);
-      var sizeEnd = Math.max(0, Number(config.sizeEnd) || 1);
-      var gravity = Number(config.gravity) || 0;
       var drag = clamp01(Number(config.drag) || 0.98);
-      var color = config.color || '#fb923c';
       var screen = config.worldSpace === false;
-      var i;
+      var colors = Array.isArray(config.colors) && config.colors.length > 0 ? config.colors : null;
+      var baseColor = config.color || '#fb923c';
 
+      var hasSpeedRange = Number.isFinite(config.speedMin) && Number.isFinite(config.speedMax);
+      var speedLo = hasSpeedRange ? Math.max(0, config.speedMin) : 0;
+      var speedHi = hasSpeedRange ? Math.max(0, config.speedMax) : 0;
+      var baseSpeed = Math.max(0, Number(config.speed) || 80);
+
+      var hasSizeRange = Number.isFinite(config.sizeMin) && Number.isFinite(config.sizeMax);
+      var sizeLo = hasSizeRange ? Math.max(1, config.sizeMin) : 0;
+      var sizeHi = hasSizeRange ? Math.max(1, config.sizeMax) : 0;
+      var baseSize = Math.max(1, Number(config.size) || 4);
+
+      var hasSizeEndRange = Number.isFinite(config.sizeEndMin) && Number.isFinite(config.sizeEndMax);
+      var sizeEndLo = hasSizeEndRange ? Math.max(0, config.sizeEndMin) : 0;
+      var sizeEndHi = hasSizeEndRange ? Math.max(0, config.sizeEndMax) : 0;
+      var baseSizeEnd = Math.max(0, Number(config.sizeEnd) || 1);
+
+      var hasLifeRange = Number.isFinite(config.lifeMin) && Number.isFinite(config.lifeMax);
+      var lifeLo = hasLifeRange ? Math.max(50, config.lifeMin) / 1000 : 0;
+      var lifeHi = hasLifeRange ? Math.max(50, config.lifeMax) / 1000 : 0;
+      var baseLife = Math.max(50, Number(config.life) || 500) / 1000;
+
+      var hasGravRange = Number.isFinite(config.gravityMin) && Number.isFinite(config.gravityMax);
+      var gravLo = hasGravRange ? config.gravityMin : 0;
+      var gravHi = hasGravRange ? config.gravityMax : 0;
+      var baseGravity = Number(config.gravity) || 0;
+
+      var imageId = config.image || null;
+
+      var baseRotation = ((Number(config.rotation) || 0) * Math.PI) / 180;
+      var hasRotSpeedRange = Number.isFinite(config.rotationSpeedMin) && Number.isFinite(config.rotationSpeedMax);
+      var rotSpeedLo = hasRotSpeedRange ? (config.rotationSpeedMin * Math.PI) / 180 : 0;
+      var rotSpeedHi = hasRotSpeedRange ? (config.rotationSpeedMax * Math.PI) / 180 : 0;
+      var baseRotSpeed = ((Number(config.rotationSpeed) || 0) * Math.PI) / 180;
+
+      var i;
       for (i = 0; i < count; i += 1) {
         var angle = spread >= Math.PI * 2
           ? Math.random() * Math.PI * 2
           : (direction - (spread * 0.5)) + (Math.random() * spread);
-        var speed = baseSpeed * (0.35 + Math.random() * 0.85);
+        var speed = hasSpeedRange ? randRange(speedLo, speedHi) : baseSpeed * (0.35 + Math.random() * 0.85);
+        var life = hasLifeRange ? randRange(lifeLo, lifeHi) : baseLife;
         particles.push({
           x: x,
           y: y,
@@ -794,12 +826,15 @@ function exportRuntimeMain() {
           vy: Math.sin(angle) * speed,
           life: life,
           maxLife: life,
-          sizeStart: sizeStart,
-          sizeEnd: sizeEnd,
-          gravity: gravity,
+          sizeStart: hasSizeRange ? randRange(sizeLo, sizeHi) : baseSize,
+          sizeEnd: hasSizeEndRange ? randRange(sizeEndLo, sizeEndHi) : baseSizeEnd,
+          gravity: hasGravRange ? randRange(gravLo, gravHi) : baseGravity,
           drag: drag,
-          color: color,
+          color: colors ? colors[Math.floor(Math.random() * colors.length)] : baseColor,
           screen: screen,
+          imageId: imageId,
+          rot: baseRotation,
+          rotSpeed: hasRotSpeedRange ? randRange(rotSpeedLo, rotSpeedHi) : baseRotSpeed,
         });
       }
       return count;
@@ -877,33 +912,54 @@ function exportRuntimeMain() {
           particle.vy += particle.gravity * dt;
           particle.x += particle.vx * dt;
           particle.y += particle.vy * dt;
+          if (particle.rotSpeed) particle.rot += particle.rotSpeed * dt;
         }
       },
       renderWorld: function(ctx, offsetX, offsetY) {
         particles.forEach(function(particle) {
-          var progress;
-          var size;
           if (particle.screen) return;
-          progress = 1 - (particle.life / particle.maxLife);
-          size = particle.sizeStart + ((particle.sizeEnd - particle.sizeStart) * progress);
+          var progress = 1 - (particle.life / particle.maxLife);
+          var size = particle.sizeStart + ((particle.sizeEnd - particle.sizeStart) * progress);
+          var alpha = clamp01(particle.life / particle.maxLife);
+          var px = particle.x - (offsetX || 0);
+          var py = particle.y - (offsetY || 0);
           ctx.save();
-          ctx.globalAlpha = clamp01(particle.life / particle.maxLife);
+          ctx.globalAlpha = alpha;
+          if (particle.imageId) {
+            var img = imageForAssetId(particle.imageId);
+            if (img && img.complete && img.naturalWidth > 0) {
+              ctx.translate(px, py);
+              if (particle.rot) ctx.rotate(particle.rot);
+              ctx.drawImage(img, -size * 0.5, -size * 0.5, size, size);
+              ctx.restore();
+              return;
+            }
+          }
           ctx.fillStyle = particle.color;
           ctx.beginPath();
-          ctx.arc(particle.x - (offsetX || 0), particle.y - (offsetY || 0), Math.max(0.5, size * 0.5), 0, Math.PI * 2);
+          ctx.arc(px, py, Math.max(0.5, size * 0.5), 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
         });
       },
       renderScreen: function(ctx) {
         particles.forEach(function(particle) {
-          var progress;
-          var size;
           if (!particle.screen) return;
-          progress = 1 - (particle.life / particle.maxLife);
-          size = particle.sizeStart + ((particle.sizeEnd - particle.sizeStart) * progress);
+          var progress = 1 - (particle.life / particle.maxLife);
+          var size = particle.sizeStart + ((particle.sizeEnd - particle.sizeStart) * progress);
+          var alpha = clamp01(particle.life / particle.maxLife);
           ctx.save();
-          ctx.globalAlpha = clamp01(particle.life / particle.maxLife);
+          ctx.globalAlpha = alpha;
+          if (particle.imageId) {
+            var img = imageForAssetId(particle.imageId);
+            if (img && img.complete && img.naturalWidth > 0) {
+              ctx.translate(particle.x, particle.y);
+              if (particle.rot) ctx.rotate(particle.rot);
+              ctx.drawImage(img, -size * 0.5, -size * 0.5, size, size);
+              ctx.restore();
+              return;
+            }
+          }
           ctx.fillStyle = particle.color;
           ctx.beginPath();
           ctx.arc(particle.x, particle.y, Math.max(0.5, size * 0.5), 0, Math.PI * 2);
