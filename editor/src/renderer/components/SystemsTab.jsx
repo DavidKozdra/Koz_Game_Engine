@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import AssetsSceneBrowser from './AssetsSceneBrowser.jsx';
 import {
+  buildDisplayStageLayout,
   createPrefabFromObject,
   getProjectDisplaySettings,
   getProjectResolution,
@@ -28,6 +29,50 @@ function stringifyEditorArgs(args) {
     if (/\s/.test(value)) return `"${value.replace(/"/g, '\\"')}"`;
     return value;
   }).join(' ');
+}
+
+const DISPLAY_PRESETS = [
+  { id: '360p', label: '360p', width: 640, height: 360 },
+  { id: '540p', label: '540p', width: 960, height: 540 },
+  { id: '720p', label: '720p', width: 1280, height: 720 },
+  { id: '1080p', label: '1080p', width: 1920, height: 1080 },
+  { id: '4-3', label: '4:3', width: 1024, height: 768 },
+];
+
+const DISPLAY_MODE_OPTIONS = [
+  { id: 'contain', label: 'Fit', description: 'Keep the whole game visible inside the window.' },
+  { id: 'cover', label: 'Fill', description: 'Fill the window and crop the overflow.' },
+  { id: 'stretch', label: 'Stretch', description: 'Stretch to the window without preserving aspect.' },
+  { id: 'native', label: 'Native', description: 'Keep the canvas at its logical pixel size.' },
+];
+
+function gcd(a, b) {
+  let x = Math.abs(a);
+  let y = Math.abs(b);
+  while (y) {
+    const next = x % y;
+    x = y;
+    y = next;
+  }
+  return x || 1;
+}
+
+function formatAspectRatio(width, height) {
+  const safeWidth = Math.max(1, Math.round(width || 1));
+  const safeHeight = Math.max(1, Math.round(height || 1));
+  const divisor = gcd(safeWidth, safeHeight);
+  return `${safeWidth / divisor}:${safeHeight / divisor}`;
+}
+
+function getDisplayPreviewLayout(resolution, scaleMode) {
+  if (scaleMode === 'native') {
+    const scale = Math.min(1, 118 / Math.max(1, resolution.width), 74 / Math.max(1, resolution.height));
+    return {
+      width: Math.max(16, Math.round(resolution.width * scale)),
+      height: Math.max(12, Math.round(resolution.height * scale)),
+    };
+  }
+  return buildDisplayStageLayout(118, 74, resolution, { scaleMode });
 }
 
 function replaceCellTypeInWorld(world, removedId) {
@@ -228,6 +273,8 @@ export default function SystemsTab({
   if (mode === 'settings') {
     const resolution = getProjectResolution(project);
     const display = getProjectDisplaySettings(project);
+    const aspectRatio = formatAspectRatio(resolution.width, resolution.height);
+    const displayPreview = getDisplayPreviewLayout(resolution, display.scaleMode);
     const settings = project.settings || {};
     const preferredEditor = settings.preferredEditor || 'vscode';
     const editorCommand = settings.editorCommand || '';
@@ -248,90 +295,167 @@ export default function SystemsTab({
       <div style={{ overflow: 'auto', padding: 12, display: 'grid', gap: 12 }}>
         <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
           <h3>Display</h3>
-          <div className="field">
-            <label>Resolution</label>
-            <input
-              type="number"
-              min={1}
-              value={resolution.width}
-              onChange={(e) => updateMeta({
-                resolution: {
-                  ...resolution,
-                  width: Math.max(1, parseInt(e.target.value, 10) || 1),
-                },
-              })}
-            />
-            <label style={{ width: 60 }}>Height</label>
-            <input
-              type="number"
-              min={1}
-              value={resolution.height}
-              onChange={(e) => updateMeta({
-                resolution: {
-                  ...resolution,
-                  height: Math.max(1, parseInt(e.target.value, 10) || 1),
-                },
-              })}
-            />
-          </div>
-          <div className="field">
-            <label>Fit</label>
-            <select
-              value={display.scaleMode}
-              onChange={(e) => updateMeta({
-                display: {
-                  ...display,
-                  scaleMode: e.target.value,
-                },
-              })}
-            >
-              <option value="contain">Fit Within Window</option>
-              <option value="cover">Fill Window</option>
-              <option value="stretch">Stretch</option>
-              <option value="native">Fixed Size</option>
-            </select>
-          </div>
-          <div className="field">
-            <label>Background</label>
-            <input
-              type="color"
-              value={display.backgroundColor || '#0b1220'}
-              onChange={(e) => updateMeta({
-                display: {
-                  ...display,
-                  backgroundColor: e.target.value,
-                },
-              })}
-            />
-            <label style={{ width: 88 }}>Fullscreen</label>
-            <input
-              type="checkbox"
-              checked={display.allowFullscreen !== false}
-              onChange={(e) => updateMeta({
-                display: {
-                  ...display,
-                  allowFullscreen: e.target.checked,
-                  showFullscreenButton: e.target.checked ? display.showFullscreenButton !== false : false,
-                },
-              })}
-            />
-          </div>
-          <div className="field">
-            <label>Button</label>
-            <input
-              type="checkbox"
-              checked={display.allowFullscreen !== false && display.showFullscreenButton !== false}
-              disabled={display.allowFullscreen === false}
-              onChange={(e) => updateMeta({
-                display: {
-                  ...display,
-                  showFullscreenButton: e.target.checked,
-                },
-              })}
-            />
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8 }}>
+              <div style={{ border: '1px solid rgba(148,163,184,0.18)', borderRadius: 8, padding: '8px 10px', background: 'rgba(15,23,42,0.45)' }}>
+                <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-muted)' }}>Aspect</div>
+                <div style={{ fontSize: 16, fontWeight: 600 }}>{aspectRatio}</div>
+              </div>
+              <div style={{ border: '1px solid rgba(148,163,184,0.18)', borderRadius: 8, padding: '8px 10px', background: 'rgba(15,23,42,0.45)' }}>
+                <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-muted)' }}>Logical Size</div>
+                <div style={{ fontSize: 16, fontWeight: 600 }}>{resolution.width} x {resolution.height}</div>
+              </div>
+              <div style={{ border: '1px solid rgba(148,163,184,0.18)', borderRadius: 8, padding: '8px 10px', background: 'rgba(15,23,42,0.45)' }}>
+                <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-muted)' }}>Fullscreen</div>
+                <div style={{ fontSize: 16, fontWeight: 600 }}>{display.allowFullscreen !== false ? 'Allowed' : 'Off'}</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Resolution</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={resolution.width}
+                  onChange={(e) => updateMeta({
+                    resolution: {
+                      ...resolution,
+                      width: Math.max(1, parseInt(e.target.value, 10) || 1),
+                    },
+                  })}
+                />
+                <label style={{ width: 60 }}>Height</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={resolution.height}
+                  onChange={(e) => updateMeta({
+                    resolution: {
+                      ...resolution,
+                      height: Math.max(1, parseInt(e.target.value, 10) || 1),
+                    },
+                  })}
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(84px, 1fr))', gap: 6 }}>
+                {DISPLAY_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    className="btn btn-sm"
+                    onClick={() => updateMeta({ resolution: { width: preset.width, height: preset.height } })}
+                    style={{
+                      justifyContent: 'space-between',
+                      borderColor: resolution.width === preset.width && resolution.height === preset.height ? 'transparent' : undefined,
+                      background: resolution.width === preset.width && resolution.height === preset.height ? 'rgba(59,130,246,0.18)' : undefined,
+                    }}
+                  >
+                    <span>{preset.label}</span>
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{preset.width}x{preset.height}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(220px, 0.9fr)', gap: 12, alignItems: 'start' }}>
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Fit Mode</div>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {DISPLAY_MODE_OPTIONS.map((option) => {
+                    const active = display.scaleMode === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        className="btn btn-sm"
+                        onClick={() => updateMeta({
+                          display: {
+                            ...display,
+                            scaleMode: option.id,
+                          },
+                        })}
+                        style={{
+                          justifyContent: 'flex-start',
+                          borderColor: active ? 'transparent' : undefined,
+                          background: active ? 'rgba(59,130,246,0.18)' : undefined,
+                          padding: '8px 10px',
+                        }}
+                      >
+                        <span style={{ display: 'grid', gap: 2, textAlign: 'left' }}>
+                          <span style={{ fontWeight: 600 }}>{option.label}</span>
+                          <span style={{ fontSize: 11, color: active ? 'var(--text)' : 'var(--text-muted)' }}>{option.description}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Preview</div>
+                <div style={{ border: '1px solid rgba(148,163,184,0.2)', borderRadius: 10, padding: 10, background: 'rgba(2,8,23,0.5)' }}>
+                  <div style={{ height: 96, borderRadius: 8, display: 'grid', placeItems: 'center', background: 'linear-gradient(180deg, rgba(30,41,59,0.9), rgba(15,23,42,0.95))', overflow: 'hidden', position: 'relative' }}>
+                    <div style={{ position: 'absolute', inset: 8, border: '1px dashed rgba(148,163,184,0.28)', borderRadius: 6 }} />
+                    <div
+                      style={{
+                        width: displayPreview.width,
+                        height: displayPreview.height,
+                        maxWidth: '100%',
+                        maxHeight: '100%',
+                        borderRadius: 6,
+                        border: '1px solid rgba(226,232,240,0.28)',
+                        background: display.backgroundColor,
+                        boxShadow: '0 8px 24px rgba(15,23,42,0.45)',
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+                    <span>{DISPLAY_MODE_OPTIONS.find((option) => option.id === display.scaleMode)?.label || 'Fit'}</span>
+                    <span>{display.scaleMode === 'native' ? 'Fixed canvas size' : 'Responsive scaling'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label>Background</label>
+              <input
+                type="color"
+                value={display.backgroundColor || '#0b1220'}
+                onChange={(e) => updateMeta({
+                  display: {
+                    ...display,
+                    backgroundColor: e.target.value,
+                  },
+                })}
+              />
+              <label style={{ width: 88 }}>Fullscreen</label>
+              <input
+                type="checkbox"
+                checked={display.allowFullscreen !== false}
+                onChange={(e) => updateMeta({
+                  display: {
+                    ...display,
+                    allowFullscreen: e.target.checked,
+                    showFullscreenButton: e.target.checked ? display.showFullscreenButton !== false : false,
+                  },
+                })}
+              />
+              <label style={{ width: 58 }}>Button</label>
+              <input
+                type="checkbox"
+                checked={display.allowFullscreen !== false && display.showFullscreenButton !== false}
+                disabled={display.allowFullscreen === false}
+                onChange={(e) => updateMeta({
+                  display: {
+                    ...display,
+                    showFullscreenButton: e.target.checked,
+                  },
+                })}
+              />
+            </div>
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-            Resolution is the game&apos;s logical canvas size. Fit mode controls how that canvas scales inside play mode and exported HTML builds.
+            Resolution is the logical canvas size. Fit mode controls how that canvas scales in editor play mode and browser exports. Fullscreen uses `F11` or `Alt+Enter` when enabled.
           </div>
         </div>
 

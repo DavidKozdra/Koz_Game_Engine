@@ -631,7 +631,7 @@ function App() {
   const projectView = withSceneView(project, editorState.sceneId);
   const playViewportRef = useRef(null);
   const playShellRef = useRef(null);
-  const [playViewportSize, setPlayViewportSize] = useState({ width: 0, height: 0 });
+  const [playHostSize, setPlayHostSize] = useState({ width: 0, height: 0 });
   const [isPlayFullscreen, setIsPlayFullscreen] = useState(false);
   const selectedProjectTemplate = useMemo(() => {
     return PROJECT_TEMPLATES.find((template) => template.id === newProjectTemplate) || PROJECT_TEMPLATES[0];
@@ -671,12 +671,12 @@ function App() {
   const playDisplay = useMemo(() => getProjectDisplaySettings(projectView), [projectView]);
   const playStageLayout = useMemo(() => (
     buildDisplayStageLayout(
-      playViewportSize.width,
-      playViewportSize.height,
+      playHostSize.width,
+      playHostSize.height,
       playResolution,
       playDisplay,
     )
-  ), [playViewportSize, playResolution, playDisplay]);
+  ), [playHostSize, playResolution, playDisplay]);
 
   // ...existing callbacks and logic...
 
@@ -789,35 +789,59 @@ function App() {
     else { startPlay(); updateEditor({ mode: 'PLAY' }); setMainTab('world'); setBottomTab('console'); }
   }, [isPlaying, startPlay, stopPlay, updateEditor]);
 
-  useEffect(() => {
+  const syncPlayHostSize = useCallback(() => {
+    const shell = playShellRef.current;
     const viewport = playViewportRef.current;
-    if (!viewport) return undefined;
-    const updateSize = () => {
-      setPlayViewportSize({
-        width: viewport.clientWidth || 0,
-        height: viewport.clientHeight || 0,
-      });
-    };
-    updateSize();
-    if (typeof ResizeObserver === 'function') {
-      const observer = new ResizeObserver(updateSize);
-      observer.observe(viewport);
-      return () => observer.disconnect();
-    }
-    window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
+    const width = (shell && shell.clientWidth) || (viewport && viewport.clientWidth) || 0;
+    const height = (shell && shell.clientHeight) || (viewport && viewport.clientHeight) || 0;
+    setPlayHostSize((prev) => (
+      prev.width === width && prev.height === height
+        ? prev
+        : { width, height }
+    ));
   }, []);
+
+  useEffect(() => {
+    syncPlayHostSize();
+    const viewport = playViewportRef.current;
+    const shell = playShellRef.current;
+    if (typeof ResizeObserver === 'function') {
+      const observer = new ResizeObserver(syncPlayHostSize);
+      if (viewport) observer.observe(viewport);
+      if (shell) observer.observe(shell);
+      const rafId = window.requestAnimationFrame(syncPlayHostSize);
+      return () => {
+        window.cancelAnimationFrame(rafId);
+        observer.disconnect();
+      };
+    }
+    window.addEventListener('resize', syncPlayHostSize);
+    const rafId = window.requestAnimationFrame(syncPlayHostSize);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', syncPlayHostSize);
+    };
+  }, [isPlaying, isPlayFullscreen, syncPlayHostSize]);
 
   useEffect(() => {
     function handleFullscreenChange() {
       if (typeof document === 'undefined') return;
       setIsPlayFullscreen(isContainedFullscreenElement(playShellRef.current, document.fullscreenElement));
+      syncPlayHostSize();
     }
     handleFullscreenChange();
     if (typeof document === 'undefined') return undefined;
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
+  }, [syncPlayHostSize]);
+
+  useEffect(() => {
+    if (isPlaying) {
+      const rafId = window.requestAnimationFrame(syncPlayHostSize);
+      return () => window.cancelAnimationFrame(rafId);
+    }
+    return undefined;
+  }, [isPlaying, mainTab, syncPlayHostSize]);
 
   useEffect(() => {
     if (isPlaying || typeof document === 'undefined') return;
@@ -826,6 +850,12 @@ function App() {
       document.exitFullscreen().catch(() => {});
     }
   }, [isPlaying]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.visualViewport) return undefined;
+    window.visualViewport.addEventListener('resize', syncPlayHostSize);
+    return () => window.visualViewport.removeEventListener('resize', syncPlayHostSize);
+  }, [syncPlayHostSize]);
 
   // ---- World editing ----
   const handleCellPaint = useCallback((cx, cy, value) => {

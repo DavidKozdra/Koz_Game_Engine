@@ -2352,7 +2352,9 @@ export function buildExportHtml(project, projectJson, target, options = {}) {
 
       function applyLayout() {
         if (!stage) return;
-        var layout = computeLayout(window.innerWidth || resolution.width, window.innerHeight || resolution.height);
+        var hostWidth = shell && shell.clientWidth ? shell.clientWidth : (window.innerWidth || resolution.width);
+        var hostHeight = shell && shell.clientHeight ? shell.clientHeight : (window.innerHeight || resolution.height);
+        var layout = computeLayout(hostWidth, hostHeight);
         stage.style.width = layout.width + 'px';
         stage.style.height = layout.height + 'px';
         stage.dataset.scaleMode = display.scaleMode || 'contain';
@@ -2375,6 +2377,7 @@ export function buildExportHtml(project, projectJson, target, options = {}) {
       applyLayout();
       syncFullscreenButton();
       window.addEventListener('resize', applyLayout);
+      if (window.visualViewport) window.visualViewport.addEventListener('resize', applyLayout);
       document.addEventListener('fullscreenchange', function() {
         applyLayout();
         syncFullscreenButton();
