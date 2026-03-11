@@ -41,8 +41,7 @@ const DEFAULT_CELL_TYPES = [
 const DEFAULT_CLASSES = [
   { id: 'generic', name: 'Generic Object', baseType: 'generic' },
   { id: 'sprite', name: 'Sprite Object', baseType: 'sprite' },
-  { id: 'animator', name: 'Animator Object', baseType: 'animator' },
-  { id: 'camera', name: 'Camera Object', baseType: 'camera' },
+{ id: 'camera', name: 'Camera Object', baseType: 'camera' },
   { id: 'lighting_manager', name: 'Lighting Manager', baseType: 'lighting_manager' },
   { id: 'light', name: 'Light Object', baseType: 'light' },
   { id: 'audio_source', name: 'Audio Source', baseType: 'audio_source' },
@@ -172,6 +171,10 @@ function hasLightingManagerObject(objects) {
   return Array.isArray(objects) && objects.some((obj) => obj && obj.components && obj.components.LightingManager);
 }
 
+function hasCameraObject(objects) {
+  return Array.isArray(objects) && objects.some((obj) => obj && (obj.type === 'camera' || (obj.components && obj.components.Camera)));
+}
+
 function createLightingManagerObject(sceneId, lighting) {
   return {
     id: `obj_${sceneId || 'scene_main'}_lighting_manager`,
@@ -194,6 +197,103 @@ function createLightingManagerObject(sceneId, lighting) {
   };
 }
 
+function createSceneCameraObject(sceneId, world, options = {}) {
+  const cols = Number.isFinite(world && world.cols) ? world.cols : 30;
+  const rows = Number.isFinite(world && world.rows) ? world.rows : 20;
+  const offsetX = Number.isFinite(world && world.offsetX) ? world.offsetX : 0;
+  const offsetY = Number.isFinite(world && world.offsetY) ? world.offsetY : 0;
+  const centerX = Math.round((offsetX * 24) + (cols * 12));
+  const centerY = Math.round((offsetY * 24) + (rows * 12));
+  return {
+    id: options.id || `obj_${sceneId || 'scene_main'}_camera`,
+    name: options.name || 'Main Camera',
+    type: 'camera',
+    parentId: null,
+    x: centerX,
+    y: centerY,
+    editorFolder: 'Root',
+    components: {
+      Transform: { x: centerX, y: centerY, rotation: 0, scaleX: 1, scaleY: 1 },
+      Camera: {
+        enabled: true,
+        targetObjectId: null,
+        speed: 8,
+        offsetX: 0,
+        offsetY: 0,
+        deadZoneWidth: 180,
+        deadZoneHeight: 120,
+        lookAheadX: 0,
+        lookAheadY: 0,
+        visibleMargin: 40,
+        followX: true,
+        followY: true,
+        clampToWorld: true,
+        maxSpeed: 2000,
+      },
+      Render: { layerId: 'obj-main', visible: false, zIndex: 0 },
+      ScriptBindings: [],
+    },
+  };
+}
+
+function ensureSceneObjects(sceneId, world, objects, lighting) {
+  const next = clone(objects || []);
+  if (lighting && !hasLightingManagerObject(next)) {
+    next.unshift(createLightingManagerObject(sceneId, lighting));
+  }
+  if (!hasCameraObject(next)) {
+    next.unshift(createSceneCameraObject(sceneId, world));
+  }
+  return next;
+}
+
+function hasMeaningfulSceneObjects(objects) {
+  return Array.isArray(objects) && objects.some((obj) => {
+    if (!obj) return false;
+    if (obj.type === 'camera' || (obj.components && obj.components.Camera)) return false;
+    if (obj.type === 'lighting_manager' || (obj.components && obj.components.LightingManager)) return false;
+    return true;
+  });
+}
+
+function worldHasContent(world) {
+  if (!world || typeof world !== 'object') return false;
+  if (Array.isArray(world.elements) && world.elements.length > 0) return true;
+  const grid = Array.isArray(world.grid) ? world.grid : [];
+  for (const row of grid) {
+    if (!Array.isArray(row)) continue;
+    for (const cell of row) {
+      if (normalizeCellTypeId(cell) !== 'empty') return true;
+    }
+  }
+  return false;
+}
+
+function shouldHydrateSingleSceneWorld(sceneWorld, projectWorld) {
+  if (!projectWorld || typeof projectWorld !== 'object') return false;
+  if (!sceneWorld || typeof sceneWorld !== 'object') return true;
+  const sceneCols = Number.isFinite(sceneWorld.cols) ? sceneWorld.cols : 0;
+  const sceneRows = Number.isFinite(sceneWorld.rows) ? sceneWorld.rows : 0;
+  const projectCols = Number.isFinite(projectWorld.cols) ? projectWorld.cols : 0;
+  const projectRows = Number.isFinite(projectWorld.rows) ? projectWorld.rows : 0;
+  if (sceneCols <= 0 || sceneRows <= 0) return projectCols > 0 && projectRows > 0;
+  return !worldHasContent(sceneWorld) && worldHasContent(projectWorld);
+}
+
+function shouldHydrateSingleSceneObjects(sceneObjects, projectObjects) {
+  if (!Array.isArray(projectObjects) || projectObjects.length === 0) return false;
+  if (!Array.isArray(sceneObjects) || sceneObjects.length === 0) return true;
+  return !hasMeaningfulSceneObjects(sceneObjects) && hasMeaningfulSceneObjects(projectObjects);
+}
+
+function resolveProjectSceneId(project, preferredSceneId) {
+  const scenes = Array.isArray(project && project.scenes) ? project.scenes : [];
+  if (scenes.length === 0) return null;
+  if (preferredSceneId && scenes.some((scene) => scene && scene.id === preferredSceneId)) return preferredSceneId;
+  if (project && project.activeSceneId && scenes.some((scene) => scene && scene.id === project.activeSceneId)) return project.activeSceneId;
+  return scenes[0].id || null;
+}
+
 function normalizeWorld(world) {
   const next = clone(world || { cols: 30, rows: 20, defaultCell: null, grid: [], elements: [], meta: {} });
   if (!Array.isArray(next.grid)) next.grid = [];
@@ -208,15 +308,13 @@ function normalizeWorld(world) {
 function defaultSceneFromProject(projectLike) {
   const base = projectLike || {};
   const fallbackRenderMode = normalizeRenderMode(base?.meta?.renderMode, '2d');
-  const objects = clone(base.objects || []);
-  if (base.lighting && !hasLightingManagerObject(objects)) {
-    objects.unshift(createLightingManagerObject('scene_main', base.lighting));
-  }
+  const world = normalizeWorld(base.world || { cols: 30, rows: 20, offsetX: 0, offsetY: 0, defaultCell: null, grid: [], elements: [], meta: {} });
+  const objects = ensureSceneObjects('scene_main', world, base.objects || [], base.lighting);
   return {
     id: 'scene_main',
     name: 'Main Scene',
     renderMode: fallbackRenderMode,
-    world: normalizeWorld(base.world || { cols: 30, rows: 20, offsetX: 0, offsetY: 0, defaultCell: null, grid: [], elements: [], meta: {} }),
+    world,
     objects,
   };
 }
@@ -233,17 +331,22 @@ function ensureProjectShape(project) {
   if (!Array.isArray(next.scenes) || next.scenes.length === 0) next.scenes = [defaultSceneFromProject(next)];
   if (!next.meta || typeof next.meta !== 'object') next.meta = {};
   next.meta.renderMode = normalizeRenderMode(next.meta.renderMode, '2d');
+  const shouldHydrateSingleScene = next.scenes.length === 1;
   next.scenes = next.scenes.map((scene, idx) => {
     const sceneId = scene.id || `scene_${idx}`;
-    const objects = clone(scene.objects || next.objects || []);
-    if (scene && scene.lighting && !hasLightingManagerObject(objects)) {
-      objects.unshift(createLightingManagerObject(sceneId, scene.lighting));
-    }
+    const worldSource = shouldHydrateSingleScene && shouldHydrateSingleSceneWorld(scene && scene.world, next.world)
+      ? next.world
+      : (scene.world || next.world);
+    const objectSource = shouldHydrateSingleScene && shouldHydrateSingleSceneObjects(scene && scene.objects, next.objects)
+      ? next.objects
+      : (scene.objects || next.objects || []);
+    const world = normalizeWorld(worldSource);
+    const objects = ensureSceneObjects(sceneId, world, objectSource, scene && scene.lighting);
     return {
       id: sceneId,
       name: scene.name || `Scene ${idx + 1}`,
       renderMode: normalizeRenderMode(scene && scene.renderMode, next.meta.renderMode),
-      world: normalizeWorld(scene.world || next.world),
+      world,
       objects,
     };
   });
@@ -395,6 +498,35 @@ function ensureProjectShape(project) {
   return next;
 }
 
+function applyProjectPatch(project, patch, options = {}) {
+  if (!project || typeof project !== 'object') return project;
+  if (!patch || typeof patch !== 'object') return ensureProjectShape(project);
+
+  const base = ensureProjectShape(project);
+  const nextPatch = clone(patch);
+  const targetSceneId = resolveProjectSceneId(base, options.sceneId);
+  const patchTouchesWorld = Object.prototype.hasOwnProperty.call(nextPatch, 'world');
+  const patchTouchesObjects = Object.prototype.hasOwnProperty.call(nextPatch, 'objects');
+
+  let nextScenes = Array.isArray(nextPatch.scenes) ? clone(nextPatch.scenes) : clone(base.scenes || []);
+  if ((patchTouchesWorld || patchTouchesObjects) && nextScenes.length > 0 && targetSceneId) {
+    nextScenes = nextScenes.map((scene) => {
+      if (!scene || scene.id !== targetSceneId) return scene;
+      return {
+        ...scene,
+        ...(patchTouchesWorld ? { world: clone(nextPatch.world) } : {}),
+        ...(patchTouchesObjects ? { objects: clone(nextPatch.objects) } : {}),
+      };
+    });
+  }
+
+  return ensureProjectShape({
+    ...base,
+    ...nextPatch,
+    ...(nextScenes.length > 0 ? { scenes: nextScenes } : {}),
+  });
+}
+
 function normalizeCellTypeId(cell) {
   if (cell === null || cell === undefined) return 'empty';
   if (typeof cell === 'string') return cell;
@@ -433,6 +565,7 @@ export {
   DEFAULT_LIGHTING_MANAGER_COMPONENT,
   DEFAULT_LIGHT_COMPONENT,
   ensureProjectShape,
+  applyProjectPatch,
   normalizeCellTypeId,
   getCellType,
   getBrushValue,

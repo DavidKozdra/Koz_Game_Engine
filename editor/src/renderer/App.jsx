@@ -12,7 +12,7 @@ import { usePlayMode } from './components/PlayMode.jsx';
 import KozLogo from './components/KozLogo.jsx';
 import Modal from './components/Modal.jsx';
 import Icon from './components/Icon.jsx';
-import { ensureProjectShape, normalizeCellTypeId, getBrushValue } from './state/projectModel.js';
+import { ensureProjectShape, applyProjectPatch, normalizeCellTypeId, getBrushValue } from './state/projectModel.js';
 import { buildExportHtml } from './lib/exportHtml.js';
 import template2dPlatformer from '../../../projects/template-2d-platformer/project.json';
 import template2dClicker from '../../../projects/template-2d-clicker/project.json';
@@ -25,8 +25,8 @@ const PROJECT_TEMPLATES = [
     id: 'blank',
     label: 'Blank Project',
     badge: 'Core',
-    description: 'Single empty scene with the default editor setup.',
-    note: 'Use this to build a test case from scratch.',
+    description: 'Single starter scene with the default editor setup.',
+    note: 'Starts with a small test platform and player so Play mode is immediately visible.',
   },
   {
     id: 'platformer',
@@ -57,6 +57,102 @@ const PROJECT_TEMPLATE_SOURCES = {
   'fps-shell': template3dFpsShell,
 };
 
+function createSceneCameraObject(world, options = {}) {
+  const cols = Number.isFinite(world && world.cols) ? world.cols : 30;
+  const rows = Number.isFinite(world && world.rows) ? world.rows : 20;
+  const offsetX = Number.isFinite(world && world.offsetX) ? world.offsetX : 0;
+  const offsetY = Number.isFinite(world && world.offsetY) ? world.offsetY : 0;
+  const centerX = Math.round((offsetX * 24) + (cols * 12));
+  const centerY = Math.round((offsetY * 24) + (rows * 12));
+  const id = options.id || 'obj_main_camera';
+  return {
+    id,
+    name: options.name || 'Main Camera',
+    type: 'camera',
+    parentId: null,
+    x: centerX,
+    y: centerY,
+    components: {
+      Transform: { x: centerX, y: centerY, rotation: 0, scaleX: 1, scaleY: 1 },
+      Camera: {
+        enabled: true,
+        targetObjectId: options.targetObjectId || null,
+        speed: 8,
+        offsetX: 0,
+        offsetY: 0,
+        deadZoneWidth: 180,
+        deadZoneHeight: 120,
+        lookAheadX: 0,
+        lookAheadY: 0,
+        visibleMargin: 40,
+        followX: true,
+        followY: true,
+        clampToWorld: true,
+        maxSpeed: 2000,
+      },
+      Render: { layerId: 'obj-main', visible: false, zIndex: 0 },
+      ScriptBindings: [],
+    },
+  };
+}
+
+function setStarterWorldCell(world, cellX, cellY, value) {
+  if (!world || !Array.isArray(world.grid)) return;
+  const offsetX = Number.isFinite(world.offsetX) ? world.offsetX : 0;
+  const offsetY = Number.isFinite(world.offsetY) ? world.offsetY : 0;
+  const lx = cellX - offsetX;
+  const ly = cellY - offsetY;
+  if (ly < 0 || lx < 0 || ly >= world.grid.length) return;
+  if (!Array.isArray(world.grid[ly]) || lx >= world.grid[ly].length) return;
+  world.grid[ly][lx] = value;
+}
+
+function createBlankStarterWorld(world) {
+  const next = JSON.parse(JSON.stringify(world || {}));
+  const cols = Number.isFinite(next.cols) ? next.cols : 30;
+  const rows = Number.isFinite(next.rows) ? next.rows : 20;
+  const offsetX = Number.isFinite(next.offsetX) ? next.offsetX : 0;
+  const offsetY = Number.isFinite(next.offsetY) ? next.offsetY : 0;
+  const centerCellX = offsetX + Math.floor(cols / 2);
+  const floorLocalY = Math.min(rows - 1, Math.max(1, rows - 4));
+  const floorCellY = offsetY + floorLocalY;
+
+  for (let cellX = centerCellX - 6; cellX <= centerCellX + 6; cellX += 1) {
+    setStarterWorldCell(next, cellX, floorCellY, 'solid');
+  }
+  for (let cellX = centerCellX - 10; cellX <= centerCellX - 6; cellX += 1) {
+    setStarterWorldCell(next, cellX, floorCellY - 3, 'solid');
+  }
+  for (let cellX = centerCellX + 5; cellX <= centerCellX + 9; cellX += 1) {
+    setStarterWorldCell(next, cellX, floorCellY - 5, 'solid');
+  }
+
+  return next;
+}
+
+function createBlankStarterPlayer(world) {
+  const cols = Number.isFinite(world && world.cols) ? world.cols : 30;
+  const rows = Number.isFinite(world && world.rows) ? world.rows : 20;
+  const offsetX = Number.isFinite(world && world.offsetX) ? world.offsetX : 0;
+  const offsetY = Number.isFinite(world && world.offsetY) ? world.offsetY : 0;
+  const centerCellX = offsetX + Math.floor(cols / 2);
+  const floorLocalY = Math.min(rows - 1, Math.max(1, rows - 4));
+  const floorCellY = offsetY + floorLocalY;
+  const player = createGameObject('Player', (centerCellX * 24) - 14, (floorCellY * 24) - 36, {
+    type: 'player',
+    color: '#f59e0b',
+  });
+  if (player.components && player.components.Sprite) {
+    player.components.Sprite.width = 28;
+    player.components.Sprite.height = 36;
+  }
+  if (player.components && player.components.Collider) {
+    player.components.Collider.width = 28;
+    player.components.Collider.height = 36;
+  }
+  return player;
+}
+
 function createDefaultProject(opts = {}) {
   const cols = opts.cols || 30;
   const rows = opts.rows || 20;
@@ -69,11 +165,12 @@ function createDefaultProject(opts = {}) {
     for (let x = 0; x < cols; x++) row.push(dc);
     grid.push(row);
   }
+  const starterWorld = createBlankStarterWorld({ cols, rows, offsetX, offsetY, defaultCell: dc, grid, elements: [], meta: {} });
   return ensureProjectShape({
     schemaVersion: 1,
     meta: { name: opts.name || 'Untitled Project', version: '1.0.0', resolution: { width: 960, height: 540 }, engineVersion: '0.1.0' },
-    world: { cols, rows, offsetX, offsetY, defaultCell: dc, grid, elements: [], meta: {} },
-    objects: [],
+    world: starterWorld,
+    objects: [createSceneCameraObject(starterWorld), createBlankStarterPlayer(starterWorld)],
     animations: [],
     scripts: [],
     assets: [],
@@ -367,22 +464,89 @@ function stripScriptsForExport(project) {
 }
 
 function resolveActiveScene(project) {
+  return resolveScene(project, project && project.activeSceneId);
+}
+
+function resolveScene(project, sceneId) {
   if (!project || !Array.isArray(project.scenes) || project.scenes.length === 0) return null;
+  if (sceneId) {
+    const explicit = project.scenes.find((scene) => scene.id === sceneId);
+    if (explicit) return explicit;
+  }
   return project.scenes.find((scene) => scene.id === project.activeSceneId) || project.scenes[0];
 }
 
-function withActiveSceneView(project) {
+function withSceneView(project, sceneId) {
   if (!project) return project;
-  const active = resolveActiveScene(project);
-  if (!active) return project;
+  const scene = resolveScene(project, sceneId);
+  if (!scene) return project;
   return {
     ...project,
-    world: active.world || project.world,
-    objects: active.objects || project.objects || [],
+    world: scene.world || project.world,
+    objects: scene.objects || project.objects || [],
+  };
+}
+
+function isMenuScene(scene) {
+  const id = String((scene && scene.id) || '').toLowerCase();
+  const name = String((scene && scene.name) || '').toLowerCase();
+  return id.includes('menu') || name.includes('menu');
+}
+
+function guessInitialEditorSceneId(project) {
+  const scenes = Array.isArray(project && project.scenes) ? project.scenes : [];
+  if (scenes.length === 0) return (project && project.activeSceneId) || null;
+  const active = resolveActiveScene(project) || scenes[0];
+  if (active && !isMenuScene(active)) return active.id;
+
+  const populatedScene = scenes.find((scene) => !isMenuScene(scene) && Array.isArray(scene.objects) && scene.objects.length > 0);
+  if (populatedScene) return populatedScene.id;
+
+  const nonMenuScene = scenes.find((scene) => !isMenuScene(scene));
+  if (nonMenuScene) return nonMenuScene.id;
+
+  return active ? active.id : scenes[0].id;
+}
+
+function createFramedCamera(projectLike, previousCamera = {}) {
+  if (!projectLike || !projectLike.world) return previousCamera;
+  const world = projectLike.world;
+  const ox = Number.isFinite(world.offsetX) ? world.offsetX : 0;
+  const oy = Number.isFinite(world.offsetY) ? world.offsetY : 0;
+  const cols = Number.isFinite(world.cols) ? world.cols : ((world.grid && world.grid[0] && world.grid[0].length) || 1);
+  const rows = Number.isFinite(world.rows) ? world.rows : ((world.grid && world.grid.length) || 1);
+  const minX = ox * 24;
+  const minY = oy * 24;
+  const maxX = (ox + cols) * 24;
+  const maxY = (oy + rows) * 24;
+  let sceneMinX = minX;
+  let sceneMinY = minY;
+  let sceneMaxX = maxX;
+  let sceneMaxY = maxY;
+
+  for (const obj of (projectLike.objects || [])) {
+    const t = (obj.components && obj.components.Transform) || {};
+    const s = (obj.components && obj.components.Sprite) || {};
+    const x = Number.isFinite(t.x) ? t.x : (Number.isFinite(obj.x) ? obj.x : 0);
+    const y = Number.isFinite(t.y) ? t.y : (Number.isFinite(obj.y) ? obj.y : 0);
+    const w = Number.isFinite(s.width) ? s.width : 32;
+    const h = Number.isFinite(s.height) ? s.height : 32;
+    sceneMinX = Math.min(sceneMinX, x);
+    sceneMinY = Math.min(sceneMinY, y);
+    sceneMaxX = Math.max(sceneMaxX, x + w);
+    sceneMaxY = Math.max(sceneMaxY, y + h);
+  }
+
+  return {
+    ...previousCamera,
+    x: sceneMinX - 48,
+    y: sceneMinY - 48,
+    zoom: Number.isFinite(previousCamera.zoom) ? previousCamera.zoom : 1,
   };
 }
 
 const MAX_UNDO = 100;
+const DEFAULT_EDITOR_CAMERA = { x: -240, y: -140, zoom: 1 };
 
 function formatProjectTimestamp(ts) {
   const value = Number(ts);
@@ -408,7 +572,7 @@ function App() {
   const [projectSearch, setProjectSearch] = useState('');
   const [editorState, setEditorState] = useState({
     mode: 'EDIT', activeTool: 'brush', brushValue: 'solid', gizmoMode: 'move',
-    selectedObjectId: null, selectedObjectIds: [], selectedScriptId: null, camera: { x: -240, y: -140, zoom: 1 }, gridVisible: true,
+    selectedObjectId: null, selectedObjectIds: [], selectedScriptId: null, sceneId: null, camera: DEFAULT_EDITOR_CAMERA, gridVisible: true,
   });
   const [bottomTab, setBottomTab] = useState('timeline');
   const [bottomHeight, setBottomHeight] = useState(240);
@@ -451,7 +615,7 @@ function App() {
     : effectiveDesktopPlatform === 'mac'
       ? ['dmg', 'zip']
       : ['AppImage', 'deb', 'zip'];
-  const projectView = withActiveSceneView(project);
+  const projectView = withSceneView(project, editorState.sceneId);
   const selectedProjectTemplate = useMemo(() => {
     return PROJECT_TEMPLATES.find((template) => template.id === newProjectTemplate) || PROJECT_TEMPLATES[0];
   }, [newProjectTemplate]);
@@ -496,22 +660,23 @@ function App() {
       world: base.world,
       objects: base.objects || [],
     }];
-    const active = resolveActiveScene(base) || scenes[0];
-    const activeId = active.id;
+    const active = resolveScene(base, editorState.sceneId) || scenes[0];
+    const sceneId = active.id;
+    const bootSceneId = base.activeSceneId || sceneId;
     const world = JSON.parse(JSON.stringify(active.world || base.world));
     const objects = JSON.parse(JSON.stringify(active.objects || base.objects || []));
     const nextState = mutateFn({ world, objects }) || { world, objects };
     const nextScenes = scenes.map((scene) => (
-      scene.id === activeId ? { ...scene, world: nextState.world, objects: nextState.objects } : scene
+      scene.id === sceneId ? { ...scene, world: nextState.world, objects: nextState.objects } : scene
     ));
     return ensureProjectShape({
       ...base,
       scenes: nextScenes,
-      activeSceneId: activeId,
-      world: nextState.world,
-      objects: nextState.objects,
+      activeSceneId: bootSceneId,
+      world: base.world,
+      objects: base.objects,
     });
-  }, []);
+  }, [editorState.sceneId]);
 
   // ---- Undo/redo ----
   const pushUndo = useCallback((prevProject) => {
@@ -1123,49 +1288,52 @@ def on_update(self, engine, dt):
   const handleToggleGrid = useCallback(() => updateEditor({ gridVisible: !editorState.gridVisible }), [updateEditor, editorState.gridVisible]);
   const handleFrameScene = useCallback(() => {
     if (!projectView || !projectView.world) return;
-    const world = projectView.world;
-    const ox = Number.isFinite(world.offsetX) ? world.offsetX : 0;
-    const oy = Number.isFinite(world.offsetY) ? world.offsetY : 0;
-    const cols = Number.isFinite(world.cols) ? world.cols : ((world.grid && world.grid[0] && world.grid[0].length) || 1);
-    const rows = Number.isFinite(world.rows) ? world.rows : ((world.grid && world.grid.length) || 1);
-    const minX = ox * 24;
-    const minY = oy * 24;
-    const maxX = (ox + cols) * 24;
-    const maxY = (oy + rows) * 24;
-    let sceneMinX = minX;
-    let sceneMinY = minY;
-    let sceneMaxX = maxX;
-    let sceneMaxY = maxY;
-    for (const obj of (projectView.objects || [])) {
-      const t = (obj.components && obj.components.Transform) || {};
-      const s = (obj.components && obj.components.Sprite) || {};
-      const x = Number.isFinite(t.x) ? t.x : (Number.isFinite(obj.x) ? obj.x : 0);
-      const y = Number.isFinite(t.y) ? t.y : (Number.isFinite(obj.y) ? obj.y : 0);
-      const w = Number.isFinite(s.width) ? s.width : 32;
-      const h = Number.isFinite(s.height) ? s.height : 32;
-      sceneMinX = Math.min(sceneMinX, x);
-      sceneMinY = Math.min(sceneMinY, y);
-      sceneMaxX = Math.max(sceneMaxX, x + w);
-      sceneMaxY = Math.max(sceneMaxY, y + h);
-    }
-    updateEditor({
-      camera: {
-        ...editorState.camera,
-        x: sceneMinX - 48,
-        y: sceneMinY - 48,
-        zoom: editorState.camera.zoom || 1,
-      },
-    });
+    updateEditor({ camera: createFramedCamera(projectView, editorState.camera) });
   }, [projectView, updateEditor, editorState.camera]);
 
   useEffect(() => {
-    if (!projectView || !projectView.world) return;
-    const ox = Number.isFinite(projectView.world.offsetX) ? projectView.world.offsetX : 0;
-    const oy = Number.isFinite(projectView.world.offsetY) ? projectView.world.offsetY : 0;
-    if ((ox !== 0 || oy !== 0) && editorState.camera.x === 0 && editorState.camera.y === 0) {
-      handleFrameScene();
+    if (!project) return;
+    if (!editorState.sceneId) {
+      const nextSceneId = guessInitialEditorSceneId(project);
+      setEditorState((prev) => ({
+        ...prev,
+        sceneId: nextSceneId,
+        camera: createFramedCamera(withSceneView(project, nextSceneId), prev.camera),
+      }));
+      return;
     }
-  }, [projectView, editorState.camera.x, editorState.camera.y, handleFrameScene]);
+    const selectedScene = resolveScene(project, editorState.sceneId);
+    if (selectedScene && selectedScene.id === editorState.sceneId) return;
+    const fallbackSceneId = guessInitialEditorSceneId(project);
+    setEditorState((prev) => ({
+      ...prev,
+      sceneId: fallbackSceneId,
+      selectedObjectId: null,
+      selectedObjectIds: [],
+      camera: createFramedCamera(withSceneView(project, fallbackSceneId), prev.camera),
+    }));
+  }, [project, editorState.sceneId]);
+
+  const handleSelectScene = useCallback((sceneId) => {
+    if (!sceneId) return;
+    const nextScene = project ? resolveScene(project, sceneId) : null;
+    setEditorState((prev) => ({
+      ...prev,
+      sceneId,
+      selectedObjectId: null,
+      selectedObjectIds: [],
+      camera: nextScene ? createFramedCamera(withSceneView(project, nextScene.id), prev.camera) : prev.camera,
+    }));
+  }, [project]);
+
+  const handleSetStartScene = useCallback((sceneId) => {
+    if (!sceneId) return;
+    setProject((prev) => {
+      if (!prev || prev.activeSceneId === sceneId) return prev;
+      pushUndo(prev);
+      return ensureProjectShape({ ...prev, activeSceneId: sceneId });
+    });
+  }, [pushUndo]);
 
   useEffect(() => {
     refreshProjects();
@@ -1181,7 +1349,17 @@ def on_update(self, engine, dt):
         return;
       }
       const next = ensureProjectShape(data);
+      const nextSceneId = guessInitialEditorSceneId(next);
       setProject(next);
+      setEditorState((prev) => ({
+        ...prev,
+        mode: 'EDIT',
+        selectedObjectId: null,
+        selectedObjectIds: [],
+        selectedScriptId: null,
+        sceneId: nextSceneId,
+        camera: createFramedCamera(withSceneView(next, nextSceneId), DEFAULT_EDITOR_CAMERA),
+      }));
       setProjectFile({
         projectPath: fileInfo.projectPath || null,
         folderPath: fileInfo.folderPath || null,
@@ -1291,10 +1469,18 @@ def on_update(self, engine, dt):
   const handleNew = useCallback(() => {
     const name = (newProjectName || 'Untitled Project').trim() || 'Untitled Project';
     const nextProject = createProjectFromTemplate(newProjectTemplate, { name });
+    const nextSceneId = guessInitialEditorSceneId(nextProject);
     setProject(nextProject);
     setShowProjectSelector(false);
     setProjectFile({ projectPath: null, folderPath: null, name });
-    updateEditor({ selectedObjectId: null, selectedObjectIds: [], selectedScriptId: null, camera: { x: -240, y: -140, zoom: 1 }, brushValue: 'solid' });
+    updateEditor({
+      selectedObjectId: null,
+      selectedObjectIds: [],
+      selectedScriptId: null,
+      sceneId: nextSceneId,
+      camera: createFramedCamera(withSceneView(nextProject, nextSceneId), DEFAULT_EDITOR_CAMERA),
+      brushValue: 'solid',
+    });
     undoStackRef.current = [];
     redoStackRef.current = [];
     const api = window.api;
@@ -1316,13 +1502,8 @@ def on_update(self, engine, dt):
   }, [updateEditor, newProjectName, newProjectTemplate, refreshProjects]);
 
   const handlePatchProject = useCallback((patch) => {
-    setProject(prev => {
-      const merged = ensureProjectShape({ ...prev, ...patch });
-      const active = resolveActiveScene(merged);
-      if (!active) return merged;
-      return ensureProjectShape({ ...merged, world: active.world, objects: active.objects, activeSceneId: active.id });
-    });
-  }, []);
+    setProject((prev) => applyProjectPatch(prev, patch, { sceneId: editorState.sceneId }));
+  }, [editorState.sceneId]);
 
   const openExportModal = useCallback(() => {
     if (!project) return;
@@ -1875,8 +2056,11 @@ def on_update(self, engine, dt):
                   mode="assets"
                   project={project}
                   selectedObjectId={editorState.selectedObjectId}
+                  selectedSceneId={editorState.sceneId}
                   onPatchProject={handlePatchProject}
                   onSelectObject={handleSelectObject}
+                  onSelectScene={handleSelectScene}
+                  onSetStartScene={handleSetStartScene}
                 />
               </div>
             )}
@@ -1886,8 +2070,11 @@ def on_update(self, engine, dt):
                   mode="scenes"
                   project={project}
                   selectedObjectId={editorState.selectedObjectId}
+                  selectedSceneId={editorState.sceneId}
                   onPatchProject={handlePatchProject}
                   onSelectObject={handleSelectObject}
+                  onSelectScene={handleSelectScene}
+                  onSetStartScene={handleSetStartScene}
                 />
               </div>
             )}
@@ -1897,8 +2084,11 @@ def on_update(self, engine, dt):
                   mode="settings"
                   project={project}
                   selectedObjectId={editorState.selectedObjectId}
+                  selectedSceneId={editorState.sceneId}
                   onPatchProject={handlePatchProject}
                   onSelectObject={handleSelectObject}
+                  onSelectScene={handleSelectScene}
+                  onSetStartScene={handleSetStartScene}
                 />
               </div>
             )}

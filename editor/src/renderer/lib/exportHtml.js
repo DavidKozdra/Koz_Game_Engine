@@ -135,7 +135,7 @@ function exportRuntimeMain() {
     if (managerObject && managerObject.components && managerObject.components.LightingManager) {
       return normalizeSceneLighting(managerObject.components.LightingManager);
     }
-    return normalizeSceneLighting(sceneLike && sceneLike.lighting);
+    return normalizeSceneLighting(null);
   }
 
   function resolveCellType(cell) {
@@ -354,8 +354,19 @@ function exportRuntimeMain() {
     };
   }
 
+  function getWorldElements() {
+    return Array.isArray(world && world.elements) ? world.elements.filter(Boolean) : [];
+  }
+
   function resolvePlayCamera(config, objects) {
     var fallback = config || {};
+    var metrics = resolveWorldMetrics(world, CELL_SIZE);
+    var fallbackOriginX = Number.isFinite(fallback.originX)
+      ? fallback.originX
+      : (metrics ? metrics.minX + (metrics.width * 0.5) : 0);
+    var fallbackOriginY = Number.isFinite(fallback.originY)
+      ? fallback.originY
+      : (metrics ? metrics.minY + (metrics.height * 0.5) : 0);
     var cameraObject = objects.find(function(obj) {
       return obj && obj.components && obj.components.Camera && obj.components.Camera.enabled !== false;
     });
@@ -367,6 +378,10 @@ function exportRuntimeMain() {
     }
     if (!cameraObject) {
       return Object.assign({}, fallback, {
+        source: 'engine-fallback',
+        objectId: null,
+        originX: fallbackOriginX,
+        originY: fallbackOriginY,
         targetObjectId: targetObjectId,
         offsetX: 0,
         offsetY: 0,
@@ -376,6 +391,8 @@ function exportRuntimeMain() {
       });
     }
     return Object.assign({}, fallback, cameraComp, {
+      source: 'object',
+      objectId: cameraObject.id,
       originX: Number.isFinite(cameraObject.x) ? cameraObject.x : 0,
       originY: Number.isFinite(cameraObject.y) ? cameraObject.y : 0,
       targetObjectId: targetObjectId,
@@ -912,7 +929,25 @@ function exportRuntimeMain() {
     if (!ctx2d || !sceneLighting.enabled) return;
     var ambientRgb = parseHexColor(sceneLighting.ambientColor, [11, 18, 32]);
     var lights = getActiveLights();
-    var overlayAlpha = clamp01(sceneLighting.overlayOpacity * (1 - (sceneLighting.ambientIntensity * 0.6)));
+    var worldElementCount = getWorldElements().length;
+    var visibleObjects = Array.isArray(gameObjects)
+      ? gameObjects.filter(function(obj) { return !obj || !obj.components || !obj.components.Render || obj.components.Render.visible !== false; }).length
+      : 0;
+    var hasFilledCells = false;
+    if (Array.isArray(world && world.grid)) {
+      for (var rowIndex = 0; rowIndex < world.grid.length && !hasFilledCells; rowIndex += 1) {
+        var row = Array.isArray(world.grid[rowIndex]) ? world.grid[rowIndex] : [];
+        for (var colIndex = 0; colIndex < row.length; colIndex += 1) {
+          if (normalizeCellTypeId(row[colIndex]) !== 'empty') {
+            hasFilledCells = true;
+            break;
+          }
+        }
+      }
+    }
+    var isEffectivelyEmptyScene = lights.length === 0 && visibleObjects === 0 && !hasFilledCells && worldElementCount === 0;
+    var baseOverlayAlpha = clamp01(sceneLighting.overlayOpacity * (1 - (sceneLighting.ambientIntensity * 0.6)));
+    var overlayAlpha = isEffectivelyEmptyScene ? Math.min(baseOverlayAlpha, 0.28) : baseOverlayAlpha;
 
     ctx2d.save();
     ctx2d.fillStyle = rgbaString(ambientRgb, overlayAlpha);
@@ -1342,12 +1377,41 @@ function exportRuntimeMain() {
           if (img && img.complete && img.naturalWidth > 0) {
             ctx2d.drawImage(img, px, py, CELL_SIZE, CELL_SIZE);
           } else {
-            ctx2d.fillStyle = type.color || '#334155';
+            ctx2d.fillStyle = type.color || '#475569';
             ctx2d.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+            ctx2d.fillStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx2d.fillRect(px + 1, py + 1, CELL_SIZE - 2, 3);
+            ctx2d.fillStyle = 'rgba(15, 23, 42, 0.22)';
+            ctx2d.fillRect(px + 1, py + CELL_SIZE - 4, CELL_SIZE - 2, 3);
           }
+          ctx2d.strokeStyle = type.collision ? 'rgba(248, 250, 252, 0.42)' : 'rgba(226, 232, 240, 0.16)';
+          ctx2d.lineWidth = 1;
+          ctx2d.strokeRect(px + 0.5, py + 0.5, CELL_SIZE - 1, CELL_SIZE - 1);
         }
       }
     }
+  }
+
+  function drawWorldElements(drawViewX, drawViewY) {
+    if (!ctx2d) return;
+    getWorldElements().forEach(function(el) {
+      var cellX = Number.isFinite(el && el.x) ? el.x : null;
+      var cellY = Number.isFinite(el && el.y) ? el.y : null;
+      if (!Number.isFinite(cellX) || !Number.isFinite(cellY)) return;
+      var px = cellX * CELL_SIZE - drawViewX;
+      var py = cellY * CELL_SIZE - drawViewY;
+      var kind = String((el && el.kind) || 'element').trim();
+      var badge = kind ? kind.charAt(0).toUpperCase() : 'E';
+      ctx2d.fillStyle = 'rgba(245, 158, 11, 0.92)';
+      ctx2d.fillRect(px + 2, py + 2, CELL_SIZE - 4, CELL_SIZE - 4);
+      ctx2d.strokeStyle = 'rgba(255, 251, 235, 0.95)';
+      ctx2d.lineWidth = 1.5;
+      ctx2d.strokeRect(px + 2.5, py + 2.5, CELL_SIZE - 5, CELL_SIZE - 5);
+      ctx2d.fillStyle = '#fff7ed';
+      ctx2d.font = 'bold 11px sans-serif';
+      ctx2d.textAlign = 'center';
+      ctx2d.fillText(badge, px + CELL_SIZE * 0.5, py + CELL_SIZE * 0.5 + 4);
+    });
   }
 
   function drawObjects(drawViewX, drawViewY) {
@@ -1419,6 +1483,7 @@ function exportRuntimeMain() {
     ctx2d.fillStyle = '#0b1220';
     ctx2d.fillRect(0, 0, canvas2d.width, canvas2d.height);
     drawWorld(viewX, viewY);
+    drawWorldElements(viewX, viewY);
     drawObjects(viewX, viewY);
     renderFrame2DLighting();
     ctx2d.fillStyle = '#e2e8f0';

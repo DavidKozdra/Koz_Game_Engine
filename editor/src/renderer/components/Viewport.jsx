@@ -46,6 +46,60 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
     };
   }, [screenToWorld]);
 
+  const resolveCameraPreview = useCallback(() => {
+    if (!project) return null;
+    const objects = Array.isArray(project.objects) ? project.objects : [];
+    const resolution = (project.meta && project.meta.resolution) || { width: 960, height: 540 };
+    const world = project.world || null;
+    const cameraObject = objects.find((obj) => obj && obj.components && obj.components.Camera && obj.components.Camera.enabled !== false) || null;
+
+    function centerForObject(obj) {
+      const t = (obj && obj.components && obj.components.Transform) || {};
+      const s = (obj && obj.components && obj.components.Sprite) || {};
+      const x = Number.isFinite(t.x) ? t.x : (Number.isFinite(obj && obj.x) ? obj.x : 0);
+      const y = Number.isFinite(t.y) ? t.y : (Number.isFinite(obj && obj.y) ? obj.y : 0);
+      const w = Number.isFinite(s.width) ? s.width : 0;
+      const h = Number.isFinite(s.height) ? s.height : 0;
+      return { x: x + (w * 0.5), y: y + (h * 0.5) };
+    }
+
+    if (cameraObject) {
+      const cameraComp = cameraObject.components.Camera || {};
+      const target = cameraComp.targetObjectId ? objects.find((obj) => obj.id === cameraComp.targetObjectId) : null;
+      const origin = centerForObject(cameraObject);
+      const focus = target ? centerForObject(target) : origin;
+      return {
+        source: 'camera',
+        label: cameraObject.name || 'Camera',
+        centerX: focus.x + (Number.isFinite(cameraComp.offsetX) ? cameraComp.offsetX : 0),
+        centerY: focus.y + (Number.isFinite(cameraComp.offsetY) ? cameraComp.offsetY : 0),
+        originX: origin.x,
+        originY: origin.y,
+        targetX: target ? focus.x : null,
+        targetY: target ? focus.y : null,
+        width: Number.isFinite(resolution.width) ? resolution.width : 960,
+        height: Number.isFinite(resolution.height) ? resolution.height : 540,
+      };
+    }
+
+    const cols = Number.isFinite(world && world.cols) ? world.cols : 0;
+    const rows = Number.isFinite(world && world.rows) ? world.rows : 0;
+    const offsetX = Number.isFinite(world && world.offsetX) ? world.offsetX : 0;
+    const offsetY = Number.isFinite(world && world.offsetY) ? world.offsetY : 0;
+    return {
+      source: 'fallback',
+      label: 'Engine Fallback Camera',
+      centerX: (offsetX * cellSize) + (cols * cellSize * 0.5),
+      centerY: (offsetY * cellSize) + (rows * cellSize * 0.5),
+      originX: null,
+      originY: null,
+      targetX: null,
+      targetY: null,
+      width: Number.isFinite(resolution.width) ? resolution.width : 960,
+      height: Number.isFinite(resolution.height) ? resolution.height : 540,
+    };
+  }, [project]);
+
   // Render
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -92,10 +146,38 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
     const worldMinY = offsetY;
     const worldMaxX = offsetX + cols - 1;
     const worldMaxY = offsetY + rows - 1;
+    const worldPx = worldMinX * cellSize;
+    const worldPy = worldMinY * cellSize;
+    const worldWidthPx = Math.max(1, cols) * cellSize;
+    const worldHeightPx = Math.max(1, rows) * cellSize;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(30, 41, 59, 0.45)';
+    ctx.fillRect(worldPx, worldPy, worldWidthPx, worldHeightPx);
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.7)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(worldPx + 0.5, worldPy + 0.5, Math.max(0, worldWidthPx - 1), Math.max(0, worldHeightPx - 1));
+    ctx.setLineDash([]);
+    ctx.restore();
+
     const drawMinX = Math.max(viewMinX, worldMinX);
     const drawMinY = Math.max(viewMinY, worldMinY);
     const drawMaxX = Math.min(viewMaxX, worldMaxX);
     const drawMaxY = Math.min(viewMaxY, worldMaxY);
+
+    if (drawMinX <= drawMaxX && drawMinY <= drawMaxY) {
+      for (let cellY = drawMinY; cellY <= drawMaxY; cellY += 1) {
+        for (let cellX = drawMinX; cellX <= drawMaxX; cellX += 1) {
+          const localX = cellX - offsetX;
+          const localY = cellY - offsetY;
+          const cell = world.grid[localY] && world.grid[localY][localX];
+          if (normalizeCellTypeId(cell) !== 'empty') continue;
+          ctx.fillStyle = ((cellX + cellY) % 2 === 0) ? 'rgba(71, 85, 105, 0.14)' : 'rgba(51, 65, 85, 0.08)';
+          ctx.fillRect(cellX * cellSize, cellY * cellSize, cellSize, cellSize);
+        }
+      }
+    }
 
     if (drawMinX <= drawMaxX && drawMinY <= drawMaxY) {
       const assetById = new Map(((project.assets || []).map((a) => [a.id, a])));
@@ -146,13 +228,21 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
             }
           }
           if (!drawn) {
-            ctx.fillStyle = entry.type.color || '#334155';
+            ctx.fillStyle = entry.type.color || '#475569';
             ctx.fillRect(px, py, cellSize, cellSize);
+            ctx.fillStyle = 'rgba(255,255,255,0.08)';
+            ctx.fillRect(px + 1, py + 1, cellSize - 2, 3);
+            ctx.fillStyle = 'rgba(15,23,42,0.22)';
+            ctx.fillRect(px + 1, py + cellSize - 4, cellSize - 2, 3);
           }
           if (entry.type.collision) {
-            ctx.strokeStyle = 'rgba(239,68,68,0.4)';
+            ctx.strokeStyle = 'rgba(248,250,252,0.42)';
             ctx.lineWidth = 1;
             ctx.strokeRect(px + 1, py + 1, cellSize - 2, cellSize - 2);
+          } else {
+            ctx.strokeStyle = 'rgba(226,232,240,0.16)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(px + 0.5, py + 0.5, cellSize - 1, cellSize - 1);
           }
         }
       }
@@ -242,7 +332,8 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
         const sprite = (obj.components && obj.components.Sprite) || {};
         const transform = (obj.components && obj.components.Transform) || {};
         const render = (obj.components && obj.components.Render) || {};
-        if (render.visible === false) continue;
+        const isCameraObject = !!(obj.components && obj.components.Camera);
+        if (render.visible === false && !isCameraObject) continue;
         const ox = Number.isFinite(transform.x) ? transform.x : (Number.isFinite(obj.x) ? obj.x : 0);
         const oy = Number.isFinite(transform.y) ? transform.y : (Number.isFinite(obj.y) ? obj.y : 0);
         const rotation = Number.isFinite(transform.rotation) ? transform.rotation : 0;
@@ -283,9 +374,21 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
             drawn = true;
           }
         }
-        if (!drawn) {
+        if (!drawn && !isCameraObject) {
           ctx.fillStyle = sprite.color || '#4ade80';
           ctx.fillRect(-(sprite.width || 32) / 2, -(sprite.height || 32) / 2, sprite.width || 32, sprite.height || 32);
+        }
+        if (isCameraObject) {
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 2 / zoom;
+          ctx.beginPath();
+          ctx.moveTo(-10, 0);
+          ctx.lineTo(10, 0);
+          ctx.moveTo(0, -10);
+          ctx.lineTo(0, 10);
+          ctx.stroke();
+          ctx.strokeRect(-8, -6, 16, 12);
+          drawn = true;
         }
         ctx.restore();
 
@@ -306,6 +409,39 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
         ctx.font = '10px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(obj.name || obj.id, ox + w / 2, oy - 4);
+      }
+
+      const preview = resolveCameraPreview();
+      if (preview && Number.isFinite(preview.centerX) && Number.isFinite(preview.centerY)) {
+        const left = preview.centerX - (preview.width * 0.5);
+        const top = preview.centerY - (preview.height * 0.5);
+        ctx.save();
+        ctx.strokeStyle = preview.source === 'camera' ? 'rgba(56, 189, 248, 0.95)' : 'rgba(250, 204, 21, 0.95)';
+        ctx.fillStyle = preview.source === 'camera' ? 'rgba(56, 189, 248, 0.12)' : 'rgba(250, 204, 21, 0.12)';
+        ctx.lineWidth = 2 / zoom;
+        ctx.setLineDash([12 / zoom, 8 / zoom]);
+        ctx.fillRect(left, top, preview.width, preview.height);
+        ctx.strokeRect(left, top, preview.width, preview.height);
+        ctx.setLineDash([]);
+        if (Number.isFinite(preview.originX) && Number.isFinite(preview.originY)) {
+          ctx.beginPath();
+          ctx.moveTo(preview.originX - 8, preview.originY);
+          ctx.lineTo(preview.originX + 8, preview.originY);
+          ctx.moveTo(preview.originX, preview.originY - 8);
+          ctx.lineTo(preview.originX, preview.originY + 8);
+          ctx.stroke();
+        }
+        if (Number.isFinite(preview.targetX) && Number.isFinite(preview.targetY) && Number.isFinite(preview.originX) && Number.isFinite(preview.originY)) {
+          ctx.beginPath();
+          ctx.moveTo(preview.originX, preview.originY);
+          ctx.lineTo(preview.targetX, preview.targetY);
+          ctx.stroke();
+        }
+        ctx.fillStyle = preview.source === 'camera' ? '#67e8f9' : '#fde68a';
+        ctx.font = `${Math.max(10, 12 / zoom)}px sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.fillText(`${preview.label} | ${Math.round(preview.width)}x${Math.round(preview.height)}`, left + 8, top + 18);
+        ctx.restore();
       }
 
     ctx.restore();

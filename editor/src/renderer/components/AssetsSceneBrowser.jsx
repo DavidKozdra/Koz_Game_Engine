@@ -24,7 +24,57 @@ function imageSrc(asset) {
   return asset.previewUrl || asset.url || asset.src || null;
 }
 
-export default function AssetsSceneBrowser({ project, onPatchProject, showScenes = true, showImages = true, showPrefabs = true, showAudio = true, title = 'Assets' }) {
+function createSceneCameraObject(world, options = {}) {
+  const cols = Number.isFinite(world && world.cols) ? world.cols : 30;
+  const rows = Number.isFinite(world && world.rows) ? world.rows : 20;
+  const offsetX = Number.isFinite(world && world.offsetX) ? world.offsetX : 0;
+  const offsetY = Number.isFinite(world && world.offsetY) ? world.offsetY : 0;
+  const centerX = Math.round((offsetX * 24) + (cols * 12));
+  const centerY = Math.round((offsetY * 24) + (rows * 12));
+  const id = options.id || `obj_${options.sceneId || 'scene'}_camera`;
+  return {
+    id,
+    name: options.name || 'Main Camera',
+    type: 'camera',
+    parentId: null,
+    x: centerX,
+    y: centerY,
+    components: {
+      Transform: { x: centerX, y: centerY, rotation: 0, scaleX: 1, scaleY: 1 },
+      Camera: {
+        enabled: true,
+        targetObjectId: null,
+        speed: 8,
+        offsetX: 0,
+        offsetY: 0,
+        deadZoneWidth: 180,
+        deadZoneHeight: 120,
+        lookAheadX: 0,
+        lookAheadY: 0,
+        visibleMargin: 40,
+        followX: true,
+        followY: true,
+        clampToWorld: true,
+        maxSpeed: 2000,
+      },
+      Render: { layerId: 'obj-main', visible: false, zIndex: 0 },
+      ScriptBindings: [],
+    },
+  };
+}
+
+export default function AssetsSceneBrowser({
+  project,
+  onPatchProject,
+  onSelectScene,
+  onSetStartScene,
+  selectedSceneId = null,
+  showScenes = true,
+  showImages = true,
+  showPrefabs = true,
+  showAudio = true,
+  title = 'Assets',
+}) {
   const [expanded, setExpanded] = useState({ scenes: true, images: true, prefabs: true, audio: true });
   const [assetFilter, setAssetFilter] = useState('');
   const [newSceneName, setNewSceneName] = useState('');
@@ -49,7 +99,8 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
   const images = useMemo(() => filterLower ? allImages.filter(a => (a.name || a.id).toLowerCase().includes(filterLower)) : allImages, [allImages, filterLower]);
   const audios = useMemo(() => filterLower ? allAudios.filter(a => (a.name || a.id).toLowerCase().includes(filterLower)) : allAudios, [allAudios, filterLower]);
   const prefabs = project.prefabs || [];
-  const activeSceneId = project.activeSceneId || (scenes[0] && scenes[0].id) || null;
+  const bootSceneId = project.activeSceneId || (scenes[0] && scenes[0].id) || null;
+  const currentSceneId = selectedSceneId || bootSceneId;
 
   function toggle(key) {
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -66,17 +117,18 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
       world.grid = world.grid.map((row) => (Array.isArray(row) ? row.map(() => world.defaultCell || 'empty') : []));
     }
     onPatchProject({
-      scenes: [...scenes, { id, name, renderMode: baseRenderMode, world, objects: [] }],
-      activeSceneId: id,
+      scenes: [...scenes, { id, name, renderMode: baseRenderMode, world, objects: [createSceneCameraObject(world, { sceneId: id })] }],
     });
+    if (onSelectScene) onSelectScene(id);
     setNewSceneName('');
   }
 
   function removeScene(id) {
     if (scenes.length <= 1) return;
     const nextScenes = scenes.filter((s) => s.id !== id);
-    const nextActive = activeSceneId === id ? nextScenes[0].id : activeSceneId;
+    const nextActive = bootSceneId === id ? nextScenes[0].id : bootSceneId;
     onPatchProject({ scenes: nextScenes, activeSceneId: nextActive });
+    if (currentSceneId === id && onSelectScene) onSelectScene(nextScenes[0].id);
   }
 
   function duplicateScene(id) {
@@ -89,7 +141,8 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
       world: JSON.parse(JSON.stringify(source.world || project.world)),
       objects: JSON.parse(JSON.stringify(source.objects || [])),
     };
-    onPatchProject({ scenes: [...scenes, copy], activeSceneId: copy.id });
+    onPatchProject({ scenes: [...scenes, copy] });
+    if (onSelectScene) onSelectScene(copy.id);
   }
 
   function updateSceneRenderMode(id, renderMode) {
@@ -280,18 +333,29 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
               <button className="btn btn-sm" onClick={addScene} aria-label="Add scene"><Icon name="add" />Add</button>
             </div>
             <div style={{ display: 'grid', gap: 4 }}>
-              {scenes.map((scene) => (
-                <div key={scene.id} style={{ display: 'grid', gap: 6, padding: '6px', border: '1px solid var(--border)', borderRadius: 4, background: activeSceneId === scene.id ? 'rgba(59,130,246,0.16)' : '#111827' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <button type="button" onClick={() => onPatchProject({ activeSceneId: scene.id })} style={{ background: 'none', border: 'none', color: '#cbd5e1', textAlign: 'left', cursor: 'pointer', flex: 1 }}>
-                    {scene.name}
-                  </button>
-                  <button className="btn btn-sm" onClick={() => moveScene(scene.id, -1)} title="Move Up" aria-label={`Move ${scene.name} up`}><Icon name="arrowUp" /></button>
-                  <button className="btn btn-sm" onClick={() => moveScene(scene.id, 1)} title="Move Down" aria-label={`Move ${scene.name} down`}><Icon name="arrowDown" /></button>
-                  <button className="btn btn-sm" onClick={() => duplicateScene(scene.id)} title="Duplicate" aria-label={`Duplicate ${scene.name}`}><Icon name="copy" />Copy</button>
-                  <button className="btn btn-sm btn-danger" onClick={() => removeScene(scene.id)} disabled={scenes.length <= 1} aria-label={`Delete ${scene.name}`}><Icon name="delete" /></button>
-                </div>
+              {scenes.map((scene) => {
+                const isSelected = currentSceneId === scene.id;
+                const isBoot = bootSceneId === scene.id;
+                return (
+                  <div key={scene.id} style={{ display: 'grid', gap: 6, padding: '6px', border: isSelected ? '1px solid rgba(59,130,246,0.8)' : '1px solid var(--border)', borderRadius: 4, background: isSelected ? 'rgba(59,130,246,0.16)' : '#111827' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <button type="button" onClick={() => onSelectScene && onSelectScene(scene.id)} style={{ background: 'none', border: 'none', color: '#cbd5e1', textAlign: 'left', cursor: 'pointer', flex: 1 }}>
+                        {scene.name}
+                      </button>
+                      {isBoot ? (
+                        <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4, color: '#93c5fd' }}>Start</span>
+                      ) : (
+                        <button className="btn btn-sm" onClick={() => onSetStartScene && onSetStartScene(scene.id)} title="Set Start Scene" aria-label={`Set ${scene.name} as the start scene`}>
+                          Start
+                        </button>
+                      )}
+                      <button className="btn btn-sm" onClick={() => moveScene(scene.id, -1)} title="Move Up" aria-label={`Move ${scene.name} up`}><Icon name="arrowUp" /></button>
+                      <button className="btn btn-sm" onClick={() => moveScene(scene.id, 1)} title="Move Down" aria-label={`Move ${scene.name} down`}><Icon name="arrowDown" /></button>
+                      <button className="btn btn-sm" onClick={() => duplicateScene(scene.id)} title="Duplicate" aria-label={`Duplicate ${scene.name}`}><Icon name="copy" />Copy</button>
+                      <button className="btn btn-sm btn-danger" onClick={() => removeScene(scene.id)} disabled={scenes.length <= 1} aria-label={`Delete ${scene.name}`}><Icon name="delete" /></button>
+                    </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 11 }}>
+                    <span>Objects {(scene.objects || []).length}</span>
                     <span>Render</span>
                     <select
                       value={scene.renderMode || ((project.meta && project.meta.renderMode) || '2d')}
@@ -302,8 +366,9 @@ export default function AssetsSceneBrowser({ project, onPatchProject, showScenes
                       <option value="webgl-3d">3D WebGL</option>
                     </select>
                   </div>
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

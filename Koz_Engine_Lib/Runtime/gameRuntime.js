@@ -28,6 +28,8 @@
     let scriptInstances = [];
     let cssStyleElements = new Map();
     let animationClips = [];
+    let _clipIndex = new Map();
+    let _animStates = new Map();
     let audioService = null;
     let running = false;
     let elapsed = 0;
@@ -58,6 +60,9 @@
       _rebuildObjectIndex();
       _engineApiDirty = true;
       animationClips = project.animations || [];
+      _clipIndex.clear();
+      for (const clip of animationClips) _clipIndex.set(clip.id, clip);
+      _animStates.clear();
       scripts = {};
       scriptInstances = [];
       audioService = createRuntimeAudioService(project.assets || [], gameObjects);
@@ -66,6 +71,22 @@
       if (Array.isArray(project.scripts)) {
         for (const script of project.scripts) {
           scripts[script.id] = script;
+        }
+      }
+
+      // Initialize animation states from Animator components
+      for (const obj of gameObjects) {
+        const components = obj.meta && obj.meta.components;
+        const animator = components && components.Animator;
+        if (animator && animator.clipId && _clipIndex.has(animator.clipId)) {
+          _animStates.set(obj.id, {
+            clipId: animator.clipId,
+            localTime: 0,
+            speed: 1,
+            playing: !!animator.autoplay,
+            paused: false,
+            frameIndex: null,
+          });
         }
       }
 
@@ -171,9 +192,25 @@
       if (!running) return;
       elapsed += dt;
 
-      // Evaluate animations
+      // Evaluate per-object animations driven by Animator component
+      _animStates.forEach(function evalAnimState(state, objId) {
+        if (!state.playing || state.paused) return;
+        state.localTime += dt * state.speed;
+        var clip = _clipIndex.get(state.clipId);
+        if (!clip) return;
+        var duration = clip.duration || 1;
+        if (clip.loop) {
+          state.localTime = state.localTime % duration;
+        } else if (state.localTime >= duration) {
+          state.localTime = duration;
+          state.playing = false;
+        }
+        evaluateClipForObject(clip, state.localTime, objId);
+      });
+
+      // Evaluate unbound clips (clips whose tracks target objects without an Animator)
       for (const clip of animationClips) {
-        evaluateClip(clip, elapsed);
+        evaluateUnboundClip(clip, elapsed);
       }
 
       // Run script updates
@@ -189,19 +226,27 @@
       }
     }
 
-    function evaluateClip(clip, time) {
+    function evaluateClipForObject(clip, localTime, objId) {
+      if (!clip.tracks || clip.tracks.length === 0) return;
+      for (const track of clip.tracks) {
+        if (track.targetObjectId !== objId) continue;
+        const obj = _objectIndex.get(objId);
+        if (!obj || !track.keyframes || track.keyframes.length === 0) continue;
+        const value = sampleTrack(track, localTime);
+        if (value !== null) obj[track.property] = value;
+      }
+    }
+
+    function evaluateUnboundClip(clip, time) {
       if (!clip.tracks || clip.tracks.length === 0) return;
       const duration = clip.duration || 1;
       const localTime = clip.loop ? (time % duration) : Math.min(time, duration);
-
       for (const track of clip.tracks) {
+        if (_animStates.has(track.targetObjectId)) continue;
         const obj = _objectIndex.get(track.targetObjectId);
         if (!obj || !track.keyframes || track.keyframes.length === 0) continue;
-
         const value = sampleTrack(track, localTime);
-        if (value !== null) {
-          obj[track.property] = value;
-        }
+        if (value !== null) obj[track.property] = value;
       }
     }
 
@@ -228,6 +273,109 @@
       clearActiveCssStyles();
     }
 
+    function _resolveObjId(target) {
+      if (!target) return null;
+      if (typeof target === "string") return target;
+      if (typeof target === "object" && target.id) return target.id;
+      return null;
+    }
+
+    function _ensureAnimState(objId) {
+      var state = _animStates.get(objId);
+      if (!state) {
+        state = { clipId: null, localTime: 0, speed: 1, playing: false, paused: false, frameIndex: null };
+        _animStates.set(objId, state);
+      }
+      return state;
+    }
+
+    function createAnimatorApi() {
+      return {
+        play: function animPlay(target, clipId) {
+          var objId = _resolveObjId(target);
+          if (!objId) return false;
+          var clip = _clipIndex.get(clipId);
+          if (!clip) return false;
+          var state = _ensureAnimState(objId);
+          state.clipId = clipId;
+          state.localTime = 0;
+          state.playing = true;
+          state.paused = false;
+          return true;
+        },
+        stop: function animStop(target) {
+          var objId = _resolveObjId(target);
+          if (!objId) return;
+          var state = _animStates.get(objId);
+          if (state) { state.playing = false; state.paused = false; state.localTime = 0; }
+        },
+        pause: function animPause(target) {
+          var objId = _resolveObjId(target);
+          if (!objId) return;
+          var state = _animStates.get(objId);
+          if (state && state.playing) state.paused = true;
+        },
+        resume: function animResume(target) {
+          var objId = _resolveObjId(target);
+          if (!objId) return;
+          var state = _animStates.get(objId);
+          if (state && state.paused) state.paused = false;
+        },
+        setSpeed: function animSetSpeed(target, speed) {
+          var objId = _resolveObjId(target);
+          if (!objId) return;
+          var state = _ensureAnimState(objId);
+          state.speed = Number.isFinite(speed) ? speed : 1;
+        },
+        isPlaying: function animIsPlaying(target) {
+          var objId = _resolveObjId(target);
+          if (!objId) return false;
+          var state = _animStates.get(objId);
+          return !!(state && state.playing && !state.paused);
+        },
+        getClipId: function animGetClipId(target) {
+          var objId = _resolveObjId(target);
+          if (!objId) return null;
+          var state = _animStates.get(objId);
+          return state ? state.clipId : null;
+        },
+        setFrame: function animSetFrame(target, index) {
+          var objId = _resolveObjId(target);
+          if (!objId) return;
+          var obj = _objectIndex.get(objId);
+          if (!obj) return;
+          var idx = Math.max(0, Math.floor(Number(index) || 0));
+          obj._frameIndex = idx;
+        },
+        getFrame: function animGetFrame(target) {
+          var objId = _resolveObjId(target);
+          if (!objId) return 0;
+          var obj = _objectIndex.get(objId);
+          if (!obj) return 0;
+          return typeof obj._frameIndex === "number" ? obj._frameIndex : 0;
+        },
+        getFrameCount: function animGetFrameCount(target) {
+          var objId = _resolveObjId(target);
+          if (!objId) return 0;
+          var obj = _objectIndex.get(objId);
+          if (!obj) return 0;
+          var components = obj.meta && obj.meta.components;
+          var sprite = components && components.Sprite;
+          var frameIds = sprite && Array.isArray(sprite.frameAssetIds) ? sprite.frameAssetIds : [];
+          return frameIds.length > 0 ? frameIds.length : (sprite && sprite.assetId ? 1 : 0);
+        },
+        setFPS: function animSetFPS(target, fps) {
+          var objId = _resolveObjId(target);
+          if (!objId) return;
+          var obj = _objectIndex.get(objId);
+          if (!obj) return;
+          var components = obj.meta && obj.meta.components;
+          var sprite = components && components.Sprite;
+          if (sprite) sprite.fps = Number.isFinite(fps) ? fps : 8;
+        },
+      };
+    }
+
     function createEngineApi() {
       if (_cachedEngineApi && !_engineApiDirty) {
         _cachedEngineApi.elapsed = elapsed;
@@ -247,6 +395,7 @@
         findObjectsByType: function findObjectsByType(type) {
           return gameObjects.filter(function byType(o) { return o.type === type; });
         },
+        animator: createAnimatorApi(),
       };
       _engineApiDirty = false;
       return _cachedEngineApi;

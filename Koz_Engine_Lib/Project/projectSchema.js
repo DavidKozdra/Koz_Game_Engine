@@ -83,6 +83,12 @@
     });
   }
 
+  function hasCameraObject(objects) {
+    return Array.isArray(objects) && objects.some(function hasCamera(obj) {
+      return obj && (obj.type === "camera" || (obj.components && obj.components.Camera));
+    });
+  }
+
   function createLightingManagerObject(sceneId, lighting) {
     const normalized = normalizeLightingManagerComponent(lighting);
     return {
@@ -106,6 +112,58 @@
     };
   }
 
+  function createSceneCameraObject(sceneId, world, options) {
+    const sourceWorld = world && typeof world === "object" ? world : createDefaultWorld(30, 20, null);
+    const cols = Number.isFinite(sourceWorld.cols) ? sourceWorld.cols : 30;
+    const rows = Number.isFinite(sourceWorld.rows) ? sourceWorld.rows : 20;
+    const offsetX = Number.isFinite(sourceWorld.offsetX) ? sourceWorld.offsetX : 0;
+    const offsetY = Number.isFinite(sourceWorld.offsetY) ? sourceWorld.offsetY : 0;
+    const centerX = Math.round((offsetX * 24) + (cols * 12));
+    const centerY = Math.round((offsetY * 24) + (rows * 12));
+    const opts = options || {};
+    return {
+      id: opts.id || "obj_" + (sceneId || DEFAULT_SCENE_ID) + "_camera",
+      name: opts.name || "Main Camera",
+      type: "camera",
+      parentId: null,
+      x: centerX,
+      y: centerY,
+      components: {
+        Transform: { x: centerX, y: centerY, rotation: 0, scaleX: 1, scaleY: 1 },
+        Camera: {
+          enabled: true,
+          targetObjectId: null,
+          speed: 8,
+          offsetX: 0,
+          offsetY: 0,
+          deadZoneWidth: 180,
+          deadZoneHeight: 120,
+          lookAheadX: 0,
+          lookAheadY: 0,
+          visibleMargin: 40,
+          followX: true,
+          followY: true,
+          clampToWorld: true,
+          maxSpeed: 2000,
+        },
+        Render: { layerId: "obj-main", visible: false, zIndex: 0 },
+        ScriptBinding: { scriptId: null },
+        ScriptBindings: [],
+      },
+    };
+  }
+
+  function ensureSceneObjects(sceneId, world, objects, lighting) {
+    const next = Array.isArray(objects) ? deepClone(objects) : [];
+    if (lighting && !hasLightingManagerObject(next)) {
+      next.unshift(createLightingManagerObject(sceneId, lighting));
+    }
+    if (!hasCameraObject(next)) {
+      next.unshift(createSceneCameraObject(sceneId, world));
+    }
+    return next;
+  }
+
   function createDefaultWorld(cols, rows, defaultCell) {
     const safeCols = cols || 30;
     const safeRows = rows || 20;
@@ -119,18 +177,73 @@
     };
   }
 
+  function setStarterWorldCell(world, cellX, cellY, value) {
+    if (!world || !Array.isArray(world.grid)) return;
+    const offsetX = Number.isFinite(world.offsetX) ? world.offsetX : 0;
+    const offsetY = Number.isFinite(world.offsetY) ? world.offsetY : 0;
+    const lx = cellX - offsetX;
+    const ly = cellY - offsetY;
+    if (ly < 0 || lx < 0 || ly >= world.grid.length) return;
+    if (!Array.isArray(world.grid[ly]) || lx >= world.grid[ly].length) return;
+    world.grid[ly][lx] = value;
+  }
+
+  function createBlankStarterWorld(world) {
+    const next = deepClone(world || {});
+    const cols = Number.isFinite(next.cols) ? next.cols : 30;
+    const rows = Number.isFinite(next.rows) ? next.rows : 20;
+    const offsetX = Number.isFinite(next.offsetX) ? next.offsetX : 0;
+    const offsetY = Number.isFinite(next.offsetY) ? next.offsetY : 0;
+    const centerCellX = offsetX + Math.floor(cols / 2);
+    const floorLocalY = Math.min(rows - 1, Math.max(1, rows - 4));
+    const floorCellY = offsetY + floorLocalY;
+
+    for (let cellX = centerCellX - 6; cellX <= centerCellX + 6; cellX += 1) {
+      setStarterWorldCell(next, cellX, floorCellY, "solid");
+    }
+    for (let cellX = centerCellX - 10; cellX <= centerCellX - 6; cellX += 1) {
+      setStarterWorldCell(next, cellX, floorCellY - 3, "solid");
+    }
+    for (let cellX = centerCellX + 5; cellX <= centerCellX + 9; cellX += 1) {
+      setStarterWorldCell(next, cellX, floorCellY - 5, "solid");
+    }
+
+    return next;
+  }
+
+  function createBlankStarterPlayer(world) {
+    const cols = Number.isFinite(world && world.cols) ? world.cols : 30;
+    const rows = Number.isFinite(world && world.rows) ? world.rows : 20;
+    const offsetX = Number.isFinite(world && world.offsetX) ? world.offsetX : 0;
+    const offsetY = Number.isFinite(world && world.offsetY) ? world.offsetY : 0;
+    const centerCellX = offsetX + Math.floor(cols / 2);
+    const floorLocalY = Math.min(rows - 1, Math.max(1, rows - 4));
+    const floorCellY = offsetY + floorLocalY;
+    const player = createGameObject("Player", (centerCellX * 24) - 14, (floorCellY * 24) - 36, {
+      type: "player",
+      color: "#f59e0b",
+    });
+    if (player.components && player.components.Sprite) {
+      player.components.Sprite.width = 28;
+      player.components.Sprite.height = 36;
+    }
+    if (player.components && player.components.Collider) {
+      player.components.Collider.width = 28;
+      player.components.Collider.height = 36;
+    }
+    return player;
+  }
+
   function createScene(id, name, world, objects, options) {
     const opts = options || {};
     const sceneId = id || DEFAULT_SCENE_ID;
-    const sceneObjects = Array.isArray(objects) ? deepClone(objects) : [];
-    if (opts.lighting && !hasLightingManagerObject(sceneObjects)) {
-      sceneObjects.unshift(createLightingManagerObject(sceneId, opts.lighting));
-    }
+    const sceneWorld = world || createDefaultWorld(30, 20, null);
+    const sceneObjects = ensureSceneObjects(sceneId, sceneWorld, objects, opts.lighting);
     return {
       id: sceneId,
       name: name || "Main Scene",
       renderMode: normalizeRenderMode(opts.renderMode, DEFAULT_RENDER_MODE),
-      world: world || createDefaultWorld(30, 20, null),
+      world: sceneWorld,
       objects: sceneObjects,
     };
   }
@@ -138,20 +251,21 @@
   function normalizeScene(scene, index, fallbackWorld, fallbackObjects) {
     const source = scene && typeof scene === "object" ? scene : {};
     const sceneId = source.id || (index === 0 ? DEFAULT_SCENE_ID : "scene_" + index);
-    const sceneObjects = Array.isArray(source.objects)
-      ? deepClone(source.objects)
-      : (Array.isArray(fallbackObjects) ? deepClone(fallbackObjects) : []);
-    if (source.lighting && !hasLightingManagerObject(sceneObjects)) {
-      sceneObjects.unshift(createLightingManagerObject(sceneId, source.lighting));
-    }
+    const sceneWorld = source.world && typeof source.world === "object"
+      ? source.world
+      : (fallbackWorld && typeof fallbackWorld === "object" ? fallbackWorld : createDefaultWorld(30, 20, null));
+    const sceneObjects = ensureSceneObjects(
+      sceneId,
+      sceneWorld,
+      Array.isArray(source.objects) ? source.objects : fallbackObjects,
+      source.lighting
+    );
     const normalized = {
       ...deepClone(source),
       id: sceneId,
       name: source.name || (index === 0 ? "Main Scene" : "Scene " + (index + 1)),
       renderMode: normalizeRenderMode(source.renderMode, DEFAULT_RENDER_MODE),
-      world: source.world && typeof source.world === "object"
-        ? source.world
-        : (fallbackWorld && typeof fallbackWorld === "object" ? fallbackWorld : createDefaultWorld(30, 20, null)),
+      world: sceneWorld,
       objects: sceneObjects,
     };
     delete normalized.lighting;
@@ -209,8 +323,8 @@
 
   function createDefaultProject(options) {
     const opts = options || {};
-    const defaultWorld = createDefaultWorld(opts.cols || 30, opts.rows || 20, opts.defaultCell);
-    const defaultObjects = [];
+    const defaultWorld = createBlankStarterWorld(createDefaultWorld(opts.cols || 30, opts.rows || 20, opts.defaultCell));
+    const defaultObjects = [createBlankStarterPlayer(defaultWorld)];
     const defaultRenderMode = normalizeRenderMode(opts.renderMode, DEFAULT_RENDER_MODE);
     const defaultScene = createScene(opts.sceneId || DEFAULT_SCENE_ID, opts.sceneName || "Main Scene", defaultWorld, defaultObjects, {
       renderMode: defaultRenderMode,

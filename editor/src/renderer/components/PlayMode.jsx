@@ -167,6 +167,12 @@ export function usePlayMode(project, onLog) {
       viewY: 0,
       worldSparse: null,
       cssStyleElements,
+      _animStates: new Map(),
+      _clipIndex: new Map((animClips || []).map((c) => [c.id, c])),
+      _debug: {
+        canvasSignature: '',
+        missingCanvasLogged: false,
+      },
     };
     state.render3D = createInitialPlay3DState(state);
     stateRef.current = state;
@@ -342,6 +348,11 @@ export function usePlayMode(project, onLog) {
       runtimeState.viewX = initialView.x;
       runtimeState.viewY = initialView.y;
       updateSceneManagerState(runtimeState);
+      onLog({
+        type: 'info',
+        message: `Play hydrate | scene ${nextScene.id} | render ${runtimeState.renderMode} | objects ${runtimeState.gameObjects.length} | visible ${getVisiblePlayObjectCount(runtimeState)} | filled chunks ${runtimeState.worldSparse && runtimeState.worldSparse.chunks ? runtimeState.worldSparse.chunks.size : 0}`,
+        time: new Date().toLocaleTimeString(),
+      });
 
       if (runInit) {
         const engine = createEngineForState(runtimeState);
@@ -478,6 +489,11 @@ export function usePlayMode(project, onLog) {
     };
     window.sceneManager = state.sceneManager;
     window.lightingManager = state.lightingManager;
+    onLog({
+      type: 'info',
+      message: `Play bootstrap | scene ${state.activeSceneId} | render ${state.renderMode} | scenes ${Array.isArray(snapshot.scenes) ? snapshot.scenes.length : 0} | top-level objects ${Array.isArray(snapshot.objects) ? snapshot.objects.length : 0} | canvas ${canvasRef.current ? 'ready' : 'pending mount'}`,
+      time: new Date().toLocaleTimeString(),
+    });
     state.hydrateScene(state.activeSceneId, true);
 
     onLog({ type: 'info', message: 'Play mode started', time: new Date().toLocaleTimeString() });
@@ -675,16 +691,36 @@ export function usePlayMode(project, onLog) {
       return;
     }
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      if (state && state._debug && !state._debug.missingCanvasLogged) {
+        state._debug.missingCanvasLogged = true;
+        onLog({
+          type: 'warn',
+          message: `Play render skipped | active canvas missing | scene ${state.activeSceneId} | render ${state.renderMode}`,
+          time: new Date().toLocaleTimeString(),
+        });
+      }
+      return;
+    }
+    if (state && state._debug) state._debug.missingCanvasLogged = false;
     const ctx = canvas.getContext('2d');
     const w = canvas.width;
     const h = canvas.height;
+    const blankScene = isPlaySceneBlank(state);
 
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = '#0b1220';
+    if (blankScene) {
+      const bg = ctx.createLinearGradient(0, 0, 0, h);
+      bg.addColorStop(0, '#102033');
+      bg.addColorStop(1, '#182f45');
+      ctx.fillStyle = bg;
+    } else {
+      ctx.fillStyle = '#0b1220';
+    }
     ctx.fillRect(0, 0, w, h);
     ctx.save();
     ctx.translate(-(state.viewX || 0), -(state.viewY || 0));
+    renderPlayWorldGuides(ctx, state, w, h, { layer: 'background' });
 
     // World
     const world = state.world;
@@ -726,32 +762,13 @@ export function usePlayMode(project, onLog) {
           for (const entry of entries) {
             const px = entry.x * CELL_SIZE;
             const py = entry.y * CELL_SIZE;
-            let drawn = false;
-            const imgAssetId = entry.type.imageAssetId;
-            if (imgAssetId && state.assetById) {
-              const asset = state.assetById.get(imgAssetId);
-              const src = asset && (asset.previewUrl || asset.url || asset.src);
-              if (src) {
-                if (!imageCacheRef.current.has(src)) {
-                  const img = new Image();
-                  img.src = src;
-                  imageCacheRef.current.set(src, img);
-                }
-                const img = imageCacheRef.current.get(src);
-                if (img && img.complete && img.naturalWidth > 0) {
-                  ctx.drawImage(img, px, py, CELL_SIZE, CELL_SIZE);
-                  drawn = true;
-                }
-              }
-            }
-            if (!drawn) {
-              ctx.fillStyle = entry.type.color || '#334155';
-              ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
-            }
+            renderPlayWorldCell(ctx, state, imageCacheRef.current, entry, px, py);
           }
         }
       }
     }
+
+    renderPlayWorldElements(ctx, state);
 
     // Objects
     const proj = state.projectSnapshot || {};
@@ -825,12 +842,143 @@ export function usePlayMode(project, onLog) {
 
     ctx.restore();
     renderFrame2DLighting(ctx, state, w, h);
+    ctx.save();
+    ctx.translate(-(state.viewX || 0), -(state.viewY || 0));
+    renderPlayWorldGuides(ctx, state, w, h, { layer: 'foreground' });
+    ctx.restore();
+    renderPlayBlankStageOverlay(ctx, state, w, h);
+    renderPlayDebugHud(ctx, state, w, h, resolvePlayCamera(state));
+  }
 
-    // HUD
+  function renderPlayWorldGuides(ctx, state, viewWidth, viewHeight, options = {}) {
+    const metrics = resolveWorldMetrics(state && state.world, CELL_SIZE);
+    if (!metrics) return;
+    const layer = options.layer || 'background';
+    const world = state && state.world;
+    const blankScene = isPlaySceneBlank(state);
+
+    const viewX = Number.isFinite(state && state.viewX) ? state.viewX : 0;
+    const viewY = Number.isFinite(state && state.viewY) ? state.viewY : 0;
+    const cellMinX = Math.max(metrics.offsetX, Math.floor(viewX / CELL_SIZE) - 1);
+    const cellMinY = Math.max(metrics.offsetY, Math.floor(viewY / CELL_SIZE) - 1);
+    const cellMaxX = Math.min(metrics.offsetX + metrics.cols, Math.ceil((viewX + viewWidth) / CELL_SIZE) + 1);
+    const cellMaxY = Math.min(metrics.offsetY + metrics.rows, Math.ceil((viewY + viewHeight) / CELL_SIZE) + 1);
+
+    ctx.save();
+    if (layer === 'background') {
+      ctx.fillStyle = blankScene ? 'rgba(125, 211, 252, 0.12)' : 'rgba(30, 41, 59, 0.45)';
+      ctx.fillRect(metrics.minX, metrics.minY, metrics.width, metrics.height);
+      for (let cellY = cellMinY; cellY < cellMaxY; cellY += 1) {
+        for (let cellX = cellMinX; cellX < cellMaxX; cellX += 1) {
+          const cell = readWorldCell(world, cellX, cellY);
+          if (normalizeCellTypeId(cell) !== 'empty') continue;
+          ctx.fillStyle = blankScene
+            ? (((cellX + cellY) % 2 === 0) ? 'rgba(186, 230, 253, 0.18)' : 'rgba(125, 211, 252, 0.11)')
+            : (((cellX + cellY) % 2 === 0) ? 'rgba(71, 85, 105, 0.18)' : 'rgba(51, 65, 85, 0.1)');
+          ctx.fillRect(cellX * CELL_SIZE, cellY * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+        }
+      }
+    } else {
+      ctx.fillStyle = blankScene ? 'rgba(248, 250, 252, 0.035)' : 'rgba(15, 23, 42, 0.12)';
+      ctx.fillRect(metrics.minX, metrics.minY, metrics.width, metrics.height);
+    }
+    ctx.strokeStyle = blankScene
+      ? (layer === 'background' ? 'rgba(125, 211, 252, 0.82)' : 'rgba(250, 250, 250, 0.96)')
+      : (layer === 'background' ? 'rgba(148, 163, 184, 0.52)' : 'rgba(226, 232, 240, 0.92)');
+    ctx.lineWidth = layer === 'background' ? (blankScene ? 1.5 : 1) : (blankScene ? 2.5 : 2);
+    ctx.setLineDash(layer === 'background' ? [10, 6] : [14, 8]);
+    ctx.strokeRect(metrics.minX + 0.5, metrics.minY + 0.5, Math.max(0, metrics.width - 1), Math.max(0, metrics.height - 1));
+    ctx.setLineDash([]);
+
+    ctx.strokeStyle = blankScene
+      ? (layer === 'background' ? 'rgba(186, 230, 253, 0.26)' : 'rgba(226, 232, 240, 0.42)')
+      : (layer === 'background' ? 'rgba(71, 85, 105, 0.35)' : 'rgba(148, 163, 184, 0.32)');
+    ctx.lineWidth = 1;
+    for (let cellX = cellMinX; cellX <= cellMaxX; cellX += 1) {
+      const x = cellX * CELL_SIZE;
+      ctx.beginPath();
+      ctx.moveTo(x, metrics.minY);
+      ctx.lineTo(x, metrics.maxY);
+      ctx.stroke();
+    }
+    for (let cellY = cellMinY; cellY <= cellMaxY; cellY += 1) {
+      const y = cellY * CELL_SIZE;
+      ctx.beginPath();
+      ctx.moveTo(metrics.minX, y);
+      ctx.lineTo(metrics.maxX, y);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = layer === 'background' ? 'rgba(250, 204, 21, 0.72)' : 'rgba(250, 204, 21, 0.95)';
+    ctx.lineWidth = layer === 'background' ? 2 : 3;
+    ctx.beginPath();
+    ctx.moveTo(-12, 0);
+    ctx.lineTo(12, 0);
+    ctx.moveTo(0, -12);
+    ctx.lineTo(0, 12);
+    ctx.stroke();
+    if (layer === 'foreground') {
+      ctx.fillStyle = '#fde68a';
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(`World ${metrics.cols}x${metrics.rows}`, metrics.minX + 8, metrics.minY + 18);
+      const visibleObjects = getVisiblePlayObjectCount(state);
+      const hasFilledCells = hasPlayFilledCells(state);
+      const worldElementCount = getPlayWorldElements(state).length;
+      if (visibleObjects === 0 && !hasFilledCells && worldElementCount === 0) {
+        ctx.fillStyle = '#e2e8f0';
+        ctx.font = 'bold 20px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Empty Scene', metrics.minX + (metrics.width * 0.5), metrics.minY + (metrics.height * 0.5));
+        ctx.font = '12px sans-serif';
+        ctx.fillText('World guides are shown by the engine fallback renderer.', metrics.minX + (metrics.width * 0.5), metrics.minY + (metrics.height * 0.5) + 20);
+      }
+    }
+    ctx.restore();
+  }
+
+  function renderPlayDebugHud(ctx, state, width, height, camera) {
+    const metrics = resolveWorldMetrics(state && state.world, CELL_SIZE);
+    const scene = resolveRuntimeScene(state);
+    const lighting = normalizePlaySceneLighting(state && state.sceneLighting);
+    const activeLights = getPlayActiveLights(state);
+    const worldElementCount = getPlayWorldElements(state).length;
+    const visibleObjects = getVisiblePlayObjectCount(state);
+    const filledCellChunks = state && state.worldSparse && state.worldSparse.chunks ? state.worldSparse.chunks.size : 0;
+    const lines = [
+      `PLAY | ${scene.name || scene.id} | ${(state && state.renderMode) === PLAY_RENDER_MODE_WEBGL_3D ? '3D' : '2D'} | ${state && Number.isFinite(state.elapsed) ? state.elapsed.toFixed(1) : '0.0'}s`,
+      metrics
+        ? `World ${metrics.cols}x${metrics.rows} cells | ${Math.round(metrics.width)}x${Math.round(metrics.height)} px | offset ${metrics.offsetX}, ${metrics.offsetY}`
+        : 'World unavailable',
+      `Objects ${state && Array.isArray(state.gameObjects) ? state.gameObjects.length : 0} total | ${visibleObjects} visible | elements ${worldElementCount} | filled cell chunks ${filledCellChunks}`,
+      `View ${Math.round(state && state.viewX || 0)}, ${Math.round(state && state.viewY || 0)} | canvas ${width}x${height}`,
+      `Camera ${camera && camera.source === 'object' ? 'scene object' : 'engine fallback'}${camera && camera.objectId ? ` (${camera.objectId})` : ''} | target ${camera && camera.targetObjectId ? camera.targetObjectId : 'None'}`,
+      `Lighting ${lighting.enabled ? 'ON' : 'OFF'} | active lights ${activeLights.length} | overlay ${Math.round((lighting.overlayOpacity || 0) * 100)}%`,
+    ];
+
+    if (visibleObjects === 0 && filledCellChunks === 0 && worldElementCount === 0) {
+      lines.push('Empty scene: engine world guides and fallback camera are active.');
+    }
+    if (lighting.enabled && activeLights.length === 0) {
+      lines.push('Lighting warning: no active light emitters are affecting the scene.');
+    }
+
+    const boxWidth = 430;
+    const lineHeight = 16;
+    const boxHeight = 14 + (lines.length * lineHeight);
+    ctx.save();
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.82)';
+    ctx.fillRect(10, 10, boxWidth, boxHeight);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(10.5, 10.5, boxWidth - 1, boxHeight - 1);
     ctx.fillStyle = '#e2e8f0';
     ctx.font = '11px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`PLAY MODE | ${state.elapsed.toFixed(1)}s`, 8, 16);
+    lines.forEach((line, index) => {
+      ctx.fillText(line, 18, 28 + (index * lineHeight));
+    });
+    ctx.restore();
   }
 
   function renderFrame3D(state) {
@@ -903,6 +1051,27 @@ export function usePlayMode(project, onLog) {
       window.removeEventListener('keyup', handleUp);
     };
   }, []);
+
+  useEffect(() => {
+    const state = stateRef.current;
+    if (!state || !state.running) return;
+    syncCanvasMode(state.renderMode);
+    const canvas = canvasRef.current;
+    const mode = state.renderMode === PLAY_RENDER_MODE_WEBGL_3D ? '3d' : '2d';
+    const signature = canvas
+      ? `${mode}:${canvas.width}x${canvas.height}:${canvas.dataset.kozPlayActive || 'unknown'}`
+      : `${mode}:missing`;
+    if (state._debug && state._debug.canvasSignature !== signature) {
+      state._debug.canvasSignature = signature;
+      onLog({
+        type: canvas ? 'info' : 'warn',
+        message: canvas
+          ? `Play canvas attached | mode ${mode} | size ${canvas.width}x${canvas.height} | active ${canvas.dataset.kozPlayActive || 'unknown'}`
+          : `Play canvas missing after mount sync | mode ${mode}`,
+        time: new Date().toLocaleTimeString(),
+      });
+    }
+  });
 
   return { canvasRef, canvas2dRef, canvas3dRef, uiRootRef, isPlaying, start, stop, execute };
 }
@@ -1061,7 +1230,7 @@ function resolvePlayLightingSettings(state, sceneLike = null) {
   if (managerObject && managerObject.components && managerObject.components.LightingManager) {
     return normalizePlaySceneLighting(managerObject.components.LightingManager);
   }
-  return normalizePlaySceneLighting(sceneLike && sceneLike.lighting);
+  return normalizePlaySceneLighting(null);
 }
 
 function normalizePlayLightComponent(light) {
@@ -1115,6 +1284,125 @@ function getPlayActiveLights(state) {
       worldY: anchor.worldY,
     };
   }).filter(Boolean);
+}
+
+function getPlayWorldElements(state) {
+  const world = state && state.world;
+  if (!world || !Array.isArray(world.elements)) return [];
+  return world.elements.filter(Boolean);
+}
+
+function getVisiblePlayObjectCount(state) {
+  return Array.isArray(state && state.gameObjects)
+    ? state.gameObjects.filter((obj) => !obj || !obj.components || !obj.components.Render || obj.components.Render.visible !== false).length
+    : 0;
+}
+
+function hasPlayFilledCells(state) {
+  return !!(state && state.worldSparse && state.worldSparse.chunks && state.worldSparse.chunks.size > 0);
+}
+
+function isPlaySceneBlank(state) {
+  return getVisiblePlayObjectCount(state) === 0 && !hasPlayFilledCells(state) && getPlayWorldElements(state).length === 0;
+}
+
+function renderPlayWorldCell(ctx, state, imageCache, entry, px, py) {
+  let drawn = false;
+  const imgAssetId = entry.type.imageAssetId;
+  if (imgAssetId && state.assetById) {
+    const asset = state.assetById.get(imgAssetId);
+    const src = asset && (asset.previewUrl || asset.url || asset.src);
+    if (src) {
+      if (!imageCache.has(src)) {
+        const img = new Image();
+        img.src = src;
+        imageCache.set(src, img);
+      }
+      const img = imageCache.get(src);
+      if (img && img.complete && img.naturalWidth > 0) {
+        ctx.drawImage(img, px, py, CELL_SIZE, CELL_SIZE);
+        drawn = true;
+      }
+    }
+  }
+  if (!drawn) {
+    ctx.fillStyle = entry.type.color || '#475569';
+    ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.fillRect(px + 1, py + 1, CELL_SIZE - 2, 3);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.22)';
+    ctx.fillRect(px + 1, py + CELL_SIZE - 4, CELL_SIZE - 2, 3);
+  }
+  ctx.strokeStyle = entry.type.collision ? 'rgba(248, 250, 252, 0.42)' : 'rgba(226, 232, 240, 0.16)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(px + 0.5, py + 0.5, CELL_SIZE - 1, CELL_SIZE - 1);
+}
+
+function renderPlayWorldElements(ctx, state) {
+  const elements = getPlayWorldElements(state);
+  if (elements.length === 0) return;
+  ctx.save();
+  elements.forEach((el) => {
+    const cellX = Number.isFinite(el && el.x) ? el.x : null;
+    const cellY = Number.isFinite(el && el.y) ? el.y : null;
+    if (!Number.isFinite(cellX) || !Number.isFinite(cellY)) return;
+    const px = cellX * CELL_SIZE;
+    const py = cellY * CELL_SIZE;
+    const kind = String((el && el.kind) || 'element').trim();
+    const badge = kind ? kind[0].toUpperCase() : 'E';
+    ctx.fillStyle = 'rgba(245, 158, 11, 0.92)';
+    ctx.fillRect(px + 2, py + 2, CELL_SIZE - 4, CELL_SIZE - 4);
+    ctx.strokeStyle = 'rgba(255, 251, 235, 0.95)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(px + 2.5, py + 2.5, CELL_SIZE - 5, CELL_SIZE - 5);
+    ctx.fillStyle = '#fff7ed';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(badge, px + (CELL_SIZE * 0.5), py + (CELL_SIZE * 0.5) + 4);
+  });
+  ctx.restore();
+}
+
+function renderPlayBlankStageOverlay(ctx, state, width, height) {
+  if (!isPlaySceneBlank(state)) return;
+  const centerX = width * 0.5;
+  const centerY = height * 0.5;
+  const panelWidth = Math.min(420, Math.max(260, width - 48));
+  const panelHeight = 78;
+  const panelX = Math.round(centerX - (panelWidth * 0.5));
+  const panelY = Math.round(centerY - (panelHeight * 0.5));
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(125, 211, 252, 0.52)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([12, 8]);
+  ctx.strokeRect(20.5, 20.5, Math.max(0, width - 41), Math.max(0, height - 41));
+  ctx.setLineDash([]);
+
+  ctx.strokeStyle = 'rgba(250, 204, 21, 0.92)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(centerX - 22, centerY);
+  ctx.lineTo(centerX + 22, centerY);
+  ctx.moveTo(centerX, centerY - 22);
+  ctx.lineTo(centerX, centerY + 22);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
+  ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
+  ctx.strokeStyle = 'rgba(125, 211, 252, 0.7)';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(panelX + 0.5, panelY + 0.5, panelWidth - 1, panelHeight - 1);
+
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = 'bold 22px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Blank World', centerX, panelY + 30);
+  ctx.fillStyle = '#cbd5e1';
+  ctx.font = '12px sans-serif';
+  ctx.fillText('The engine fallback renderer is active.', centerX, panelY + 51);
+  ctx.fillText('Paint tiles, place objects, or add elements to populate the scene.', centerX, panelY + 67);
+  ctx.restore();
 }
 
 function buildPlayLightingSignature(state) {
@@ -1180,7 +1468,12 @@ function renderFrame2DLighting(ctx, state, width, height) {
   if (!lighting.enabled) return;
   const ambientRgb = parseHexColor(lighting.ambientColor, [11, 18, 32]);
   const lights = getPlayActiveLights(state);
-  const overlayAlpha = clamp01(lighting.overlayOpacity * (1 - (lighting.ambientIntensity * 0.6)));
+  const worldElementCount = getPlayWorldElements(state).length;
+  const visibleObjects = getVisiblePlayObjectCount(state);
+  const hasFilledCells = hasPlayFilledCells(state);
+  const isEffectivelyEmptyScene = lights.length === 0 && visibleObjects === 0 && !hasFilledCells && worldElementCount === 0;
+  const baseOverlayAlpha = clamp01(lighting.overlayOpacity * (1 - (lighting.ambientIntensity * 0.6)));
+  const overlayAlpha = isEffectivelyEmptyScene ? Math.min(baseOverlayAlpha, 0.28) : baseOverlayAlpha;
 
   ctx.save();
   ctx.fillStyle = rgbaString(ambientRgb, overlayAlpha);
@@ -2016,6 +2309,13 @@ function getOverlap(a, b) {
 function resolvePlayCamera(state) {
   const fallback = state.cameraConfig || {};
   const objects = Array.isArray(state.gameObjects) ? state.gameObjects : [];
+  const metrics = resolveWorldMetrics(state.world, CELL_SIZE);
+  const fallbackOriginX = Number.isFinite(fallback.originX)
+    ? fallback.originX
+    : (metrics ? metrics.minX + (metrics.width * 0.5) : 0);
+  const fallbackOriginY = Number.isFinite(fallback.originY)
+    ? fallback.originY
+    : (metrics ? metrics.minY + (metrics.height * 0.5) : 0);
   const cameraObject = objects.find((o) => {
     const c = o && o.components && o.components.Camera;
     return c && c.enabled !== false;
@@ -2032,6 +2332,10 @@ function resolvePlayCamera(state) {
   if (!cameraObject) {
     return {
       ...fallback,
+      source: 'engine-fallback',
+      objectId: null,
+      originX: fallbackOriginX,
+      originY: fallbackOriginY,
       targetObjectId,
       offsetX: 0, offsetY: 0, followX: true, followY: true, clampToWorld: true,
     };
@@ -2040,6 +2344,8 @@ function resolvePlayCamera(state) {
   return {
     ...fallback,
     ...cameraComp,
+    source: 'object',
+    objectId: cameraObject.id,
     originX: Number.isFinite(cameraObject.x) ? cameraObject.x : 0,
     originY: Number.isFinite(cameraObject.y) ? cameraObject.y : 0,
     targetObjectId,

@@ -33,12 +33,15 @@ assert(project.world.rows === 8, 'world rows is 8');
 assert(project.world.grid.length === 8, 'grid has 8 rows');
 assert(project.world.grid[0].length === 10, 'grid row has 10 cols');
 assert(Array.isArray(project.objects), 'objects is array');
+assert(project.objects.some((entry) => entry && entry.components && entry.components.Camera), 'default project includes a camera object');
+assert(project.objects.some((entry) => entry && entry.type === 'player'), 'default project includes a starter player object');
 assert(Array.isArray(project.scenes), 'scenes is array');
 assert(project.scenes.length === 1, 'default project has one scene');
 assert(project.activeSceneId === project.scenes[0].id, 'activeSceneId points at default scene');
 assert(project.scenes[0].renderMode === '2d', 'default scene render mode is 2d');
 assert(project.scenes[0].world === project.world, 'top-level world aliases active scene world');
 assert(project.scenes[0].objects === project.objects, 'top-level objects alias active scene objects');
+assert(project.world.grid.some((row) => Array.isArray(row) && row.some((cell) => cell === 'solid')), 'default project includes starter terrain');
 assert(Array.isArray(project.scripts), 'scripts is array');
 assert(Array.isArray(project.animations), 'animations is array');
 
@@ -59,6 +62,7 @@ assert(migrated.world.cols === 5, 'preserved cols');
 assert(Array.isArray(migrated.scenes) && migrated.scenes.length === 1, 'legacy project migrated to one scene');
 assert(migrated.activeSceneId === migrated.scenes[0].id, 'migrated project has active scene');
 assert(migrated.scenes[0].renderMode === '2d', 'migrated legacy scene gets a default render mode');
+assert(migrated.scenes[0].objects.some((entry) => entry && entry.components && entry.components.Camera), 'migrated scene gets a camera object');
 assert(!migrated.scenes[0].lighting, 'migrated legacy scene does not carry scene lighting metadata by default');
 
 const migratedLightingProject = projectSchema.migrate({
@@ -147,17 +151,19 @@ const runtime = gameRuntimeLib.createGameRuntime({
 });
 
 const testProject = projectSchema.createDefaultProject({ name: 'Runtime Test', cols: 5, rows: 5 });
-testProject.scenes[0].objects.push(projectSchema.createGameObject('TestObj', 0, 0));
+const runtimeTestObject = projectSchema.createGameObject('TestObj', 0, 0);
+testProject.scenes[0].objects.push(runtimeTestObject);
 testProject.scripts.push({
   id: 'test_script',
   name: 'TestScript',
   source: 'function onInit(self, engine) { self.initCalled = true; }\nfunction onUpdate(self, engine, dt) { self.x += 1; }',
 });
-testProject.scenes[0].objects[0].components.ScriptBinding.scriptId = 'test_script';
+runtimeTestObject.components.ScriptBinding.scriptId = 'test_script';
 
 runtime.loadProject(testProject);
 assert(runtime.worldSpace.cols === 5, 'runtime world loaded');
-assert(runtime.gameObjects.length === 1, 'runtime has 1 object');
+assert(runtime.gameObjects.some((entry) => entry && entry.type === 'camera'), 'runtime preserves the default camera');
+assert(runtime.gameObjects.some((entry) => entry && entry.meta && entry.meta.name === 'TestObj'), 'runtime has the test object');
 assert(runtime.activeSceneId === testProject.activeSceneId, 'runtime tracks active scene');
 
 runtime.init();
@@ -167,7 +173,8 @@ assert(runtime.running === true, 'runtime is running');
 runtime.update(0.016);
 runtime.update(0.016);
 runtime.update(0.016);
-assert(runtime.gameObjects[0].x === 3, 'script moved object 3 units');
+const liveRuntimeObject = runtime.gameObjects.find((entry) => entry && entry.meta && entry.meta.name === 'TestObj');
+assert(liveRuntimeObject && liveRuntimeObject.x === 3, 'script moved object 3 units');
 
 runtime.stop();
 assert(runtime.running === false, 'runtime stopped');

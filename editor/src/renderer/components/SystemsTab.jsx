@@ -25,7 +25,26 @@ function stringifyEditorArgs(args) {
   }).join(' ');
 }
 
-export default function SystemsTab({ mode = 'assets', project, selectedObjectId, onPatchProject, onSelectObject }) {
+function replaceCellTypeInWorld(world, removedId) {
+  return {
+    ...world,
+    grid: ((world && world.grid) || []).map((row) => row.map((cell) => {
+      if (cell === removedId) return 'empty';
+      if (cell && typeof cell === 'object' && cell.typeId === removedId) return { ...cell, typeId: 'empty' };
+      return cell;
+    })),
+  };
+}
+
+function clearSceneWorld(world) {
+  return {
+    ...world,
+    grid: ((world && world.grid) || []).map((row) => row.map(() => 'empty')),
+    elements: [],
+  };
+}
+
+export default function SystemsTab({ mode = 'assets', project, selectedObjectId, selectedSceneId, onPatchProject, onSelectObject, onSelectScene, onSetStartScene }) {
   const [cellTypeName, setCellTypeName] = useState('');
   const [themeName, setThemeName] = useState((project && project.editorTheme) || 'slate');
   const [pluginName, setPluginName] = useState('');
@@ -71,14 +90,10 @@ export default function SystemsTab({ mode = 'assets', project, selectedObjectId,
     if (id === 'empty') return;
     patch({
       cellTypes: project.cellTypes.filter((t) => t.id !== id),
-      world: {
-        ...project.world,
-        grid: (project.world.grid || []).map((row) => row.map((cell) => {
-          if (cell === id) return 'empty';
-          if (cell && typeof cell === 'object' && cell.typeId === id) return { ...cell, typeId: 'empty' };
-          return cell;
-        })),
-      },
+      scenes: (project.scenes || []).map((scene) => ({
+        ...scene,
+        world: replaceCellTypeInWorld(scene.world, id),
+      })),
     });
   }
 
@@ -149,8 +164,11 @@ export default function SystemsTab({ mode = 'assets', project, selectedObjectId,
     const ok = window.confirm('Delete all objects, tiles, assets, scripts, animations, and prefabs from this project?');
     if (!ok) return;
     patch({
-      world: { ...project.world, grid: (project.world.grid || []).map((row) => row.map(() => 'empty')), elements: [] },
-      objects: [],
+      scenes: (project.scenes || []).map((scene) => ({
+        ...scene,
+        world: clearSceneWorld(scene.world),
+        objects: [],
+      })),
       assets: [],
       scripts: [],
       animations: [],
@@ -165,6 +183,9 @@ export default function SystemsTab({ mode = 'assets', project, selectedObjectId,
         <AssetsSceneBrowser
           project={project}
           onPatchProject={onPatchProject}
+          onSelectScene={onSelectScene}
+          onSetStartScene={onSetStartScene}
+          selectedSceneId={selectedSceneId}
           showScenes={true}
           showImages={false}
           showPrefabs={false}
@@ -312,6 +333,9 @@ export default function SystemsTab({ mode = 'assets', project, selectedObjectId,
         selectedObjectId={selectedObjectId}
         onSelectObject={onSelectObject}
         onPatchProject={onPatchProject}
+        onSelectScene={onSelectScene}
+        onSetStartScene={onSetStartScene}
+        selectedSceneId={selectedSceneId}
         showScenes={false}
         showImages={true}
         showPrefabs={true}

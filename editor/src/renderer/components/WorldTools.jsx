@@ -5,6 +5,12 @@ export default function WorldTools({ project, editorState, onUpdateCamera, onTog
   if (!project) return null;
 
   const world = project.world;
+  const offsetX = Number.isFinite(world.offsetX) ? world.offsetX : 0;
+  const offsetY = Number.isFinite(world.offsetY) ? world.offsetY : 0;
+  const pixelWidth = (Number.isFinite(world.cols) ? world.cols : 0) * 24;
+  const pixelHeight = (Number.isFinite(world.rows) ? world.rows : 0) * 24;
+  const objectCount = Array.isArray(project.objects) ? project.objects.length : 0;
+  const resolution = (project.meta && project.meta.resolution) || { width: 960, height: 540 };
   const [colsInput, setColsInput] = useState(String(world.cols || 30));
   const [rowsInput, setRowsInput] = useState(String(world.rows || 20));
 
@@ -28,8 +34,24 @@ export default function WorldTools({ project, editorState, onUpdateCamera, onTog
         <span style={{ fontSize: 11 }}>{world.cols} x {world.rows}</span>
       </div>
       <div className="field">
+        <label>Pixels</label>
+        <span style={{ fontSize: 11 }}>{pixelWidth} x {pixelHeight}</span>
+      </div>
+      <div className="field">
+        <label>Offset</label>
+        <span style={{ fontSize: 11 }}>{offsetX}, {offsetY}</span>
+      </div>
+      <div className="field">
+        <label>Objects</label>
+        <span style={{ fontSize: 11 }}>{objectCount}</span>
+      </div>
+      <div className="field">
         <label>Elements</label>
         <span style={{ fontSize: 11 }}>{(world.elements || []).length}</span>
+      </div>
+      <div className="field">
+        <label>Game View</label>
+        <span style={{ fontSize: 11 }}>{resolution.width} x {resolution.height}</span>
       </div>
       <div className="field">
         <label>Zoom</label>

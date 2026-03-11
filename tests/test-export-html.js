@@ -37,6 +37,8 @@ async function main() {
   assert(html.includes('loadScene'), 'export runtime includes runtime scene transitions');
   assert(html.includes('loadNextScene'), 'export runtime includes ordered scene progression helpers');
   assert(html.includes('renderFrame2DLighting'), 'export runtime includes 2D lighting overlay support');
+  assert(html.includes('drawWorldElements'), 'export runtime renders world elements');
+  assert(html.includes("source: 'engine-fallback'"), 'export runtime includes engine fallback camera metadata');
   assert(html.includes('webgl-3d'), 'export runtime contains the WebGL render mode');
 
   console.log('\n=== Results ===\n');
