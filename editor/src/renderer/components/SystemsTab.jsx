@@ -1,6 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import AssetsSceneBrowser from './AssetsSceneBrowser.jsx';
-import { createPrefabFromObject } from '../state/projectModel.js';
+import {
+  createPrefabFromObject,
+  getProjectDisplaySettings,
+  getProjectResolution,
+} from '../state/projectModel.js';
 
 function idFromName(name, fallback) {
   return (name || fallback || 'item').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || fallback || 'item';
@@ -222,6 +226,8 @@ export default function SystemsTab({
   }
 
   if (mode === 'settings') {
+    const resolution = getProjectResolution(project);
+    const display = getProjectDisplaySettings(project);
     const settings = project.settings || {};
     const preferredEditor = settings.preferredEditor || 'vscode';
     const editorCommand = settings.editorCommand || '';
@@ -229,13 +235,106 @@ export default function SystemsTab({
     const autoSaveScripts = settings.autoSaveScripts !== false;
     const formatOnSave = !!settings.formatOnSave;
     const confirmBeforeScriptDelete = settings.confirmBeforeScriptDelete !== false;
-    
+
+    function updateMeta(patchData) {
+      patch({ meta: { ...(project.meta || {}), ...patchData } });
+    }
+
     function updateSettings(patchData) {
       patch({ settings: { ...settings, ...patchData } });
     }
-    
+
     return (
       <div style={{ overflow: 'auto', padding: 12, display: 'grid', gap: 12 }}>
+        <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
+          <h3>Display</h3>
+          <div className="field">
+            <label>Resolution</label>
+            <input
+              type="number"
+              min={1}
+              value={resolution.width}
+              onChange={(e) => updateMeta({
+                resolution: {
+                  ...resolution,
+                  width: Math.max(1, parseInt(e.target.value, 10) || 1),
+                },
+              })}
+            />
+            <label style={{ width: 60 }}>Height</label>
+            <input
+              type="number"
+              min={1}
+              value={resolution.height}
+              onChange={(e) => updateMeta({
+                resolution: {
+                  ...resolution,
+                  height: Math.max(1, parseInt(e.target.value, 10) || 1),
+                },
+              })}
+            />
+          </div>
+          <div className="field">
+            <label>Fit</label>
+            <select
+              value={display.scaleMode}
+              onChange={(e) => updateMeta({
+                display: {
+                  ...display,
+                  scaleMode: e.target.value,
+                },
+              })}
+            >
+              <option value="contain">Fit Within Window</option>
+              <option value="cover">Fill Window</option>
+              <option value="stretch">Stretch</option>
+              <option value="native">Fixed Size</option>
+            </select>
+          </div>
+          <div className="field">
+            <label>Background</label>
+            <input
+              type="color"
+              value={display.backgroundColor || '#0b1220'}
+              onChange={(e) => updateMeta({
+                display: {
+                  ...display,
+                  backgroundColor: e.target.value,
+                },
+              })}
+            />
+            <label style={{ width: 88 }}>Fullscreen</label>
+            <input
+              type="checkbox"
+              checked={display.allowFullscreen !== false}
+              onChange={(e) => updateMeta({
+                display: {
+                  ...display,
+                  allowFullscreen: e.target.checked,
+                  showFullscreenButton: e.target.checked ? display.showFullscreenButton !== false : false,
+                },
+              })}
+            />
+          </div>
+          <div className="field">
+            <label>Button</label>
+            <input
+              type="checkbox"
+              checked={display.allowFullscreen !== false && display.showFullscreenButton !== false}
+              disabled={display.allowFullscreen === false}
+              onChange={(e) => updateMeta({
+                display: {
+                  ...display,
+                  showFullscreenButton: e.target.checked,
+                },
+              })}
+            />
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+            Resolution is the game&apos;s logical canvas size. Fit mode controls how that canvas scales inside play mode and exported HTML builds.
+          </div>
+        </div>
+
         <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
           <h3>Scripting</h3>
           <div className="field">

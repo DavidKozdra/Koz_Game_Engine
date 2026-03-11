@@ -2237,14 +2237,48 @@ function exportRuntimeMain() {
   requestAnimationFrame(frame);
 }
 
+function normalizeExportResolution(resolution) {
+  const source = resolution && typeof resolution === 'object' ? resolution : {};
+  return {
+    width: Number.isFinite(source.width) && source.width > 0 ? Math.max(1, Math.round(source.width)) : 960,
+    height: Number.isFinite(source.height) && source.height > 0 ? Math.max(1, Math.round(source.height)) : 540,
+  };
+}
+
+function normalizeExportDisplay(display) {
+  const source = display && typeof display === 'object' ? display : {};
+  const scaleMode = typeof source.scaleMode === 'string' ? source.scaleMode.trim().toLowerCase() : '';
+  const normalizedScaleMode = ['contain', 'cover', 'stretch', 'native'].includes(scaleMode)
+    ? scaleMode
+    : 'contain';
+  const allowFullscreen = source.allowFullscreen !== false;
+  return {
+    scaleMode: normalizedScaleMode,
+    allowFullscreen,
+    showFullscreenButton: allowFullscreen && source.showFullscreenButton !== false,
+    backgroundColor: typeof source.backgroundColor === 'string' && source.backgroundColor.trim()
+      ? source.backgroundColor.trim()
+      : '#0b1220',
+  };
+}
+
 export function buildExportHtml(project, projectJson, target, options = {}) {
   const safeJson = projectJson
     .replace(/</g, '\\u003c')
     .replace(/>/g, '\\u003e')
     .replace(/&/g, '\\u0026');
   const title = (project && project.meta && project.meta.name) || 'Koz Game';
-  const width = project?.meta?.resolution?.width || 960;
-  const height = project?.meta?.resolution?.height || 540;
+  const resolution = normalizeExportResolution(project && project.meta ? project.meta.resolution : null);
+  const display = normalizeExportDisplay(project && project.meta ? project.meta.display : null);
+  const width = resolution.width;
+  const height = resolution.height;
+  const safeDisplayJson = JSON.stringify(display)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026');
+  const fullscreenButton = display.allowFullscreen && display.showFullscreenButton
+    ? '<button id="fullscreen-toggle" type="button">Fullscreen</button>'
+    : '';
   const runtimeSource = `(${exportRuntimeMain.toString()})();`;
   const html = `<!doctype html>
 <html>
@@ -2253,16 +2287,30 @@ export function buildExportHtml(project, projectJson, target, options = {}) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${title}</title>
   <style>
-    html, body { margin: 0; width: 100%; height: 100%; background: #0b1220; color: #e2e8f0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; overflow: hidden; }
-    #shell { width: 100%; height: 100%; display: grid; place-items: center; }
-    #stage { position: relative; width: min(100vw, ${width}px); height: min(100vh, ${height}px); display: grid; place-items: center; }
-    canvas { position: absolute; inset: 0; width: 100%; height: 100%; max-width: 100%; max-height: 100%; background: #111827; image-rendering: pixelated; display: block; }
+    html, body { margin: 0; width: 100%; height: 100%; background: ${display.backgroundColor}; color: #e2e8f0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; overflow: hidden; }
+    #shell { position: relative; width: 100%; height: 100%; display: grid; place-items: center; overflow: hidden; background: ${display.backgroundColor}; }
+    #stage { position: relative; display: grid; place-items: center; overflow: hidden; background: ${display.backgroundColor}; }
+    canvas { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; background: ${display.backgroundColor}; image-rendering: pixelated; display: block; }
     #game-3d { display: none; image-rendering: auto; }
     #ui-root { position: absolute; inset: 0; pointer-events: none; }
+    #fullscreen-toggle {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 5;
+      padding: 8px 12px;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.78);
+      color: #e2e8f0;
+      cursor: pointer;
+      font: inherit;
+    }
   </style>
 </head>
 <body>
   <div id="shell">
+    ${fullscreenButton}
     <div id="stage">
       <canvas id="game-2d" width="${width}" height="${height}"></canvas>
       <canvas id="game-3d" width="${width}" height="${height}"></canvas>
@@ -2270,6 +2318,77 @@ export function buildExportHtml(project, projectJson, target, options = {}) {
     </div>
   </div>
   <script>window.__KOZ_PROJECT__=${safeJson};</script>
+  <script>
+    window.__KOZ_DISPLAY__=${safeDisplayJson};
+    (function() {
+      var shell = document.getElementById('shell');
+      var stage = document.getElementById('stage');
+      var fullscreenButton = document.getElementById('fullscreen-toggle');
+      var display = window.__KOZ_DISPLAY__ || {};
+      var resolution = { width: ${width}, height: ${height} };
+
+      function computeLayout(viewWidth, viewHeight) {
+        var widthScale = viewWidth / resolution.width;
+        var heightScale = viewHeight / resolution.height;
+        var stageWidth = resolution.width;
+        var stageHeight = resolution.height;
+        if (display.scaleMode === 'stretch') {
+          stageWidth = viewWidth;
+          stageHeight = viewHeight;
+        } else if (display.scaleMode === 'cover') {
+          var coverScale = Math.max(widthScale, heightScale);
+          stageWidth = resolution.width * coverScale;
+          stageHeight = resolution.height * coverScale;
+        } else if (display.scaleMode === 'contain') {
+          var containScale = Math.min(widthScale, heightScale);
+          stageWidth = resolution.width * containScale;
+          stageHeight = resolution.height * containScale;
+        }
+        return {
+          width: Math.max(1, Math.round(stageWidth)),
+          height: Math.max(1, Math.round(stageHeight)),
+        };
+      }
+
+      function applyLayout() {
+        if (!stage) return;
+        var layout = computeLayout(window.innerWidth || resolution.width, window.innerHeight || resolution.height);
+        stage.style.width = layout.width + 'px';
+        stage.style.height = layout.height + 'px';
+        stage.dataset.scaleMode = display.scaleMode || 'contain';
+      }
+
+      function syncFullscreenButton() {
+        if (!fullscreenButton) return;
+        fullscreenButton.textContent = document.fullscreenElement === shell ? 'Windowed' : 'Fullscreen';
+      }
+
+      function toggleFullscreen() {
+        if (display.allowFullscreen === false || !shell) return;
+        if (document.fullscreenElement === shell) {
+          if (typeof document.exitFullscreen === 'function') document.exitFullscreen().catch(function() {});
+          return;
+        }
+        if (typeof shell.requestFullscreen === 'function') shell.requestFullscreen().catch(function() {});
+      }
+
+      applyLayout();
+      syncFullscreenButton();
+      window.addEventListener('resize', applyLayout);
+      document.addEventListener('fullscreenchange', function() {
+        applyLayout();
+        syncFullscreenButton();
+      });
+      if (fullscreenButton) fullscreenButton.addEventListener('click', toggleFullscreen);
+      window.addEventListener('keydown', function(event) {
+        if (display.allowFullscreen === false) return;
+        if (event.key === 'F11' || (event.altKey && event.key === 'Enter')) {
+          event.preventDefault();
+          toggleFullscreen();
+        }
+      });
+    })();
+  </script>
   <script>${runtimeSource}</script>
 </body>
 </html>`;

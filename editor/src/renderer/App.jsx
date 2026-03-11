@@ -13,6 +13,7 @@ import KozLogo from './components/KozLogo.jsx';
 import Modal from './components/Modal.jsx';
 import Icon from './components/Icon.jsx';
 import {
+  buildDisplayStageLayout,
   ensureProjectShape,
   applyProjectPatch,
   normalizeCellTypeId,
@@ -21,6 +22,8 @@ import {
   createPrefabFromObject,
   createPrefabInstance,
   createPrefabVariantFromObject,
+  getProjectDisplaySettings,
+  getProjectResolution,
   materializePrefabObject,
 } from './state/projectModel.js';
 import { buildExportHtml } from './lib/exportHtml.js';
@@ -566,6 +569,10 @@ function rematerializePrefabInstance(prefab, objectLike, patch = {}) {
   return materializePrefabObject(prefab, nextObject);
 }
 
+function isContainedFullscreenElement(container, fullscreenElement) {
+  return !!(container && fullscreenElement && (fullscreenElement === container || container.contains(fullscreenElement)));
+}
+
 function App() {
   // All hooks must be called unconditionally and in the same order
   const [project, setProject] = useState(null);
@@ -622,6 +629,10 @@ function App() {
       ? ['dmg', 'zip']
       : ['AppImage', 'deb', 'zip'];
   const projectView = withSceneView(project, editorState.sceneId);
+  const playViewportRef = useRef(null);
+  const playShellRef = useRef(null);
+  const [playViewportSize, setPlayViewportSize] = useState({ width: 0, height: 0 });
+  const [isPlayFullscreen, setIsPlayFullscreen] = useState(false);
   const selectedProjectTemplate = useMemo(() => {
     return PROJECT_TEMPLATES.find((template) => template.id === newProjectTemplate) || PROJECT_TEMPLATES[0];
   }, [newProjectTemplate]);
@@ -656,6 +667,16 @@ function App() {
       return name.includes(q) || folder.includes(q);
     });
   }, [sortedProjects, projectSearch]);
+  const playResolution = useMemo(() => getProjectResolution(projectView), [projectView]);
+  const playDisplay = useMemo(() => getProjectDisplaySettings(projectView), [projectView]);
+  const playStageLayout = useMemo(() => (
+    buildDisplayStageLayout(
+      playViewportSize.width,
+      playViewportSize.height,
+      playResolution,
+      playDisplay,
+    )
+  ), [playViewportSize, playResolution, playDisplay]);
 
   // ...existing callbacks and logic...
 
@@ -745,10 +766,66 @@ function App() {
     execute,
   } = usePlayMode(projectView, addLog);
 
+  const handleTogglePlayFullscreen = useCallback(() => {
+    if (playDisplay.allowFullscreen === false) return;
+    const shell = playShellRef.current;
+    if (!shell || typeof document === 'undefined') return;
+    const fullscreenElement = document.fullscreenElement;
+    if (isContainedFullscreenElement(shell, fullscreenElement)) {
+      if (typeof document.exitFullscreen === 'function') {
+        document.exitFullscreen().catch(() => {});
+      }
+      return;
+    }
+    if (typeof shell.requestFullscreen === 'function') {
+      shell.requestFullscreen().catch(() => {
+        showToast('Fullscreen is unavailable in this browser.');
+      });
+    }
+  }, [playDisplay.allowFullscreen, showToast]);
+
   const handlePlayToggle = useCallback(() => {
     if (isPlaying) { stopPlay(); updateEditor({ mode: 'EDIT' }); }
     else { startPlay(); updateEditor({ mode: 'PLAY' }); setMainTab('world'); setBottomTab('console'); }
   }, [isPlaying, startPlay, stopPlay, updateEditor]);
+
+  useEffect(() => {
+    const viewport = playViewportRef.current;
+    if (!viewport) return undefined;
+    const updateSize = () => {
+      setPlayViewportSize({
+        width: viewport.clientWidth || 0,
+        height: viewport.clientHeight || 0,
+      });
+    };
+    updateSize();
+    if (typeof ResizeObserver === 'function') {
+      const observer = new ResizeObserver(updateSize);
+      observer.observe(viewport);
+      return () => observer.disconnect();
+    }
+    window.addEventListener('resize', updateSize);
+    return () => window.removeEventListener('resize', updateSize);
+  }, []);
+
+  useEffect(() => {
+    function handleFullscreenChange() {
+      if (typeof document === 'undefined') return;
+      setIsPlayFullscreen(isContainedFullscreenElement(playShellRef.current, document.fullscreenElement));
+    }
+    handleFullscreenChange();
+    if (typeof document === 'undefined') return undefined;
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  useEffect(() => {
+    if (isPlaying || typeof document === 'undefined') return;
+    if (!isContainedFullscreenElement(playShellRef.current, document.fullscreenElement)) return;
+    if (typeof document.exitFullscreen === 'function') {
+      document.exitFullscreen().catch(() => {});
+    }
+  }, [isPlaying]);
 
   // ---- World editing ----
   const handleCellPaint = useCallback((cx, cy, value) => {
@@ -1937,6 +2014,11 @@ def on_update(self, engine, dt):
       if (mod && e.key === 's') { e.preventDefault(); handleSave(); }
       if (mod && e.key === 'd') { e.preventDefault(); if (editorState.selectedObjectId) handleDuplicateObject(editorState.selectedObjectId); }
       if (e.key === 'F5') { e.preventDefault(); handlePlayToggle(); }
+      if (isPlaying && playDisplay.allowFullscreen !== false && (e.key === 'F11' || (e.altKey && e.key === 'Enter'))) {
+        e.preventDefault();
+        handleTogglePlayFullscreen();
+        return;
+      }
       if (!isPlaying) {
         if (e.key === 'b') updateEditor({ activeTool: 'brush' });
         if (e.key === 'f') updateEditor({ activeTool: 'fill' });
@@ -1978,7 +2060,7 @@ def on_update(self, engine, dt):
     }
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [handleUndo, handleRedo, handleSave, handleSaveAs, handlePlayToggle, updateEditor, editorState.camera, editorState.selectedObjectId, editorState.selectedObjectIds, handleRemoveObject, handleDuplicateObject, isPlaying, pushUndo, mutateActiveScene]);
+  }, [handleUndo, handleRedo, handleSave, handleSaveAs, handlePlayToggle, handleTogglePlayFullscreen, updateEditor, editorState.camera, editorState.selectedObjectId, editorState.selectedObjectIds, handleRemoveObject, handleDuplicateObject, isPlaying, playDisplay.allowFullscreen, pushUndo, mutateActiveScene]);
 
   useEffect(() => {
     if (!window.api || typeof window.api.onMenuEvent !== 'function') return;
@@ -2253,33 +2335,57 @@ def on_update(self, engine, dt):
 
             {mainTab === 'world' && (
               <>
-                <div className="editor-viewport">
+                <div className="editor-viewport" ref={playViewportRef} style={{ background: playDisplay.backgroundColor }}>
                   {isPlaying ? (
                     <div
+                      ref={playShellRef}
                       style={{
-                        position: 'relative',
-                        width: projectView.meta.resolution.width,
-                        height: projectView.meta.resolution.height,
-                        maxWidth: '100%',
-                        maxHeight: '100%',
-                        margin: '0 auto',
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'grid',
+                        placeItems: 'center',
+                        overflow: 'hidden',
+                        background: playDisplay.backgroundColor,
                       }}
                     >
+                      {playDisplay.allowFullscreen !== false && playDisplay.showFullscreenButton !== false && (
+                        <button
+                          className="btn btn-sm"
+                          onClick={handleTogglePlayFullscreen}
+                          style={{ position: 'absolute', top: 12, right: 12, zIndex: 5 }}
+                          title="Toggle fullscreen (F11 or Alt+Enter)"
+                          aria-pressed={isPlayFullscreen}
+                        >
+                          <Icon name={isPlayFullscreen ? 'fullscreenExit' : 'fullscreen'} />
+                          {isPlayFullscreen ? 'Windowed' : 'Fullscreen'}
+                        </button>
+                      )}
+                      <div
+                        style={{
+                          position: 'relative',
+                          width: playStageLayout.width,
+                          height: playStageLayout.height,
+                          overflow: 'hidden',
+                          boxShadow: isPlayFullscreen ? 'none' : '0 20px 60px rgba(2, 8, 23, 0.55)',
+                          background: playDisplay.backgroundColor,
+                        }}
+                      >
                       <canvas
                         ref={playCanvas2dRef}
-                        width={projectView.meta.resolution.width}
-                        height={projectView.meta.resolution.height}
-                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block', background: '#0b1220' }}
+                        width={playResolution.width}
+                        height={playResolution.height}
+                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block', background: playDisplay.backgroundColor }}
                         tabIndex={0}
                       />
                       <canvas
                         ref={playCanvas3dRef}
-                        width={projectView.meta.resolution.width}
-                        height={projectView.meta.resolution.height}
-                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'none', background: '#0b1220' }}
+                        width={playResolution.width}
+                        height={playResolution.height}
+                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'none', background: playDisplay.backgroundColor }}
                         tabIndex={0}
                       />
                       <div ref={playUiRootRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
+                    </div>
                     </div>
                   ) : (
                     <Viewport project={projectView} editorState={editorState}

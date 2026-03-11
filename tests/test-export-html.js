@@ -31,9 +31,26 @@ async function main() {
   const projectPath = path.join(__dirname, '..', 'projects', 'template-3d-fps-shell', 'project.json');
   const project = JSON.parse(fs.readFileSync(projectPath, 'utf8'));
   const html = buildExportHtml(project, JSON.stringify(project), 'html-zip', { minify: false });
+  const disabledFullscreenProject = {
+    ...project,
+    meta: {
+      ...(project.meta || {}),
+      display: {
+        scaleMode: 'cover',
+        allowFullscreen: false,
+        showFullscreenButton: true,
+        backgroundColor: '#123456',
+      },
+    },
+  };
+  const disabledFullscreenHtml = buildExportHtml(disabledFullscreenProject, JSON.stringify(disabledFullscreenProject), 'html-zip', { minify: false });
 
   assert(html.includes('id="game-2d"'), 'export includes a dedicated 2D canvas');
   assert(html.includes('id="game-3d"'), 'export includes a dedicated WebGL canvas');
+  assert(html.includes('window.__KOZ_DISPLAY__='), 'export includes normalized display configuration metadata');
+  assert(html.includes('id="fullscreen-toggle"'), 'export includes a fullscreen toggle button by default');
+  assert(html.includes('stage.dataset.scaleMode'), 'export applies responsive stage sizing metadata');
+  assert(html.includes('toggleFullscreen'), 'export includes a fullscreen toggle handler');
   assert(html.includes('sceneManager'), 'export runtime includes scene-manager support');
   assert(html.includes('lightingManager'), 'export runtime includes lighting-manager support');
   assert(html.includes('loadScene'), 'export runtime includes runtime scene transitions');
@@ -55,6 +72,8 @@ async function main() {
   assert(playModeSource.includes('components: JSON.parse(JSON.stringify(obj.components || {}))'), 'editor play runtime clones scene component data before mutation');
   assert(html.includes("source: 'engine-fallback'"), 'export runtime includes engine fallback camera metadata');
   assert(html.includes('webgl-3d'), 'export runtime contains the WebGL render mode');
+  assert(!disabledFullscreenHtml.includes('id="fullscreen-toggle"'), 'export omits the fullscreen button when display settings disable fullscreen');
+  assert(disabledFullscreenHtml.includes('#123456'), 'export applies the configured display background color');
 
   console.log('\n=== Results ===\n');
   console.log(`Passed: ${passed}, Failed: ${failed}`);

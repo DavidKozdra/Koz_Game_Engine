@@ -63,11 +63,14 @@ async function main() {
   console.log('\n=== Editor Project Model Tests ===\n');
 
   const {
+    buildDisplayStageLayout,
     ensureProjectShape,
     applyProjectPatch,
     clearPrefabOverridePath,
     createPrefabFromObject,
     createPrefabVariantFromObject,
+    getProjectDisplaySettings,
+    getProjectResolution,
     materializePrefabObject,
   } = await loadProjectModel();
 
@@ -106,6 +109,37 @@ async function main() {
     repairedSingleScene.scenes[0].world.grid.some((row) => Array.isArray(row) && row.some((cell) => cell === 'solid')),
     'single-scene load hydrates top-level world tiles into an empty scene copy'
   );
+
+  const displayProject = ensureProjectShape({
+    schemaVersion: 1,
+    meta: {
+      name: 'Display Normalization',
+      resolution: { width: 1280.4, height: 0 },
+      display: { scaleMode: 'cover', allowFullscreen: false, showFullscreenButton: true, backgroundColor: ' #123456 ' },
+    },
+    scenes: [{
+      id: 'scene_display',
+      name: 'Display Scene',
+      renderMode: '2d',
+      world: createWorld([['empty']]),
+      objects: [],
+    }],
+    activeSceneId: 'scene_display',
+    animations: [],
+    scripts: [],
+    assets: [],
+  });
+  const normalizedResolution = getProjectResolution(displayProject);
+  const normalizedDisplay = getProjectDisplaySettings(displayProject);
+  const containLayout = buildDisplayStageLayout(1000, 800, { width: 400, height: 200 }, { scaleMode: 'contain' });
+
+  assert(normalizedResolution.width === 1280, 'project resolution width is normalized to a positive integer');
+  assert(normalizedResolution.height === 540, 'invalid resolution height falls back to the default canvas height');
+  assert(normalizedDisplay.scaleMode === 'cover', 'display scale mode is normalized from project metadata');
+  assert(normalizedDisplay.allowFullscreen === false, 'display fullscreen flag is preserved');
+  assert(normalizedDisplay.showFullscreenButton === false, 'fullscreen button is disabled when fullscreen support is disabled');
+  assert(normalizedDisplay.backgroundColor === '#123456', 'display background color is trimmed and preserved');
+  assert(containLayout.width === 1000 && containLayout.height === 500, 'contain stage layout preserves aspect ratio inside the available viewport');
 
   const multiSceneBase = ensureProjectShape({
     schemaVersion: 1,

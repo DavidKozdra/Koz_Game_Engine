@@ -60,6 +60,18 @@ const DEFAULT_BUILD = {
   },
 };
 
+const DEFAULT_RESOLUTION = {
+  width: 960,
+  height: 540,
+};
+
+const DEFAULT_DISPLAY = {
+  scaleMode: 'contain',
+  allowFullscreen: true,
+  showFullscreenButton: true,
+  backgroundColor: '#0b1220',
+};
+
 const DEFAULT_SETTINGS = {
   preferredEditor: 'vscode',
   editorCommand: '',
@@ -142,6 +154,75 @@ function clamp01(value, fallback = 0) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(0, Math.min(1, n));
+}
+
+function normalizeResolution(resolution) {
+  const source = resolution && typeof resolution === 'object' ? resolution : {};
+  const width = Number.isFinite(source.width) && source.width > 0
+    ? Math.max(1, Math.round(source.width))
+    : DEFAULT_RESOLUTION.width;
+  const height = Number.isFinite(source.height) && source.height > 0
+    ? Math.max(1, Math.round(source.height))
+    : DEFAULT_RESOLUTION.height;
+  return { width, height };
+}
+
+function normalizeDisplaySettings(display) {
+  const source = display && typeof display === 'object' ? display : {};
+  const scaleMode = typeof source.scaleMode === 'string' ? source.scaleMode.trim().toLowerCase() : '';
+  const normalizedScaleMode = ['contain', 'cover', 'stretch', 'native'].includes(scaleMode)
+    ? scaleMode
+    : DEFAULT_DISPLAY.scaleMode;
+  const allowFullscreen = source.allowFullscreen !== false;
+  return {
+    scaleMode: normalizedScaleMode,
+    allowFullscreen,
+    showFullscreenButton: allowFullscreen && source.showFullscreenButton !== false,
+    backgroundColor: typeof source.backgroundColor === 'string' && source.backgroundColor.trim()
+      ? source.backgroundColor.trim()
+      : DEFAULT_DISPLAY.backgroundColor,
+  };
+}
+
+function getProjectResolution(project) {
+  return normalizeResolution(project && project.meta ? project.meta.resolution : null);
+}
+
+function getProjectDisplaySettings(project) {
+  return normalizeDisplaySettings(project && project.meta ? project.meta.display : null);
+}
+
+function buildDisplayStageLayout(containerWidth, containerHeight, resolutionLike, displayLike) {
+  const resolution = normalizeResolution(resolutionLike);
+  const display = normalizeDisplaySettings(displayLike);
+  const availableWidth = Number.isFinite(containerWidth) && containerWidth > 0 ? containerWidth : resolution.width;
+  const availableHeight = Number.isFinite(containerHeight) && containerHeight > 0 ? containerHeight : resolution.height;
+  const scaleX = availableWidth / resolution.width;
+  const scaleY = availableHeight / resolution.height;
+  let stageWidth = resolution.width;
+  let stageHeight = resolution.height;
+  let scale = 1;
+
+  if (display.scaleMode === 'stretch') {
+    stageWidth = availableWidth;
+    stageHeight = availableHeight;
+    scale = Math.min(scaleX, scaleY);
+  } else if (display.scaleMode === 'cover') {
+    scale = Math.max(scaleX, scaleY);
+    stageWidth = resolution.width * scale;
+    stageHeight = resolution.height * scale;
+  } else if (display.scaleMode === 'contain') {
+    scale = Math.min(scaleX, scaleY);
+    stageWidth = resolution.width * scale;
+    stageHeight = resolution.height * scale;
+  }
+
+  return {
+    width: Math.max(1, Math.round(stageWidth)),
+    height: Math.max(1, Math.round(stageHeight)),
+    scale,
+    scaleMode: display.scaleMode,
+  };
 }
 
 function normalizeSceneLighting(lighting) {
@@ -747,6 +828,8 @@ function ensureProjectShape(project) {
   if (!Array.isArray(next.prefabs)) next.prefabs = [];
   if (!Array.isArray(next.scenes) || next.scenes.length === 0) next.scenes = [defaultSceneFromProject(next)];
   if (!next.meta || typeof next.meta !== 'object') next.meta = {};
+  next.meta.resolution = normalizeResolution(next.meta.resolution);
+  next.meta.display = normalizeDisplaySettings(next.meta.display);
   next.meta.renderMode = normalizeRenderMode(next.meta.renderMode, '2d');
   const shouldHydrateSingleScene = next.scenes.length === 1;
   next.scenes = next.scenes.map((scene, idx) => {
@@ -879,19 +962,26 @@ export {
   DEFAULT_OBJECT_LAYERS,
   DEFAULT_CLASSES,
   DEFAULT_BUILD,
+  DEFAULT_RESOLUTION,
+  DEFAULT_DISPLAY,
   DEFAULT_CAMERA,
   DEFAULT_SCENE_LIGHTING,
   DEFAULT_LIGHTING_MANAGER_COMPONENT,
   DEFAULT_LIGHT_COMPONENT,
+  buildDisplayStageLayout,
   createPrefabFromObject,
   createPrefabInstance,
   createPrefabVariantFromObject,
   clearPrefabOverridePath,
   derivePrefabOverrides,
   ensureProjectShape,
+  getProjectDisplaySettings,
+  getProjectResolution,
   getPrefabVariant,
   materializePrefabObject,
   normalizeProjectObject,
+  normalizeDisplaySettings,
+  normalizeResolution,
   applyProjectPatch,
   normalizeCellTypeId,
   getCellType,

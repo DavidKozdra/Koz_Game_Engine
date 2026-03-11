@@ -74,6 +74,10 @@ function glyph(name) {
       return <><rect x="5" y="5" width="7" height="7" /><rect x="3" y="3" width="7" height="7" /></>;
     case 'camera':
       return <><rect x="3" y="5" width="10" height="7" rx="1" /><path d="M6 5 7 3h2l1 2" /><circle cx="8" cy="8.5" r="2" /></>;
+    case 'fullscreen':
+      return <><path d="M3 6V3h3" /><path d="M10 3h3v3" /><path d="M13 10v3h-3" /><path d="M6 13H3v-3" /></>;
+    case 'fullscreenExit':
+      return <><path d="M6 3H3v3" /><path d="M10 3h3v3" /><path d="M13 10v3h-3" /><path d="M6 13H3v-3" /><path d="M6 6 3 3" /><path d="m10 6 3-3" /><path d="m10 10 3 3" /><path d="m6 10-3 3" /></>;
     case 'chevronDown':
       return <path d="m3 6 5 5 5-5" />;
     case 'chevronRight':
