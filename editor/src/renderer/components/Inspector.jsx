@@ -15,6 +15,26 @@ const AVAILABLE_COMPONENTS = [
   { id: 'ParticleEmitter', label: 'Particle Emitter', defaults: { enabled: true, count: 24, rate: 0, burst: true, life: 500, speed: 80, spreadAngle: 360, direction: 270, color: '#fb923c', size: 4, sizeEnd: 1, gravity: 0, drag: 0.98, loop: true, interval: 1000, worldSpace: true } },
 ];
 
+function parseScriptProps(source) {
+  if (!source) return [];
+  const results = [];
+  const lines = String(source).split('\n');
+  for (const line of lines) {
+    const m = line.match(/\/\/\s*@prop\s+(\w+)\s+(string|number|boolean|color|scene)\s*(.*)/);
+    if (m) {
+      const name = m[1];
+      const type = m[2];
+      let defaultValue = m[3] ? m[3].trim() : '';
+      if (type === 'number') defaultValue = defaultValue || '0';
+      else if (type === 'boolean') defaultValue = defaultValue || 'false';
+      else if (type === 'color') defaultValue = defaultValue || '#ffffff';
+      else if (type === 'scene') defaultValue = defaultValue || '';
+      results.push({ name, type, defaultValue });
+    }
+  }
+  return results;
+}
+
 function CollapsibleSection({ title, defaultOpen = true, onRemove, children }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
@@ -1027,21 +1047,62 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
               </div>
 
               {/* Serialized properties */}
-              {script && (
-                <div style={{ marginTop: 4 }}>
-                  {propKeys.map(key => (
-                    <div key={key} className="field" style={{ marginBottom: 2 }}>
-                      <label style={{ width: 50, fontSize: 10 }}>{key}</label>
-                      <input type="text" value={props[key]} style={{ fontSize: 11 }}
-                        onChange={(e) => handlePropertyChange(idx, key, e.target.value)} />
-                      <button onClick={() => handleRemoveProperty(idx, key)}
-                        style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 11, padding: '0 2px' }}>x</button>
-                    </div>
-                  ))}
-                  <button className="btn btn-sm" onClick={() => handleAddProperty(idx)}
-                    style={{ fontSize: 10, padding: '1px 6px', marginTop: 2 }}>+ Property</button>
-                </div>
-              )}
+              {script && (() => {
+                const declared = parseScriptProps(script.source);
+                const declaredNames = new Set(declared.map(d => d.name));
+                // Auto-sync: ensure declared props exist in binding
+                declared.forEach(d => {
+                  if (!(d.name in props)) {
+                    props[d.name] = d.defaultValue;
+                  }
+                });
+                const extraKeys = propKeys.filter(k => !declaredNames.has(k));
+                return (
+                  <div style={{ marginTop: 4 }}>
+                    {declared.map(d => (
+                      <div key={d.name} className="field" style={{ marginBottom: 2 }}>
+                        <label style={{ width: 60, fontSize: 10 }}>{d.name}</label>
+                        {d.type === 'boolean' ? (
+                          <input type="checkbox" checked={props[d.name] === true || props[d.name] === 'true'}
+                            onChange={(e) => handlePropertyChange(idx, d.name, e.target.checked)}
+                            style={{ cursor: 'pointer' }} />
+                        ) : d.type === 'scene' ? (
+                          <select
+                            value={props[d.name] ?? ''}
+                            style={{ fontSize: 11 }}
+                            onChange={(e) => handlePropertyChange(idx, d.name, e.target.value)}
+                          >
+                            <option value="">-- Select Scene --</option>
+                            {(project.scenes || []).map((scene) => (
+                              <option key={scene.id} value={scene.id}>{scene.name || scene.id}</option>
+                            ))}
+                          </select>
+                        ) : d.type === 'color' ? (
+                          <input type="color" value={props[d.name] || '#ffffff'} style={{ width: 36, height: 20, padding: 0, border: 'none', cursor: 'pointer' }}
+                            onChange={(e) => handlePropertyChange(idx, d.name, e.target.value)} />
+                        ) : d.type === 'number' ? (
+                          <input type="number" value={props[d.name] ?? ''} style={{ fontSize: 11, width: 60 }}
+                            onChange={(e) => handlePropertyChange(idx, d.name, e.target.value)} />
+                        ) : (
+                          <input type="text" value={props[d.name] ?? ''} style={{ fontSize: 11 }}
+                            onChange={(e) => handlePropertyChange(idx, d.name, e.target.value)} />
+                        )}
+                      </div>
+                    ))}
+                    {extraKeys.map(key => (
+                      <div key={key} className="field" style={{ marginBottom: 2 }}>
+                        <label style={{ width: 60, fontSize: 10 }}>{key}</label>
+                        <input type="text" value={props[key]} style={{ fontSize: 11 }}
+                          onChange={(e) => handlePropertyChange(idx, key, e.target.value)} />
+                        <button onClick={() => handleRemoveProperty(idx, key)}
+                          style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 11, padding: '0 2px' }}>x</button>
+                      </div>
+                    ))}
+                    <button className="btn btn-sm" onClick={() => handleAddProperty(idx)}
+                      style={{ fontSize: 10, padding: '1px 6px', marginTop: 2 }}>+ Property</button>
+                  </div>
+                );
+              })()}
             </div>
           );
         })}

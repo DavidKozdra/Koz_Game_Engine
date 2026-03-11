@@ -15,6 +15,7 @@ import Icon from './components/Icon.jsx';
 import { ensureProjectShape, applyProjectPatch, normalizeCellTypeId, getBrushValue } from './state/projectModel.js';
 import { buildExportHtml } from './lib/exportHtml.js';
 import template2dPlatformer from '../../../projects/template-2d-platformer/project.json';
+import template2dAdventurePlatformer from '../../../projects/template-2d-adventure-platformer/project.json';
 import template2dClicker from '../../../projects/template-2d-clicker/project.json';
 import template3dFpsShell from '../../../projects/template-3d-fps-shell/project.json';
 import './editor.css';
@@ -36,6 +37,13 @@ const PROJECT_TEMPLATES = [
     note: 'Movement, HUD, and a second scene are already wired in.',
   },
   {
+    id: 'adventure-platformer',
+    label: 'Adventure Platformer',
+    badge: '2D',
+    description: 'Five connected platforming scenes with saves, lighting, and goal particles.',
+    note: 'Goal portals use a scene-typed serialized prop so scene progression is editor-friendly.',
+  },
+  {
     id: 'clicker',
     label: '2D Clicker',
     badge: '2D',
@@ -53,6 +61,7 @@ const PROJECT_TEMPLATES = [
 
 const PROJECT_TEMPLATE_SOURCES = {
   platformer: template2dPlatformer,
+  'adventure-platformer': template2dAdventurePlatformer,
   clicker: template2dClicker,
   'fps-shell': template3dFpsShell,
 };

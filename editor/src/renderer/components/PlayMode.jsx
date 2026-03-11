@@ -174,6 +174,8 @@ export function usePlayMode(project, onLog) {
         missingCanvasLogged: false,
       },
     };
+    state.storageApi = createPlayStorageApi(snapshot);
+    state.particleSystem = createPlayParticleSystem();
     state.render3D = createInitialPlay3DState(state);
     stateRef.current = state;
     syncCanvasMode(state.renderMode);
@@ -238,6 +240,77 @@ export function usePlayMode(project, onLog) {
       }
       return runtimeState.sceneLighting;
     };
+    const createPlayAnimatorApi = (rs) => {
+      const resolveId = (t) => !t ? null : typeof t === 'string' ? t : t.id || null;
+      const findObj = (id) => id ? rs.gameObjects.find((o) => o.id === id) || null : null;
+      const ensureState = (id) => {
+        let s = rs._animStates.get(id);
+        if (!s) { s = { clipId: null, localTime: 0, speed: 1, playing: false, paused: false }; rs._animStates.set(id, s); }
+        return s;
+      };
+      return {
+        play(target, clipId) {
+          const id = resolveId(target);
+          if (!id) return false;
+          const clip = rs._clipIndex.get(clipId);
+          if (!clip) return false;
+          const s = ensureState(id);
+          s.clipId = clipId; s.localTime = 0; s.playing = true; s.paused = false;
+          return true;
+        },
+        stop(target) {
+          const id = resolveId(target);
+          const s = id && rs._animStates.get(id);
+          if (s) { s.playing = false; s.paused = false; s.localTime = 0; }
+        },
+        pause(target) {
+          const id = resolveId(target);
+          const s = id && rs._animStates.get(id);
+          if (s && s.playing) s.paused = true;
+        },
+        resume(target) {
+          const id = resolveId(target);
+          const s = id && rs._animStates.get(id);
+          if (s && s.paused) s.paused = false;
+        },
+        setSpeed(target, speed) {
+          const id = resolveId(target);
+          if (!id) return;
+          ensureState(id).speed = Number.isFinite(speed) ? speed : 1;
+        },
+        isPlaying(target) {
+          const id = resolveId(target);
+          const s = id && rs._animStates.get(id);
+          return !!(s && s.playing && !s.paused);
+        },
+        getClipId(target) {
+          const id = resolveId(target);
+          const s = id && rs._animStates.get(id);
+          return s ? s.clipId : null;
+        },
+        setFrame(target, index) {
+          const obj = findObj(resolveId(target));
+          if (obj) obj._frameIndex = Math.max(0, Math.floor(Number(index) || 0));
+        },
+        getFrame(target) {
+          const obj = findObj(resolveId(target));
+          return obj && typeof obj._frameIndex === 'number' ? obj._frameIndex : 0;
+        },
+        getFrameCount(target) {
+          const obj = findObj(resolveId(target));
+          if (!obj) return 0;
+          const sprite = obj.components && obj.components.Sprite;
+          const ids = sprite && Array.isArray(sprite.frameAssetIds) ? sprite.frameAssetIds : [];
+          return ids.length > 0 ? ids.length : (sprite && sprite.assetId ? 1 : 0);
+        },
+        setFPS(target, fps) {
+          const obj = findObj(resolveId(target));
+          if (!obj) return;
+          const sprite = obj.components && obj.components.Sprite;
+          if (sprite) sprite.fps = Number.isFinite(fps) ? fps : 8;
+        },
+      };
+    };
     const createEngineForState = (runtimeState) => {
       const engine = {
         gameObjects: runtimeState.gameObjects,
@@ -245,6 +318,9 @@ export function usePlayMode(project, onLog) {
         sceneId: runtimeState.activeSceneId,
         uiManager: runtimeState.uiManager || null,
         audio: runtimeState.audioSystem ? runtimeState.audioSystem.api : null,
+        storage: runtimeState.storageApi || null,
+        save: runtimeState.storageApi || null,
+        particles: runtimeState.particleSystem ? runtimeState.particleSystem.api : null,
         renderer3d: runtimeState.renderer3dController || null,
         sceneManager: runtimeState.sceneManager || null,
         lightingManager: runtimeState.lightingManager || null,
@@ -256,6 +332,7 @@ export function usePlayMode(project, onLog) {
           width: canvasRef.current ? canvasRef.current.width : 960,
           height: canvasRef.current ? canvasRef.current.height : 540,
         },
+        animator: createPlayAnimatorApi(runtimeState),
       };
       const worldMetrics = resolveWorldMetrics(runtimeState.world, CELL_SIZE);
       if (worldMetrics) engine.world = createPlayWorldApi(runtimeState.projectSnapshot || {}, runtimeState, worldMetrics);
@@ -290,6 +367,15 @@ export function usePlayMode(project, onLog) {
       runtimeState.sceneLighting = resolvePlayLightingSettings(runtimeState, nextScene);
       runtimeState.scriptInstances = [];
       runtimeState.pendingSceneId = null;
+      runtimeState._animStates.clear();
+      runtimeState._clipIndex = new Map((animClips || []).map((c) => [c.id, c]));
+      if (runtimeState.particleSystem) runtimeState.particleSystem.clear();
+      runtimeState.gameObjects.forEach((obj) => {
+        const anim = obj.components && obj.components.Animator;
+        if (anim && anim.clipId && runtimeState._clipIndex.has(anim.clipId)) {
+          runtimeState._animStates.set(obj.id, { clipId: anim.clipId, localTime: 0, speed: 1, playing: !!anim.autoplay, paused: false });
+        }
+      });
       if (runtimeState.audioSystem && runtimeState.audioSystem.api) runtimeState.audioSystem.api.stopAll();
       clearSceneCss();
       if (runtimeState.uiManager && typeof runtimeState.uiManager.clear === 'function') runtimeState.uiManager.clear();
@@ -514,6 +600,9 @@ export function usePlayMode(project, onLog) {
     if (state && state.audioSystem) {
       state.audioSystem.destroy();
     }
+    if (state && state.particleSystem) {
+      state.particleSystem.clear();
+    }
     if (state && state.render3D && state.render3D.runtime) {
       destroyPlayWebGLRuntime(state.render3D.runtime);
       state.render3D.runtime = null;
@@ -571,12 +660,33 @@ export function usePlayMode(project, onLog) {
         state.hydrateScene(state.pendingSceneId, true);
       }
 
-      // Evaluate animations
+      // Evaluate per-object animations (driven by Animator component / engine.animator.play)
+      state._animStates.forEach((animState, objId) => {
+        if (!animState.playing || animState.paused) return;
+        animState.localTime += dt * animState.speed;
+        const clip = state._clipIndex.get(animState.clipId);
+        if (!clip || !clip.tracks) return;
+        const dur = clip.duration || 1;
+        if (clip.loop) {
+          animState.localTime = animState.localTime % dur;
+        } else if (animState.localTime >= dur) {
+          animState.localTime = dur;
+          animState.playing = false;
+        }
+        clip.tracks.forEach(track => {
+          if (track.targetObjectId !== objId) return;
+          const obj = state.gameObjects.find(o => o.id === objId);
+          if (!obj || !track.keyframes || track.keyframes.length === 0) return;
+          obj[track.property] = sampleTrack(track, animState.localTime);
+        });
+      });
+      // Evaluate unbound clips (tracks targeting objects without an anim state)
       state.animClips.forEach(clip => {
         if (!clip.tracks) return;
         const dur = clip.duration || 1;
         const t = clip.loop ? (state.elapsed % dur) : Math.min(state.elapsed, dur);
         clip.tracks.forEach(track => {
+          if (state._animStates.has(track.targetObjectId)) return;
           const obj = state.gameObjects.find(o => o.id === track.targetObjectId);
           if (!obj || !track.keyframes || track.keyframes.length === 0) return;
           obj[track.property] = sampleTrack(track, t);
@@ -598,6 +708,9 @@ export function usePlayMode(project, onLog) {
             sceneId: state.activeSceneId,
             uiManager: state.uiManager || null,
             audio: state.audioSystem ? state.audioSystem.api : null,
+            storage: state.storageApi || null,
+            save: state.storageApi || null,
+            particles: state.particleSystem ? state.particleSystem.api : null,
             renderer3d: state.renderer3dController || null,
             sceneManager: state.sceneManager || null,
             lightingManager: state.lightingManager || null,
@@ -659,6 +772,7 @@ export function usePlayMode(project, onLog) {
       });
 
       resolveCellCollisions(state);
+      if (state.particleSystem) state.particleSystem.update(dt, state.gameObjects);
 
       // Render
       const camera = resolvePlayCamera(state);
@@ -798,9 +912,14 @@ export function usePlayMode(project, onLog) {
       
       let drawn = false;
       const frameIds = Array.isArray(sprite.frameAssetIds) ? sprite.frameAssetIds : [];
-      const frameId = frameIds.length > 0
-        ? frameIds[Math.floor(state.elapsed * (sprite.fps || 8)) % frameIds.length]
-        : sprite.assetId;
+      let frameId;
+      if (typeof obj._frameIndex === 'number' && frameIds.length > 0) {
+        frameId = frameIds[Math.min(obj._frameIndex, frameIds.length - 1)];
+      } else if (frameIds.length > 0) {
+        frameId = frameIds[Math.floor(state.elapsed * (sprite.fps || 8)) % frameIds.length];
+      } else {
+        frameId = sprite.assetId;
+      }
       const asset = frameId ? state.assetById.get(frameId) : null;
       const sourceAsset = asset && asset.sourceAssetId ? state.assetById.get(asset.sourceAssetId) : null;
       const src = (sourceAsset && (sourceAsset.previewUrl || sourceAsset.url || sourceAsset.src))
@@ -840,8 +959,11 @@ export function usePlayMode(project, onLog) {
     */
     });
 
+    if (state.particleSystem) state.particleSystem.renderWorld(ctx);
+
     ctx.restore();
     renderFrame2DLighting(ctx, state, w, h);
+    if (state.particleSystem) state.particleSystem.renderScreen(ctx);
     ctx.save();
     ctx.translate(-(state.viewX || 0), -(state.viewY || 0));
     renderPlayWorldGuides(ctx, state, w, h, { layer: 'foreground' });
@@ -1773,6 +1895,225 @@ function clamp01(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 1;
   return Math.max(0, Math.min(1, n));
+}
+
+function slugifyStorageKey(value) {
+  return String(value || 'koz-project')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'koz-project';
+}
+
+function createPlayStorageApi(projectSnapshot) {
+  const prefix = `koz:${slugifyStorageKey(projectSnapshot && projectSnapshot.meta && projectSnapshot.meta.name)}:`;
+  const storage = typeof localStorage !== 'undefined' ? localStorage : null;
+
+  function key(name = 'save_slot') {
+    return `${prefix}${String(name || 'save_slot')}`;
+  }
+
+  return {
+    prefix,
+    key,
+    has(name = 'save_slot') {
+      if (!storage) return false;
+      try {
+        return storage.getItem(key(name)) !== null;
+      } catch (_err) {
+        return false;
+      }
+    },
+    read(name = 'save_slot') {
+      if (!storage) return null;
+      try {
+        return storage.getItem(key(name));
+      } catch (_err) {
+        return null;
+      }
+    },
+    write(name = 'save_slot', value = '') {
+      if (!storage) return null;
+      try {
+        const nextValue = String(value ?? '');
+        storage.setItem(key(name), nextValue);
+        return nextValue;
+      } catch (_err) {
+        return null;
+      }
+    },
+    remove(name = 'save_slot') {
+      if (!storage) return false;
+      try {
+        storage.removeItem(key(name));
+        return true;
+      } catch (_err) {
+        return false;
+      }
+    },
+    load(name = 'save_slot') {
+      const raw = this.read(name);
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw);
+      } catch (_err) {
+        return null;
+      }
+    },
+    save(payload, name = 'save_slot') {
+      const raw = JSON.stringify(payload);
+      this.write(name, raw);
+      return payload;
+    },
+    clear(name = 'save_slot') {
+      return this.remove(name);
+    },
+  };
+}
+
+function createPlayParticleSystem() {
+  const particles = [];
+  const emitterTimers = new Map();
+
+  function resolveObject(target, objects) {
+    if (!target) return null;
+    if (typeof target === 'string') return (objects || []).find((obj) => obj.id === target) || null;
+    if (typeof target === 'object' && target.id) return target;
+    return null;
+  }
+
+  function emitAt(x, y, config = {}) {
+    const count = Math.max(1, Math.min(500, Math.floor(Number(config.count) || 24)));
+    const direction = ((Number(config.direction) || 0) * Math.PI) / 180;
+    const spread = (Math.max(0, Math.min(360, Number(config.spreadAngle) || 360)) * Math.PI) / 180;
+    const baseSpeed = Math.max(0, Number(config.speed) || 80);
+    const life = Math.max(50, Number(config.life) || 500) / 1000;
+    const sizeStart = Math.max(1, Number(config.size) || 4);
+    const sizeEnd = Math.max(0, Number(config.sizeEnd) || 1);
+    const gravity = Number(config.gravity) || 0;
+    const drag = clamp01(Number(config.drag) || 0.98);
+    const color = config.color || '#fb923c';
+    const screen = config.worldSpace === false;
+
+    for (let i = 0; i < count; i += 1) {
+      const angle = spread >= Math.PI * 2
+        ? Math.random() * Math.PI * 2
+        : (direction - (spread * 0.5)) + (Math.random() * spread);
+      const speed = baseSpeed * (0.35 + Math.random() * 0.85);
+      particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life,
+        maxLife: life,
+        sizeStart,
+        sizeEnd,
+        gravity,
+        drag,
+        color,
+        screen,
+      });
+    }
+    return count;
+  }
+
+  function emitObject(target, objects, overrides = {}) {
+    const obj = resolveObject(target, objects);
+    if (!obj) return 0;
+    const emitter = (obj.components && obj.components.ParticleEmitter) || null;
+    if (!emitter || emitter.enabled === false) return 0;
+    const width = Number.isFinite(obj.width) ? obj.width : (((obj.components || {}).Sprite || {}).width || 32);
+    const height = Number.isFinite(obj.height) ? obj.height : (((obj.components || {}).Sprite || {}).height || 32);
+    return emitAt(
+      (Number(obj.x) || 0) + (width * 0.5),
+      (Number(obj.y) || 0) + (height * 0.5),
+      { ...emitter, ...overrides },
+    );
+  }
+
+  return {
+    api: {
+      burstAt(x, y, options = {}) {
+        return emitAt(Number(x) || 0, Number(y) || 0, options);
+      },
+      emitObject(target, overrides = {}, objects = []) {
+        return emitObject(target, objects, overrides);
+      },
+      clear() {
+        particles.length = 0;
+        emitterTimers.clear();
+      },
+      getCount() {
+        return particles.length;
+      },
+    },
+    clear() {
+      particles.length = 0;
+      emitterTimers.clear();
+    },
+    update(dt, objects = []) {
+      const nextIds = new Set();
+      objects.forEach((obj) => {
+        const emitter = (obj.components && obj.components.ParticleEmitter) || null;
+        if (!emitter || emitter.enabled === false || emitter.loop !== true) return;
+        const interval = Math.max(0.1, (Math.max(100, Number(emitter.interval) || 1000)) / 1000);
+        nextIds.add(obj.id);
+        const timer = (emitterTimers.get(obj.id) ?? 0) - dt;
+        if (timer <= 0) {
+          emitObject(obj, objects);
+          emitterTimers.set(obj.id, interval);
+        } else {
+          emitterTimers.set(obj.id, timer);
+        }
+      });
+      Array.from(emitterTimers.keys()).forEach((id) => {
+        if (!nextIds.has(id)) emitterTimers.delete(id);
+      });
+      for (let i = particles.length - 1; i >= 0; i -= 1) {
+        const particle = particles[i];
+        particle.life -= dt;
+        if (particle.life <= 0) {
+          particles.splice(i, 1);
+          continue;
+        }
+        const dragFactor = Math.pow(particle.drag, dt * 60);
+        particle.vx *= dragFactor;
+        particle.vy *= dragFactor;
+        particle.vy += particle.gravity * dt;
+        particle.x += particle.vx * dt;
+        particle.y += particle.vy * dt;
+      }
+    },
+    renderWorld(ctx, offsetX = 0, offsetY = 0) {
+      particles.forEach((particle) => {
+        if (particle.screen) return;
+        const progress = 1 - (particle.life / particle.maxLife);
+        const size = particle.sizeStart + ((particle.sizeEnd - particle.sizeStart) * progress);
+        ctx.save();
+        ctx.globalAlpha = clamp01(particle.life / particle.maxLife);
+        ctx.fillStyle = particle.color;
+        ctx.beginPath();
+        ctx.arc(particle.x - offsetX, particle.y - offsetY, Math.max(0.5, size * 0.5), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+    },
+    renderScreen(ctx) {
+      particles.forEach((particle) => {
+        if (!particle.screen) return;
+        const progress = 1 - (particle.life / particle.maxLife);
+        const size = particle.sizeStart + ((particle.sizeEnd - particle.sizeStart) * progress);
+        ctx.save();
+        ctx.globalAlpha = clamp01(particle.life / particle.maxLife);
+        ctx.fillStyle = particle.color;
+        ctx.beginPath();
+        ctx.arc(particle.x, particle.y, Math.max(0.5, size * 0.5), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+    },
+  };
 }
 
 function computePositionalVolume(distance, maxDistance) {

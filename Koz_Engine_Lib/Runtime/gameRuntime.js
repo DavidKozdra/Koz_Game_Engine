@@ -103,11 +103,11 @@
           if (boundScript.language === "css") {
             applyCssScript(boundScript);
           } else {
-            const instance = createScriptInstance(boundScript, obj);
+            const instance = createScriptInstance(boundScript, obj, legacyBinding.properties);
             if (instance) scriptInstances.push(instance);
           }
         }
-        
+
         // Handle array of bindings
         if (Array.isArray(bindings)) {
           for (const binding of bindings) {
@@ -116,7 +116,7 @@
               if (boundScript.language === "css") {
                 applyCssScript(boundScript);
               } else {
-                const instance = createScriptInstance(boundScript, obj);
+                const instance = createScriptInstance(boundScript, obj, binding.properties);
                 if (instance) scriptInstances.push(instance);
               }
             }
@@ -145,25 +145,27 @@
       cssStyleElements = new Map();
     }
 
-    function createScriptInstance(script, gameObject) {
+    function createScriptInstance(script, gameObject, bindingProps) {
       try {
         const sandbox = {
           self: gameObject,
           console: { log: console.log.bind(console), warn: console.warn.bind(console), error: console.error.bind(console) },
         };
 
-        // Parse script functions from source
-        const wrappedSource = `(function(self, console) {
+        // Parse script functions from source — props are available in the closure
+        const wrappedSource = `(function(self, props, console) {
           ${script.source}
           return { onInit: typeof onInit === 'function' ? onInit : null, onUpdate: typeof onUpdate === 'function' ? onUpdate : null };
         })`;
 
+        const props = bindingProps ? clone(bindingProps) : {};
         const factory = new Function("return " + wrappedSource)();
-        const hooks = factory(sandbox.self, sandbox.console);
+        const hooks = factory(sandbox.self, props, sandbox.console);
         return {
           scriptId: script.id,
           gameObject: gameObject,
           hooks: hooks,
+          props: props,
         };
       } catch (err) {
         console.error("Script compile error (" + script.name + "):", err.message);

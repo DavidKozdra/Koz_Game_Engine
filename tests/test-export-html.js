@@ -38,6 +38,9 @@ async function main() {
   assert(html.includes('loadNextScene'), 'export runtime includes ordered scene progression helpers');
   assert(html.includes('renderFrame2DLighting'), 'export runtime includes 2D lighting overlay support');
   assert(html.includes('drawWorldElements'), 'export runtime renders world elements');
+  assert(html.includes('createParticleSystem'), 'export runtime includes particle support');
+  assert(html.includes('particles:'), 'export runtime exposes particle helpers to scripts');
+  assert(html.includes('storage:'), 'export runtime exposes storage helpers to scripts');
   assert(html.includes("source: 'engine-fallback'"), 'export runtime includes engine fallback camera metadata');
   assert(html.includes('webgl-3d'), 'export runtime contains the WebGL render mode');
 

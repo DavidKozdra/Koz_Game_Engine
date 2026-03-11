@@ -51,6 +51,8 @@ function exportRuntimeMain() {
   var engine = null;
   var sceneManager = null;
   var lightingManager = null;
+  var storageApi = null;
+  var particleSystem = null;
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -603,6 +605,237 @@ function exportRuntimeMain() {
     var n = Number(value);
     if (!Number.isFinite(n)) return 1;
     return Math.max(0, Math.min(1, n));
+  }
+
+  function slugifyStorageKey(value) {
+    return String(value || 'koz-project')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'koz-project';
+  }
+
+  function createStorageApi(projectSnapshot) {
+    var prefix = 'koz:' + slugifyStorageKey(projectSnapshot && projectSnapshot.meta && projectSnapshot.meta.name) + ':';
+    var storage = typeof localStorage !== 'undefined' ? localStorage : null;
+
+    function key(name) {
+      return prefix + String(name || 'save_slot');
+    }
+
+    return {
+      prefix: prefix,
+      key: key,
+      has: function(name) {
+        if (!storage) return false;
+        try {
+          return storage.getItem(key(name)) !== null;
+        } catch (_err) {
+          return false;
+        }
+      },
+      read: function(name) {
+        if (!storage) return null;
+        try {
+          return storage.getItem(key(name));
+        } catch (_err) {
+          return null;
+        }
+      },
+      write: function(name, value) {
+        if (!storage) return null;
+        try {
+          var nextValue = String(value == null ? '' : value);
+          storage.setItem(key(name), nextValue);
+          return nextValue;
+        } catch (_err) {
+          return null;
+        }
+      },
+      remove: function(name) {
+        if (!storage) return false;
+        try {
+          storage.removeItem(key(name));
+          return true;
+        } catch (_err) {
+          return false;
+        }
+      },
+      load: function(name) {
+        var raw = this.read(name);
+        if (!raw) return null;
+        try {
+          return JSON.parse(raw);
+        } catch (_err) {
+          return null;
+        }
+      },
+      save: function(payload, name) {
+        this.write(name, JSON.stringify(payload));
+        return payload;
+      },
+      clear: function(name) {
+        return this.remove(name);
+      },
+    };
+  }
+
+  function createParticleSystem() {
+    var particles = [];
+    var emitterTimers = new Map();
+
+    function resolveObject(target, objects) {
+      if (!target) return null;
+      if (typeof target === 'string') return (objects || []).find(function(obj) { return obj.id === target; }) || null;
+      if (typeof target === 'object' && target.id) return target;
+      return null;
+    }
+
+    function emitAt(x, y, config) {
+      config = config || {};
+      var count = Math.max(1, Math.min(500, Math.floor(Number(config.count) || 24)));
+      var direction = ((Number(config.direction) || 0) * Math.PI) / 180;
+      var spread = (Math.max(0, Math.min(360, Number(config.spreadAngle) || 360)) * Math.PI) / 180;
+      var baseSpeed = Math.max(0, Number(config.speed) || 80);
+      var life = Math.max(50, Number(config.life) || 500) / 1000;
+      var sizeStart = Math.max(1, Number(config.size) || 4);
+      var sizeEnd = Math.max(0, Number(config.sizeEnd) || 1);
+      var gravity = Number(config.gravity) || 0;
+      var drag = clamp01(Number(config.drag) || 0.98);
+      var color = config.color || '#fb923c';
+      var screen = config.worldSpace === false;
+      var i;
+
+      for (i = 0; i < count; i += 1) {
+        var angle = spread >= Math.PI * 2
+          ? Math.random() * Math.PI * 2
+          : (direction - (spread * 0.5)) + (Math.random() * spread);
+        var speed = baseSpeed * (0.35 + Math.random() * 0.85);
+        particles.push({
+          x: x,
+          y: y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: life,
+          maxLife: life,
+          sizeStart: sizeStart,
+          sizeEnd: sizeEnd,
+          gravity: gravity,
+          drag: drag,
+          color: color,
+          screen: screen,
+        });
+      }
+      return count;
+    }
+
+    function emitObject(target, objects, overrides) {
+      var obj = resolveObject(target, objects);
+      var emitter;
+      var width;
+      var height;
+      if (!obj) return 0;
+      emitter = (obj.components && obj.components.ParticleEmitter) || null;
+      if (!emitter || emitter.enabled === false) return 0;
+      width = Number.isFinite(obj.width) ? obj.width : ((((obj.components || {}).Sprite || {}).width) || 32);
+      height = Number.isFinite(obj.height) ? obj.height : ((((obj.components || {}).Sprite || {}).height) || 32);
+      return emitAt(
+        (Number(obj.x) || 0) + (width * 0.5),
+        (Number(obj.y) || 0) + (height * 0.5),
+        Object.assign({}, emitter, overrides || {})
+      );
+    }
+
+    return {
+      api: {
+        burstAt: function(x, y, options) {
+          return emitAt(Number(x) || 0, Number(y) || 0, options || {});
+        },
+        emitObject: function(target, overrides, objects) {
+          return emitObject(target, objects || [], overrides || {});
+        },
+        clear: function() {
+          particles.length = 0;
+          emitterTimers.clear();
+        },
+        getCount: function() {
+          return particles.length;
+        },
+      },
+      clear: function() {
+        particles.length = 0;
+        emitterTimers.clear();
+      },
+      update: function(dt, objects) {
+        var nextIds = new Set();
+        var i;
+        (objects || []).forEach(function(obj) {
+          var emitter = (obj.components && obj.components.ParticleEmitter) || null;
+          var interval;
+          var timer;
+          if (!emitter || emitter.enabled === false || emitter.loop !== true) return;
+          interval = Math.max(0.1, (Math.max(100, Number(emitter.interval) || 1000)) / 1000);
+          nextIds.add(obj.id);
+          timer = (emitterTimers.has(obj.id) ? emitterTimers.get(obj.id) : 0) - dt;
+          if (timer <= 0) {
+            emitObject(obj, objects || [], {});
+            emitterTimers.set(obj.id, interval);
+          } else {
+            emitterTimers.set(obj.id, timer);
+          }
+        });
+        Array.from(emitterTimers.keys()).forEach(function(id) {
+          if (!nextIds.has(id)) emitterTimers.delete(id);
+        });
+        for (i = particles.length - 1; i >= 0; i -= 1) {
+          var particle = particles[i];
+          var dragFactor;
+          particle.life -= dt;
+          if (particle.life <= 0) {
+            particles.splice(i, 1);
+            continue;
+          }
+          dragFactor = Math.pow(particle.drag, dt * 60);
+          particle.vx *= dragFactor;
+          particle.vy *= dragFactor;
+          particle.vy += particle.gravity * dt;
+          particle.x += particle.vx * dt;
+          particle.y += particle.vy * dt;
+        }
+      },
+      renderWorld: function(ctx, offsetX, offsetY) {
+        particles.forEach(function(particle) {
+          var progress;
+          var size;
+          if (particle.screen) return;
+          progress = 1 - (particle.life / particle.maxLife);
+          size = particle.sizeStart + ((particle.sizeEnd - particle.sizeStart) * progress);
+          ctx.save();
+          ctx.globalAlpha = clamp01(particle.life / particle.maxLife);
+          ctx.fillStyle = particle.color;
+          ctx.beginPath();
+          ctx.arc(particle.x - (offsetX || 0), particle.y - (offsetY || 0), Math.max(0.5, size * 0.5), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        });
+      },
+      renderScreen: function(ctx) {
+        particles.forEach(function(particle) {
+          var progress;
+          var size;
+          if (!particle.screen) return;
+          progress = 1 - (particle.life / particle.maxLife);
+          size = particle.sizeStart + ((particle.sizeEnd - particle.sizeStart) * progress);
+          ctx.save();
+          ctx.globalAlpha = clamp01(particle.life / particle.maxLife);
+          ctx.fillStyle = particle.color;
+          ctx.beginPath();
+          ctx.arc(particle.x, particle.y, Math.max(0.5, size * 0.5), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        });
+      },
+    };
   }
 
   function computePositionalVolume(distance, maxDistance) {
@@ -1485,7 +1718,9 @@ function exportRuntimeMain() {
     drawWorld(viewX, viewY);
     drawWorldElements(viewX, viewY);
     drawObjects(viewX, viewY);
+    if (particleSystem) particleSystem.renderWorld(ctx2d, viewX, viewY);
     renderFrame2DLighting();
+    if (particleSystem) particleSystem.renderScreen(ctx2d);
     ctx2d.fillStyle = '#e2e8f0';
     ctx2d.font = '11px sans-serif';
     ctx2d.textAlign = 'left';
@@ -1567,6 +1802,7 @@ function exportRuntimeMain() {
     sceneLighting = resolveLightingSettings(nextScene);
     scriptInstances = [];
     pendingSceneId = null;
+    if (particleSystem) particleSystem.clear();
     if (audioSystem && audioSystem.api) audioSystem.api.stopAll();
     clearActiveCss();
     if (uiManager && typeof uiManager.clear === 'function') uiManager.clear();
@@ -1613,6 +1849,8 @@ function exportRuntimeMain() {
 
   uiManager = createUiManager(uiRoot);
   audioSystem = createAudioSystem(assetById, gameObjects);
+  storageApi = createStorageApi(project);
+  particleSystem = createParticleSystem();
   renderer3dController = createRenderer3DController();
   engine = {
     elapsed: 0,
@@ -1620,6 +1858,9 @@ function exportRuntimeMain() {
     gameObjects: gameObjects,
     uiManager: uiManager,
     audio: audioSystem.api,
+    storage: storageApi,
+    save: storageApi,
+    particles: particleSystem.api,
     renderer3d: renderer3dController,
     sceneManager: null,
     lightingManager: null,
@@ -1826,6 +2067,7 @@ function exportRuntimeMain() {
     });
 
     resolveCellCollisions();
+    if (particleSystem) particleSystem.update(dt, gameObjects);
     gameObjects.forEach(function(obj) {
       if (!obj.components || !obj.components.Transform) return;
       obj.components.Transform.x = obj.x;
@@ -1857,6 +2099,7 @@ function exportRuntimeMain() {
   window.addEventListener('beforeunload', function() {
     clearActiveCss();
     if (audioSystem) audioSystem.stopAll();
+    if (particleSystem) particleSystem.clear();
     if (uiManager && typeof uiManager.destroy === 'function') uiManager.destroy();
     if (render3D && render3D.runtime) destroyPlayWebGLRuntime(render3D.runtime);
   });

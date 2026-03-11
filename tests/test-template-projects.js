@@ -29,7 +29,7 @@ function assert(condition, message) {
 
 console.log('\n=== Template Project Tests ===\n');
 
-assert(entries.length === 3, 'three template projects are present');
+assert(entries.length === 4, 'four template projects are present');
 
 entries.forEach((filePath) => {
   const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -60,6 +60,19 @@ entries.forEach((filePath) => {
     const playerController = (project.scripts || []).find((script) => script.id === 'script_player_controller');
     assert(completeScene, `${name} includes a scripted level-complete scene`);
     assert(playerController && playerController.source.includes('loadNextScene()'), `${name} goal script uses ordered scene progression`);
+  }
+  if (name === 'Template - 2D Adventure Platformer') {
+    const levelScenes = project.scenes.filter((scene) => /^scene_level_/.test(scene.id));
+    const litScene = project.scenes.find((scene) => scene.id === 'scene_level_3');
+    const goalScript = (project.scripts || []).find((script) => script.id === 'script_goal_portal');
+    const menuScript = (project.scripts || []).find((script) => script.id === 'script_menu_system');
+    assert(levelScenes.length === 5, `${name} includes five distinct gameplay levels`);
+    assert(project.scenes.some((scene) => scene.id === 'scene_victory'), `${name} includes a victory scene`);
+    assert(litScene && Array.isArray(litScene.objects) && litScene.objects.some((obj) => obj.components && obj.components.LightingManager), `${name} includes a lighting-manager scene`);
+    assert(litScene && Array.isArray(litScene.objects) && litScene.objects.some((obj) => obj.components && obj.components.Light), `${name} includes active light emitters in the lit level`);
+    assert(goalScript && goalScript.source.includes('@prop nextSceneId scene'), `${name} goal portals expose a scene-typed serialized prop`);
+    assert(menuScript && menuScript.source.includes('Continue Save') && menuScript.source.includes('Master Volume'), `${name} menu script exposes save/load and volume controls`);
+    assert(levelScenes.every((scene) => Array.isArray(scene.objects) && scene.objects.some((obj) => obj.components && obj.components.ParticleEmitter)), `${name} each level includes a particle-enabled goal`);
   }
 });
 
