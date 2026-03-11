@@ -9,7 +9,7 @@ const LANGUAGES = [
   { id: 'javascript', label: 'JavaScript' },
   { id: 'css', label: 'CSS Stylesheet' },
   { id: 'ui', label: 'UI Screen' },
-  { id: 'typescript', label: 'TypeScript (planned)' },
+  { id: 'typescript', label: 'TypeScript' },
   { id: 'lua', label: 'Lua (planned)' },
   { id: 'python', label: 'Python (planned)' },
 ];

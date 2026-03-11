@@ -11,6 +11,21 @@ async function ensureTailwind() {
   tailwindLoaded = true;
 }
 
+let sucraseTransform = null;
+async function ensureSucrase() {
+  if (sucraseTransform) return;
+  const mod = await import('sucrase');
+  sucraseTransform = mod.transform;
+}
+function transpileTS(source) {
+  if (!sucraseTransform) return source;
+  try {
+    return sucraseTransform(source, { transforms: ['typescript'] }).code;
+  } catch (e) {
+    throw new Error(`TypeScript error: ${e.message}`);
+  }
+}
+
 /**
  * In-editor play mode.
  * Runs the game in an iframe-like canvas overlay using p5.js-style runtime.
@@ -96,7 +111,9 @@ export function usePlayMode(project, onLog) {
 
     // Lazily load Tailwind CSS browser compiler if any CSS script uses Tailwind syntax
     const hasTailwind = Object.values(scripts).some(s => s.language === 'css' && needsTailwind(s.source || ''));
+    const hasTypeScript = Object.values(scripts).some(s => s.language === 'typescript');
     if (hasTailwind) await ensureTailwind();
+    if (hasTypeScript) await ensureSucrase();
 
     // Build console interceptor
     const makeConsole = () => ({
@@ -468,17 +485,19 @@ export function usePlayMode(project, onLog) {
         bindings.forEach((binding) => {
           if (!binding.active || !binding.scriptId || !scripts[binding.scriptId]) return;
           try {
-            const src = scripts[binding.scriptId].source;
+            const rawSrc = scripts[binding.scriptId].source;
             const language = scripts[binding.scriptId].language || 'javascript';
             if (language === 'css') {
               applyCssScript(scripts[binding.scriptId]);
               return;
             }
-            const enabled = language === 'javascript' || !!(scriptingConfig.engines && scriptingConfig.engines[language]);
-            if (!enabled || language !== 'javascript') {
+            const isTS = language === 'typescript';
+            const enabled = language === 'javascript' || isTS || !!(scriptingConfig.engines && scriptingConfig.engines[language]);
+            if (!enabled) {
               onLog({ type: 'warn', message: `Script "${scripts[binding.scriptId].name}" skipped (${language} runtime unavailable in play mode).`, time: new Date().toLocaleTimeString() });
               return;
             }
+            const src = isTS ? transpileTS(rawSrc) : rawSrc;
             const factory = new Function('return (function(self, props, console, keyIsDown, LEFT_ARROW, RIGHT_ARROW, UP_ARROW, DOWN_ARROW, SPACE) { ' + src + ' return { onInit: typeof onInit==="function"?onInit:null, onUpdate: typeof onUpdate==="function"?onUpdate:null }; })')();
             const props = binding.properties ? JSON.parse(JSON.stringify(binding.properties)) : {};
             const hooks = factory(obj, props, sandboxConsole, (code) => keysRef.current.has(code), 37, 39, 38, 40, 32);

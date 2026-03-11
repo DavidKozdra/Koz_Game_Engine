@@ -2327,8 +2327,25 @@ function normalizeExportDisplay(display) {
   };
 }
 
-export function buildExportHtml(project, projectJson, target, options = {}) {
-  const safeJson = projectJson
+export async function buildExportHtml(project, projectJson, target, options = {}) {
+  // Pre-transpile TypeScript scripts to JavaScript before embedding
+  let finalProjectJson = projectJson;
+  const hasTS = (project.scripts || []).some(s => s && s.language === 'typescript');
+  if (hasTS) {
+    const { transform: sucraseTransform } = await import('sucrase');
+    const exportProject = JSON.parse(projectJson);
+    (exportProject.scripts || []).forEach(s => {
+      if (!s || s.language !== 'typescript') return;
+      try {
+        s.source = sucraseTransform(s.source || '', { transforms: ['typescript'] }).code;
+        s.language = 'javascript';
+      } catch (e) {
+        // Leave source as-is; runtime will throw a meaningful error
+      }
+    });
+    finalProjectJson = JSON.stringify(exportProject);
+  }
+  const safeJson = finalProjectJson
     .replace(/</g, '\\u003c')
     .replace(/>/g, '\\u003e')
     .replace(/&/g, '\\u0026');

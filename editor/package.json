@@ -19,7 +19,8 @@
     "@codemirror/view": "^6.39.16",
     "@tailwindcss/browser": "^4.2.1",
     "codemirror": "^6.0.2",
-    "electron": "^28.0.0"
+    "electron": "^28.0.0",
+    "sucrase": "^3.35.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.0",

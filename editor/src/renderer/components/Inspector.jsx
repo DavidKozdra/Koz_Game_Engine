@@ -15,7 +15,7 @@ const AVAILABLE_COMPONENTS = [
   { id: 'RigidBody', label: 'RigidBody', icon: 'rigidBody', color: '#94a3b8', defaults: { enabled: false, weight: 1, friction: 0.4 } },
   { id: 'Animator', label: 'Animator', icon: 'objAnimator', color: '#34d399', defaults: { clipId: null, autoplay: false } },
   { id: 'Camera', label: 'Camera', icon: 'camera', color: '#93c5fd', defaults: { enabled: true, targetObjectId: null, speed: 8, offsetX: 0, offsetY: 0, deadZoneWidth: 180, deadZoneHeight: 120, lookAheadX: 0, lookAheadY: 0, visibleMargin: 40, followX: true, followY: true, clampToWorld: true, maxSpeed: 2000 } },
-  { id: 'ParticleEmitter', label: 'Particle Emitter', icon: 'objParticleEmitter', color: '#fb923c', defaults: { enabled: true, count: 24, rate: 0, burst: true, life: 500, speed: 80, spreadAngle: 360, direction: 270, color: '#fb923c', size: 4, sizeEnd: 1, gravity: 0, drag: 0.98, loop: true, interval: 1000, worldSpace: true } },
+  { id: 'ParticleEmitter', label: 'Particle Emitter', icon: 'objParticleEmitter', color: '#fb923c', defaults: { enabled: true, count: 24, rate: 0, burst: true, life: 500, speed: 80, spreadAngle: 360, direction: 270, color: '#fb923c', size: 4, sizeEnd: 1, gravity: 0, drag: 0.98, loop: true, interval: 1000, worldSpace: true, image: null, rotation: 0, rotationSpeed: 0 } },
 ];
 
 function componentIcon(comp, size = 16) {
@@ -104,6 +104,7 @@ export default function Inspector({
   onSavePrefabVariantFromObject,
 }) {
   const [showImagePicker, setShowImagePicker] = useState(false);
+  const [showParticleImagePicker, setShowParticleImagePicker] = useState(false);
   const [imageQuery, setImageQuery] = useState('');
   const [showAudioPicker, setShowAudioPicker] = useState(false);
   const [audioQuery, setAudioQuery] = useState('');
@@ -1226,8 +1227,95 @@ export default function Inspector({
             {renderFieldLabel('World Space', 'components.ParticleEmitter.worldSpace')}
             <input type="checkbox" checked={components.ParticleEmitter.worldSpace !== false} onChange={(e) => handleComponentChange('ParticleEmitter', 'worldSpace', e.target.checked)} />
           </div>
+          <div style={{ borderTop: '1px solid var(--border)', margin: '8px 0', paddingTop: 8 }}>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sprite Particle</div>
+          </div>
+          <div className="field">
+            {renderFieldLabel('Image', 'components.ParticleEmitter.image')}
+            <div style={{ display: 'flex', flex: 1, gap: 6, alignItems: 'center' }}>
+              <button className="btn btn-sm" onClick={() => setShowParticleImagePicker(true)}>Select Image</button>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {components.ParticleEmitter.image ? (imageAssetById.get(components.ParticleEmitter.image) || {}).name || components.ParticleEmitter.image : 'None (circle)'}
+              </span>
+              {components.ParticleEmitter.image && (
+                <button className="btn btn-sm btn-danger" onClick={() => handleComponentChange('ParticleEmitter', 'image', null)} title="Clear Image">x</button>
+              )}
+            </div>
+          </div>
+          {components.ParticleEmitter.image && (
+            <>
+              <div className="field">
+                {renderFieldLabel('Rotation', 'components.ParticleEmitter.rotation')}
+                <input type="number" step="5" value={Number.isFinite(components.ParticleEmitter.rotation) ? components.ParticleEmitter.rotation : 0} onChange={(e) => handleComponentChange('ParticleEmitter', 'rotation', parseFloat(e.target.value) || 0)} />
+                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>degrees</span>
+              </div>
+              <div className="field">
+                {renderFieldLabel('Spin Speed', 'components.ParticleEmitter.rotationSpeed')}
+                <input type="number" step="10" value={Number.isFinite(components.ParticleEmitter.rotationSpeed) ? components.ParticleEmitter.rotationSpeed : 0} onChange={(e) => handleComponentChange('ParticleEmitter', 'rotationSpeed', parseFloat(e.target.value) || 0)} />
+                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>deg/sec</span>
+              </div>
+            </>
+          )}
         </CollapsibleSection>
       )}
+      <Modal open={showParticleImagePicker} title="Select Particle Image" onClose={() => setShowParticleImagePicker(false)} maxWidth={920} minWidth={620}>
+        <div style={{ display: 'grid', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="text"
+              value={imageQuery}
+              onChange={(e) => setImageQuery(e.target.value)}
+              placeholder={`Search ${imageAssets.length} PNG images...`}
+              style={{ flex: 1, padding: '9px 12px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6 }}
+            />
+            <button className="btn btn-sm" onClick={() => setImageQuery('')} disabled={!imageQuery}>Clear</button>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            {filteredImages.length} result{filteredImages.length === 1 ? '' : 's'}
+          </div>
+          <div style={{ maxHeight: '56vh', overflow: 'auto', border: '1px solid var(--border)', borderRadius: 6, padding: 10, background: '#0b1220' }}>
+            {filteredImages.length === 0 && (
+              <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>No images found.</div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
+              {filteredImages.map((asset) => {
+                const preview = asset.previewUrl || asset.url || asset.src || null;
+                const active = components.ParticleEmitter && components.ParticleEmitter.image === asset.id;
+                return (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    onClick={() => {
+                      handleComponentChange('ParticleEmitter', 'image', asset.id);
+                      setShowParticleImagePicker(false);
+                    }}
+                    style={{
+                      border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
+                      borderRadius: 6,
+                      background: active ? 'rgba(59,130,246,0.12)' : '#111827',
+                      color: 'var(--text)',
+                      padding: 8,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <div style={{ height: 90, background: '#1f2937', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 7 }}>
+                      {preview ? (
+                        <img src={preview} alt={asset.name || asset.id} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', imageRendering: 'pixelated' }} />
+                      ) : (
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>No Preview</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: active ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {asset.name || asset.id}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </Modal>
 
       {/* Script Bindings (multiple) */}
       <div className="panel-section">
@@ -1382,13 +1470,13 @@ export default function Inspector({
               type="text"
               value={componentQuery}
               onChange={(e) => setComponentQuery(e.target.value)}
-              placeholder={`Search ${AVAILABLE_COMPONENTS.length} components...`}
+              placeholder={`Search ${filteredComponents.length} available component${filteredComponents.length === 1 ? '' : 's'}...`}
               style={{ flex: 1, padding: '9px 12px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6 }}
             />
             <button className="btn btn-sm" onClick={() => setComponentQuery('')} disabled={!componentQuery}>Clear</button>
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-            {filteredComponents.length} result{filteredComponents.length === 1 ? '' : 's'}
+            {componentQuery.trim() ? `${filteredComponents.length} result${filteredComponents.length === 1 ? '' : 's'}` : `${filteredComponents.length} available`}
           </div>
           <div style={{ maxHeight: '56vh', overflow: 'auto', border: '1px solid var(--border)', borderRadius: 6, padding: 10, background: '#0b1220' }}>
             {filteredComponents.length === 0 && (

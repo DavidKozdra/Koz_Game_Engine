@@ -1516,8 +1516,7 @@ function onUpdate(self, engine, dt) {
   // manager.updateAll() is called automatically by play mode
 }
 `,
-      typescript: `// TypeScript support coming soon
-function onInit(self: any, engine: any): void {
+      typescript: `function onInit(self: any, engine: any): void {
   // Called once when game starts
 }
 
@@ -1952,7 +1951,7 @@ def on_update(self, engine, dt):
     if (!exportConfig.includeScripts) projectForExport = stripScriptsForExport(projectForExport);
 
     const json = exportConfig.minify ? JSON.stringify(projectForExport) : JSON.stringify(projectForExport, null, 2);
-    const html = buildExportHtml(projectForExport, json, target, { minify: exportConfig.minify });
+    const html = await buildExportHtml(projectForExport, json, target, { minify: exportConfig.minify });
     const baseName = (exportConfig.fileName || projectForExport.meta.name || 'game').trim();
 
     const electronApi = window.api && typeof window.api.exportBuild === 'function' ? window.api : null;
