@@ -1085,6 +1085,9 @@ function exportRuntimeMain() {
       canvas3d.dataset.kozPlayActive = use3d ? 'true' : 'false';
     }
     activeCanvas = use3d ? (canvas3d || canvas2d) : (canvas2d || canvas3d);
+    if (activeCanvas && typeof activeCanvas.setAttribute === 'function') {
+      activeCanvas.setAttribute('tabindex', '0');
+    }
     if (engine && engine.viewport && activeCanvas) {
       engine.viewport.width = activeCanvas.width || 960;
       engine.viewport.height = activeCanvas.height || 540;
@@ -1620,7 +1623,6 @@ function exportRuntimeMain() {
       var obj = gameObjects[i];
       var collision = (obj.components && obj.components.Collision) || {};
       if (collision.enabled === false || collision.isTrigger) continue;
-      if (typeof obj.grounded === 'boolean') obj.grounded = false;
       var iterations = 0;
       while (iterations < 4) {
         iterations += 1;
@@ -1867,6 +1869,7 @@ function exportRuntimeMain() {
     var nextScene = resolveScene(sceneId);
     activeSceneId = nextScene.id;
     currentScene = nextScene;
+    keys.clear();
     project.activeSceneId = nextScene.id;
     project.world = nextScene.world || project.world;
     project.objects = nextScene.objects || project.objects;
@@ -2169,19 +2172,60 @@ function exportRuntimeMain() {
     requestAnimationFrame(frame);
   }
 
+  function resolveKeyCode(event) {
+    if (!event) return 0;
+    var numeric = Number(event.keyCode || event.which);
+    if (Number.isFinite(numeric) && numeric > 0) return numeric;
+    var code = typeof event.code === 'string' ? event.code : '';
+    if (code === 'Space') return 32;
+    if (code === 'ArrowLeft') return 37;
+    if (code === 'ArrowUp') return 38;
+    if (code === 'ArrowRight') return 39;
+    if (code === 'ArrowDown') return 40;
+    if (/^Key[A-Z]$/.test(code)) return code.charCodeAt(3);
+    var key = typeof event.key === 'string' ? event.key : '';
+    if (key === ' ') return 32;
+    if (key === 'ArrowLeft') return 37;
+    if (key === 'ArrowUp') return 38;
+    if (key === 'ArrowRight') return 39;
+    if (key === 'ArrowDown') return 40;
+    if (/^[a-z]$/i.test(key)) return key.toUpperCase().charCodeAt(0);
+    return 0;
+  }
+
+  function isEditableTarget(target) {
+    return !!(target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable));
+  }
+
+  function focusActiveCanvas() {
+    if (activeCanvas && typeof activeCanvas.focus === 'function') {
+      try { activeCanvas.focus({ preventScroll: true }); } catch (_err) { activeCanvas.focus(); }
+    }
+  }
+
   var GAME_KEYS = [32, 37, 38, 39, 40];
   window.addEventListener('keydown', function(event) {
-    keys.add(event.keyCode);
-    if (GAME_KEYS.indexOf(event.keyCode) !== -1 && !(event.target && (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.isContentEditable))) {
+    var code = resolveKeyCode(event);
+    if (code) keys.add(code);
+    if (GAME_KEYS.indexOf(code) !== -1 && !isEditableTarget(event.target)) {
       event.preventDefault();
     }
-  });
+  }, true);
   window.addEventListener('keyup', function(event) {
-    keys.delete(event.keyCode);
-    if (GAME_KEYS.indexOf(event.keyCode) !== -1 && !(event.target && (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.isContentEditable))) {
+    var code = resolveKeyCode(event);
+    if (code) keys.delete(code);
+    if (GAME_KEYS.indexOf(code) !== -1 && !isEditableTarget(event.target)) {
       event.preventDefault();
     }
+  }, true);
+  window.addEventListener('blur', function() {
+    keys.clear();
   });
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) keys.clear();
+  });
+  if (canvas2d) canvas2d.addEventListener('pointerdown', focusActiveCanvas);
+  if (canvas3d) canvas3d.addEventListener('pointerdown', focusActiveCanvas);
   window.addEventListener('beforeunload', function() {
     clearActiveCss();
     if (audioSystem) audioSystem.stopAll();
