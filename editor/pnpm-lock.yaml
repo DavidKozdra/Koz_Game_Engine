@@ -20,6 +20,9 @@ importers:
       '@codemirror/view':
         specifier: ^6.39.16
         version: 6.39.16
+      '@tailwindcss/browser':
+        specifier: ^4.2.1
+        version: 4.2.1
       codemirror:
         specifier: ^6.0.2
         version: 6.0.2
@@ -529,6 +532,9 @@ packages:
   '@szmarczak/http-timer@4.0.6':
     resolution: {integrity: sha512-4BAffykYOgO+5nzBWYwE3W90sBgLJoUPRWWcL8wlyiM8IB8ipJz3UMJ9KXQd1RKQXpKp8Tutn80HZtWsu2u76w==}
     engines: {node: '>=10'}
+
+  '@tailwindcss/browser@4.2.1':
+    resolution: {integrity: sha512-MxT97DWtwSupE6I4spsGQMewI6BbRY/dXZJd1f+WtWqqci++ApWfoQsVqtlRscmWSFWvPn5pzf3Wi/d2IF0w5A==}
 
   '@tootallnate/once@2.0.0':
     resolution: {integrity: sha512-XCuKFP5PS55gnMVu3dty8KPatLqUoy/ZYzDzAGCQ8JNFCkLXzmI7vNHCR+XpbZaMWQK/vQubr7PkYq8g470J/A==}
@@ -2196,6 +2202,8 @@ snapshots:
   '@szmarczak/http-timer@4.0.6':
     dependencies:
       defer-to-connect: 2.0.1
+
+  '@tailwindcss/browser@4.2.1': {}
 
   '@tootallnate/once@2.0.0': {}
 

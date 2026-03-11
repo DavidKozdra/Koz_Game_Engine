@@ -1,3 +1,5 @@
+import tailwindBrowserJs from '@tailwindcss/browser?raw';
+
 function exportRuntimeMain() {
   var PLAY_RENDER_MODE_WEBGL_3D = 'webgl-3d';
   var CELL_SIZE = 24;
@@ -41,6 +43,7 @@ function exportRuntimeMain() {
   var scripts = {};
   var cssScripts = {};
   var activeCssNodes = new Map();
+  var tailwindActive = false;
   var scriptInstances = [];
   var pendingSceneId = null;
   var viewX = 0;
@@ -292,7 +295,7 @@ function exportRuntimeMain() {
     var target = document.head || document.documentElement || document.body;
     if (!target) return;
     var styleNode = document.createElement('style');
-    styleNode.type = 'text/css';
+    if (tailwindActive) styleNode.setAttribute('type', 'text/tailwindcss');
     styleNode.setAttribute('data-koz-script-id', script.id);
     styleNode.textContent = String(script.source || '');
     target.appendChild(styleNode);
@@ -1923,6 +1926,12 @@ function exportRuntimeMain() {
     scripts[script.id] = script;
   });
 
+  // Detect Tailwind usage — only activate if any CSS script contains Tailwind syntax
+  var twRe = /@apply\s|@tailwind\s|@import\s+["']tailwindcss["']|@theme\s/;
+  Object.keys(cssScripts).forEach(function(id) {
+    if (!tailwindActive && twRe.test(String(cssScripts[id].source || ''))) tailwindActive = true;
+  });
+
   uiManager = createUiManager(uiRoot);
   audioSystem = createAudioSystem(assetById, gameObjects);
   storageApi = createStorageApi(project);
@@ -2280,6 +2289,11 @@ export function buildExportHtml(project, projectJson, target, options = {}) {
     ? '<button id="fullscreen-toggle" type="button">Fullscreen</button>'
     : '';
   const runtimeSource = `(${exportRuntimeMain.toString()})();`;
+  const twRe = /@apply\s|@tailwind\s|@import\s+["']tailwindcss["']|@theme\s/;
+  const projectNeedsTailwind = (project.scripts || []).some(s => s && s.language === 'css' && twRe.test(s.source || ''));
+  const tailwindScript = projectNeedsTailwind
+    ? `<script>${tailwindBrowserJs.replace(/<\/script/gi, '<\\/script')}</script>\n  `
+    : '';
   const html = `<!doctype html>
 <html>
 <head>
@@ -2392,7 +2406,7 @@ export function buildExportHtml(project, projectJson, target, options = {}) {
       });
     })();
   </script>
-  <script>${runtimeSource}</script>
+  ${tailwindScript}<script>${runtimeSource}</script>
 </body>
 </html>`;
   if (options && options.minify) return html.replace(/\n\s*/g, '');

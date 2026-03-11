@@ -2,6 +2,15 @@ import React, { useRef, useEffect, useCallback } from 'react';
 import { getCellType, normalizeCellTypeId } from '../state/projectModel.js';
 import { buildWorldSparseIndex, queryWorldSparseIndex } from '../lib/worldSparseIndex.js';
 
+const TAILWIND_RE = /@apply\s|@tailwind\s|@import\s+["']tailwindcss["']|@theme\s/;
+let tailwindLoaded = false;
+function needsTailwind(source) { return TAILWIND_RE.test(source); }
+async function ensureTailwind() {
+  if (tailwindLoaded) return;
+  await import('@tailwindcss/browser');
+  tailwindLoaded = true;
+}
+
 /**
  * In-editor play mode.
  * Runs the game in an iframe-like canvas overlay using p5.js-style runtime.
@@ -68,7 +77,7 @@ export function usePlayMode(project, onLog) {
     canvasRef.current = use3d ? (canvas3d || canvas2d) : (canvas2d || canvas3d);
   }, []);
 
-  const start = useCallback(() => {
+  const start = useCallback(async () => {
     if (!project) return;
 
     // Deep clone project as runtime snapshot (isolate from editor)
@@ -85,6 +94,10 @@ export function usePlayMode(project, onLog) {
     const prefabById = new Map((snapshot.prefabs || []).map((prefab) => [prefab.id, prefab]));
     const warnedMissingAssets = new Set();
 
+    // Lazily load Tailwind CSS browser compiler if any CSS script uses Tailwind syntax
+    const hasTailwind = Object.values(scripts).some(s => s.language === 'css' && needsTailwind(s.source || ''));
+    if (hasTailwind) await ensureTailwind();
+
     // Build console interceptor
     const makeConsole = () => ({
       log: (...args) => onLog({ type: 'log', message: args.map(String).join(' '), time: new Date().toLocaleTimeString() }),
@@ -98,7 +111,7 @@ export function usePlayMode(project, onLog) {
       const target = document.head || document.documentElement || document.body;
       if (!target) return;
       const styleNode = document.createElement('style');
-      styleNode.type = 'text/css';
+      if (tailwindLoaded) styleNode.setAttribute('type', 'text/tailwindcss');
       styleNode.setAttribute('data-koz-play-css-script', script.id);
       styleNode.textContent = String(script.source || '');
       target.appendChild(styleNode);
