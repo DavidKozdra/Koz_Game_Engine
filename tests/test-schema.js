@@ -153,14 +153,60 @@ const runtime = gameRuntimeLib.createGameRuntime({
 });
 
 const testProject = projectSchema.createDefaultProject({ name: 'Runtime Test', cols: 5, rows: 5 });
+const runtimePlayerObject = testProject.scenes[0].objects.find((entry) => entry && entry.type === 'player');
+const runtimePlayerSourceId = runtimePlayerObject && runtimePlayerObject.id ? runtimePlayerObject.id : 'obj_player';
+if (runtimePlayerObject) {
+  const runtimePlayerPrefabSource = JSON.parse(JSON.stringify(runtimePlayerObject));
+  runtimePlayerObject.id = 'obj_player_instance';
+  runtimePlayerObject.name = 'Runner Prefab';
+  runtimePlayerObject.prefabId = 'prefab_player';
+  testProject.prefabs = [{
+    id: 'prefab_player',
+    name: 'Runner Prefab',
+    sourceObjectId: runtimePlayerSourceId,
+    object: runtimePlayerPrefabSource,
+  }];
+}
 const runtimeTestObject = projectSchema.createGameObject('TestObj', 0, 0);
+const runtimeLookupProbe = projectSchema.createGameObject('LookupProbe', 12, 0);
+const runtimeNamedLookup = projectSchema.createGameObject('Player', 24, 0, { type: 'hero_named' });
+const runtimeIdDecoy = projectSchema.createGameObject('ID Decoy', 36, 0, { type: 'decoy' });
+const checkpointA = projectSchema.createGameObject('Checkpoint A', 48, 0, { type: 'checkpoint' });
+const checkpointB = projectSchema.createGameObject('Checkpoint B', 60, 0, { type: 'checkpoint' });
+runtimeIdDecoy.id = 'Player';
 testProject.scenes[0].objects.push(runtimeTestObject);
+testProject.scenes[0].objects.push(runtimeLookupProbe);
+testProject.scenes[0].objects.push(runtimeNamedLookup);
+testProject.scenes[0].objects.push(runtimeIdDecoy);
+testProject.scenes[0].objects.push(checkpointA);
+testProject.scenes[0].objects.push(checkpointB);
 testProject.scripts.push({
   id: 'test_script',
   name: 'TestScript',
   source: 'function onInit(self, engine) { self.initCalled = true; }\nfunction onUpdate(self, engine, dt) { self.x += 1; }',
 });
+testProject.scripts.push({
+  id: 'lookup_script',
+  name: 'LookupScript',
+  source: `function onInit(self, engine) {
+    var byName = engine && typeof engine.findObject === 'function' ? engine.findObject('Player') : null;
+    var byIdFallback = engine && typeof engine.findObject === 'function' ? engine.findObject('${runtimeNamedLookup.id}') : null;
+    var bySourceId = engine && typeof engine.findObjectById === 'function' ? engine.findObjectById('${runtimePlayerSourceId}') : null;
+    var byPrefabId = engine && typeof engine.findObjectById === 'function' ? engine.findObjectById('prefab_player') : null;
+    var byTypeFallback = engine && typeof engine.findObject === 'function' ? engine.findObject('checkpoint') : null;
+    var byTypeMethod = engine && typeof engine.findObjectByType === 'function' ? engine.findObjectByType('CHECKPOINT') : null;
+    var byTypeList = engine && typeof engine.findObjectsByType === 'function' ? engine.findObjectsByType('CHECKPOINT') : [];
+    self.lookupByName = !!(byName && byName.id === '${runtimeNamedLookup.id}');
+    self.lookupByIdFallback = !!(byIdFallback && byIdFallback.id === '${runtimeNamedLookup.id}');
+    self.lookupBySourceId = !!(bySourceId && bySourceId.meta && bySourceId.meta.prefabId === 'prefab_player');
+    self.lookupByPrefabId = !!(byPrefabId && byPrefabId.meta && byPrefabId.meta.prefabId === 'prefab_player');
+    self.lookupByTypeFallback = !!(byTypeFallback && byTypeFallback.type === 'checkpoint');
+    self.lookupByTypeMethod = !!(byTypeMethod && byTypeMethod.type === 'checkpoint');
+    self.lookupByTypeCount = Array.isArray(byTypeList) ? byTypeList.length : 0;
+  }`,
+});
 runtimeTestObject.components.ScriptBinding.scriptId = 'test_script';
+runtimeLookupProbe.components.ScriptBinding.scriptId = 'lookup_script';
 
 runtime.loadProject(testProject);
 assert(runtime.worldSpace.cols === 5, 'runtime world loaded');
@@ -176,7 +222,15 @@ runtime.update(0.016);
 runtime.update(0.016);
 runtime.update(0.016);
 const liveRuntimeObject = runtime.gameObjects.find((entry) => entry && entry.meta && entry.meta.name === 'TestObj');
+const liveLookupProbe = runtime.gameObjects.find((entry) => entry && entry.meta && entry.meta.name === 'LookupProbe');
 assert(liveRuntimeObject && liveRuntimeObject.x === 3, 'script moved object 3 units');
+assert(liveLookupProbe && liveLookupProbe.lookupByName === true, 'runtime findObject prioritizes object names');
+assert(liveLookupProbe && liveLookupProbe.lookupByIdFallback === true, 'runtime findObject falls back to ids when name misses');
+assert(liveLookupProbe && liveLookupProbe.lookupBySourceId === true, 'runtime findObject resolves prefab source object ids');
+assert(liveLookupProbe && liveLookupProbe.lookupByPrefabId === true, 'runtime findObject resolves prefab ids');
+assert(liveLookupProbe && liveLookupProbe.lookupByTypeFallback === true, 'runtime findObject falls back to type lookups');
+assert(liveLookupProbe && liveLookupProbe.lookupByTypeMethod === true, 'runtime exposes a findObjectByType helper');
+assert(liveLookupProbe && liveLookupProbe.lookupByTypeCount === 2, 'runtime type queries return all objects of a type');
 assert(runtimeTestObject.components.Transform.x === 0, 'runtime updates do not mutate source project object transforms');
 
 runtime.stop();

@@ -27,6 +27,7 @@ function exportRuntimeMain() {
   var keys = new Set();
   var images = new Map();
   var assetById = new Map((Array.isArray(project.assets) ? project.assets : []).map(function(asset) { return [asset.id, asset]; }));
+  var prefabById = new Map((Array.isArray(project.prefabs) ? project.prefabs : []).map(function(prefab) { return [prefab.id, prefab]; }));
   var elapsed = 0;
   var activeSceneId = project.activeSceneId || (((project.scenes || [])[0] || {}).id) || 'scene_main';
   var currentScene = null;
@@ -178,9 +179,75 @@ function exportRuntimeMain() {
     return !!(type && type.collision);
   }
 
+  function normalizeLookupValue(value) {
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
+  function findObjectByName(value) {
+    var lookup = normalizeLookupValue(value);
+    if (!lookup) return null;
+    var lower = lookup.toLowerCase();
+    var list = Array.isArray(gameObjects) ? gameObjects : [];
+    var caseInsensitiveMatch = null;
+    for (var i = 0; i < list.length; i += 1) {
+      var obj = list[i];
+      if (!obj) continue;
+      var fields = [obj.name, obj.prefabName];
+      for (var j = 0; j < fields.length; j += 1) {
+        var field = fields[j];
+        if (typeof field !== 'string' || !field) continue;
+        if (field === lookup) return obj;
+        if (!caseInsensitiveMatch && field.toLowerCase() === lower) caseInsensitiveMatch = obj;
+      }
+    }
+    return caseInsensitiveMatch;
+  }
+
+  function findObjectById(value) {
+    var lookup = normalizeLookupValue(value);
+    if (!lookup) return null;
+    var lower = lookup.toLowerCase();
+    var list = Array.isArray(gameObjects) ? gameObjects : [];
+    for (var i = 0; i < list.length; i += 1) {
+      if (list[i] && list[i].id === lookup) return list[i];
+    }
+    var caseInsensitiveMatch = null;
+    for (var j = 0; j < list.length; j += 1) {
+      var obj = list[j];
+      if (!obj) continue;
+      var fields = [obj.sourceObjectId, obj.prefabId];
+      for (var k = 0; k < fields.length; k += 1) {
+        var field = fields[k];
+        if (typeof field !== 'string' || !field) continue;
+        if (field === lookup) return obj;
+        if (!caseInsensitiveMatch && field.toLowerCase() === lower) caseInsensitiveMatch = obj;
+      }
+      if (!caseInsensitiveMatch && typeof obj.id === 'string' && obj.id.toLowerCase() === lower) {
+        caseInsensitiveMatch = obj;
+      }
+    }
+    return caseInsensitiveMatch;
+  }
+
+  function findObjectsByType(type) {
+    var lookup = normalizeLookupValue(type);
+    if (!lookup) return [];
+    var lower = lookup.toLowerCase();
+    return (Array.isArray(gameObjects) ? gameObjects : []).filter(function(obj) {
+      return obj && typeof obj.type === 'string' && (obj.type === lookup || obj.type.toLowerCase() === lower);
+    });
+  }
+
+  function findObject(value) {
+    var lookup = normalizeLookupValue(value);
+    if (!lookup) return null;
+    return findObjectByName(lookup) || findObjectById(lookup) || findObjectsByType(lookup)[0] || null;
+  }
+
   function buildRuntimeObject(obj) {
     var t = (obj.components && obj.components.Transform) || {};
     var s = (obj.components && obj.components.Sprite) || {};
+    var prefab = obj && obj.prefabId ? prefabById.get(obj.prefabId) : null;
     var x = Number.isFinite(t.x) ? t.x : (Number.isFinite(obj.x) ? obj.x : 0);
     var y = Number.isFinite(t.y) ? t.y : (Number.isFinite(obj.y) ? obj.y : 0);
     var scaleX = Number.isFinite(t.scaleX) ? t.scaleX : 1;
@@ -190,6 +257,9 @@ function exportRuntimeMain() {
     return Object.assign({}, obj, {
       x: x,
       y: y,
+      prefabId: obj.prefabId || null,
+      prefabName: prefab && prefab.name ? prefab.name : null,
+      sourceObjectId: prefab && prefab.sourceObjectId ? prefab.sourceObjectId : null,
       rotation: Number.isFinite(t.rotation) ? t.rotation : 0,
       scaleX: scaleX,
       scaleY: scaleY,
@@ -581,6 +651,9 @@ function exportRuntimeMain() {
         });
       },
       clear: function() {
+        if (document.activeElement && document.activeElement !== document.body) {
+          document.activeElement.blur();
+        }
         screens.forEach(function(screen) {
           if (screen.hideTimer) clearTimeout(screen.hideTimer);
           if (screen.container && screen.container.parentElement) {
@@ -1865,8 +1938,10 @@ function exportRuntimeMain() {
     sceneManager: null,
     lightingManager: null,
     lighting: null,
-    findObject: function(id) { return gameObjects.find(function(obj) { return obj.id === id; }) || null; },
-    findObjectsByType: function(type) { return gameObjects.filter(function(obj) { return obj.type === type; }); },
+    findObject: function(value) { return findObject(value); },
+    findObjectById: function(value) { return findObjectById(value); },
+    findObjectsByType: function(type) { return findObjectsByType(type); },
+    findObjectByType: function(type) { return findObjectsByType(type)[0] || null; },
     keyIsDown: function(code) { return keys.has(code); },
     viewport: {
       width: activeCanvas ? activeCanvas.width : 960,
@@ -2094,8 +2169,19 @@ function exportRuntimeMain() {
     requestAnimationFrame(frame);
   }
 
-  window.addEventListener('keydown', function(event) { keys.add(event.keyCode); });
-  window.addEventListener('keyup', function(event) { keys.delete(event.keyCode); });
+  var GAME_KEYS = [32, 37, 38, 39, 40];
+  window.addEventListener('keydown', function(event) {
+    keys.add(event.keyCode);
+    if (GAME_KEYS.indexOf(event.keyCode) !== -1 && !(event.target && (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.isContentEditable))) {
+      event.preventDefault();
+    }
+  });
+  window.addEventListener('keyup', function(event) {
+    keys.delete(event.keyCode);
+    if (GAME_KEYS.indexOf(event.keyCode) !== -1 && !(event.target && (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.isContentEditable))) {
+      event.preventDefault();
+    }
+  });
   window.addEventListener('beforeunload', function() {
     clearActiveCss();
     if (audioSystem) audioSystem.stopAll();

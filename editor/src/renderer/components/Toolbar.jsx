@@ -113,6 +113,20 @@ export default function Toolbar({ project, editorState, isPlaying, onToolChange,
       </div>
 
       <div className="toolbar-group">
+        <button
+          className={`btn btn-sm ${editorState.showColliders ? 'active' : ''}`}
+          onClick={() => onGizmoModeChange && onGizmoModeChange(editorState.gizmoMode || 'move', editorState.snapToGrid, !editorState.showColliders)}
+          title="Show Collider Bounds (C)"
+          disabled={isPlaying}
+          style={editorState.showColliders ? { background: '#22d3ee', color: '#0f172a', borderColor: 'transparent' } : undefined}
+          aria-label="Toggle collider bounds visibility"
+        >
+          <Icon name="collider" />
+          Colliders
+        </button>
+      </div>
+
+      <div className="toolbar-group">
         <button className="btn btn-sm" onClick={onUndo} title="Undo (Ctrl+Z)" aria-label="Undo" disabled={isPlaying || !undoCount}><Icon name="undo" />Undo</button>
         <button className="btn btn-sm" onClick={onRedo} title="Redo (Ctrl+Y)" aria-label="Redo" disabled={isPlaying || !redoCount}><Icon name="redo" />Redo</button>
       </div>

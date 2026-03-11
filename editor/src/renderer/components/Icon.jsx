@@ -84,6 +84,12 @@ function glyph(name) {
       return <><rect x="3" y="3" width="10" height="10" /><circle cx="6" cy="6" r="1" /><path d="m4 11 3-3 2 2 2-2 2 3" /></>;
     case 'audio':
       return <><path d="M6 6v5" /><path d="M9 5v6" /><path d="M12 4v7" /><path d="M3 8h2M13 8h1" /></>;
+    case 'collider':
+      return <><rect x="3" y="3" width="10" height="10" rx="1" /><path d="M5 5h6v6H5z" /></>;
+    case 'collision':
+      return <><rect x="2.5" y="5.5" width="4.5" height="4.5" rx="1" /><rect x="9" y="5.5" width="4.5" height="4.5" rx="1" /><path d="m8 4 .8 1.7 1.7.8-1.7.8L8 9l-.8-1.7-1.7-.8 1.7-.8z" /></>;
+    case 'rigidBody':
+      return <><path d="M6 5a2 2 0 1 1 4 0" /><path d="M4 6h8l1 6H3z" /><path d="M6 9h4" /></>;
     case 'import':
       return <><path d="M8 3v8" /><path d="m5 6 3-3 3 3" /><path d="M3 12h10" /></>;
     case 'copy':

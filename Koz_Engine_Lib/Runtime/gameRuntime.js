@@ -45,6 +45,76 @@
       }
     }
 
+    function _normalizeLookupValue(value) {
+      return typeof value === "string" ? value.trim() : "";
+    }
+
+    function _findObjectByName(name) {
+      const lookup = _normalizeLookupValue(name);
+      if (!lookup) return null;
+      const lower = lookup.toLowerCase();
+      let caseInsensitiveMatch = null;
+      for (let i = 0; i < gameObjects.length; i++) {
+        const obj = gameObjects[i];
+        if (!obj) continue;
+        const meta = obj.meta && typeof obj.meta === "object" ? obj.meta : {};
+        const fields = [meta.name, meta.prefabName];
+        for (let j = 0; j < fields.length; j++) {
+          const field = fields[j];
+          if (typeof field !== "string" || !field) continue;
+          if (field === lookup) return obj;
+          if (!caseInsensitiveMatch && field.toLowerCase() === lower) caseInsensitiveMatch = obj;
+        }
+      }
+      return caseInsensitiveMatch;
+    }
+
+    function _findObjectById(value) {
+      const lookup = _normalizeLookupValue(value);
+      if (!lookup) return null;
+      const exactId = _objectIndex.get(lookup);
+      if (exactId) return exactId;
+      const lower = lookup.toLowerCase();
+      let caseInsensitiveMatch = null;
+      for (let i = 0; i < gameObjects.length; i++) {
+        const obj = gameObjects[i];
+        if (!obj) continue;
+        const meta = obj.meta && typeof obj.meta === "object" ? obj.meta : {};
+        const fields = [meta.sourceObjectId, meta.prefabId];
+        for (let j = 0; j < fields.length; j++) {
+          const field = fields[j];
+          if (typeof field !== "string" || !field) continue;
+          if (field === lookup) return obj;
+          if (!caseInsensitiveMatch && field.toLowerCase() === lower) caseInsensitiveMatch = obj;
+        }
+        if (!caseInsensitiveMatch && typeof obj.id === "string" && obj.id.toLowerCase() === lower) {
+          caseInsensitiveMatch = obj;
+        }
+      }
+      return caseInsensitiveMatch;
+    }
+
+    function _findObjectsByType(type) {
+      const lookup = _normalizeLookupValue(type);
+      if (!lookup) return [];
+      const lower = lookup.toLowerCase();
+      return gameObjects.filter(function byType(obj) {
+        if (!obj || typeof obj.type !== "string") return false;
+        return obj.type === lookup || obj.type.toLowerCase() === lower;
+      });
+    }
+
+    function _findObjectByType(type) {
+      const matches = _findObjectsByType(type);
+      return matches.length > 0 ? matches[0] : null;
+    }
+
+    function _findObjectByLookup(value) {
+      const lookup = _normalizeLookupValue(value);
+      if (!lookup) return null;
+      return _findObjectByName(lookup) || _findObjectById(lookup) || _findObjectByType(lookup);
+    }
+
     function loadProject(projectData) {
       clearActiveCssStyles();
       project = clone(projectData || {});
@@ -56,7 +126,7 @@
         project.objects = activeScene.objects;
       }
       worldSpace = adapters.projectToWorldSpace(createWorldSpace, project.world);
-      gameObjects = adapters.projectToGameObjects(GameObjectCtor, project.objects);
+      gameObjects = adapters.projectToGameObjects(GameObjectCtor, project.objects, project.prefabs || []);
       _rebuildObjectIndex();
       _engineApiDirty = true;
       animationClips = project.animations || [];
@@ -391,11 +461,17 @@
         sceneId: activeScene ? activeScene.id : (project && project.activeSceneId) || null,
         sceneName: activeScene ? activeScene.name : null,
         audio: audioService ? audioService.api : null,
-        findObject: function findObject(id) {
-          return _objectIndex.get(id) || null;
+        findObject: function findObject(value) {
+          return _findObjectByLookup(value);
+        },
+        findObjectById: function findObjectById(value) {
+          return _findObjectById(value);
         },
         findObjectsByType: function findObjectsByType(type) {
-          return gameObjects.filter(function byType(o) { return o.type === type; });
+          return _findObjectsByType(type);
+        },
+        findObjectByType: function findObjectByType(type) {
+          return _findObjectByType(type);
         },
         animator: createAnimatorApi(),
       };

@@ -404,6 +404,34 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
           ctx.restore();
         }
 
+        // Collider debug overlay
+        if (editorState.showColliders && obj.components && obj.components.Collider) {
+          const collider = obj.components.Collider;
+          const cw = Number.isFinite(collider.width) ? collider.width : (sprite.width || 32);
+          const ch = Number.isFinite(collider.height) ? collider.height : (sprite.height || 32);
+          const cox = Number.isFinite(collider.offsetX) ? collider.offsetX : 0;
+          const coy = Number.isFinite(collider.offsetY) ? collider.offsetY : 0;
+          ctx.save();
+          ctx.translate(ox + w / 2 + cox, oy + h / 2 + coy);
+          ctx.rotate((rotation * Math.PI) / 180);
+          ctx.strokeStyle = '#22d3ee';
+          ctx.fillStyle = 'rgba(34, 211, 238, 0.08)';
+          ctx.lineWidth = 1.5 / zoom;
+          ctx.setLineDash([6 / zoom, 3 / zoom]);
+          if (collider.shape === 'circle') {
+            const radius = Math.max(cw, ch) / 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          } else {
+            ctx.fillRect(-cw / 2, -ch / 2, cw, ch);
+            ctx.strokeRect(-cw / 2, -ch / 2, cw, ch);
+          }
+          ctx.setLineDash([]);
+          ctx.restore();
+        }
+
         // Name label
         ctx.fillStyle = '#fff';
         ctx.font = '10px sans-serif';

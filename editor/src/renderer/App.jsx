@@ -1527,7 +1527,7 @@ def on_update(self, engine, dt):
     setShowExportModal(true);
   }, [project]);
 
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback(async () => {
     if (isExporting) return;
     const normalized = ensureProjectShape(project);
     const target = exportConfig.target || 'html-zip';
@@ -1545,6 +1545,27 @@ def on_update(self, engine, dt):
         desktopFormat: exportConfig.desktopFormat,
       },
     });
+
+    // Read latest script sources from disk before exporting
+    const hasFileApi = window.api && typeof window.api.loadScript === 'function';
+    if (hasFileApi && projectFile.folderPath && Array.isArray(persistedProject.scripts)) {
+      const refreshed = await Promise.all(
+        persistedProject.scripts.map(async (script) => {
+          if (!script.filePath) return script;
+          try {
+            const result = await window.api.loadScript(projectFile.folderPath, script.filePath);
+            if (result && result.ok && typeof result.content === 'string') {
+              return { ...script, source: result.content };
+            }
+          } catch (err) {
+            console.warn('Failed to read script from disk for export:', script.filePath, err);
+          }
+          return script;
+        })
+      );
+      persistedProject.scripts = refreshed;
+    }
+
     setProject(persistedProject);
 
     let projectForExport = JSON.parse(JSON.stringify(persistedProject));
@@ -1597,7 +1618,7 @@ def on_update(self, engine, dt):
     URL.revokeObjectURL(url);
     setShowExportModal(false);
     addLog({ type: 'info', message: `Exported fallback HTML: ${target}`, time: new Date().toLocaleTimeString() });
-  }, [project, addLog, exportConfig, isExporting]);
+  }, [project, addLog, exportConfig, isExporting, projectFile.folderPath]);
 
   // ---- Bottom panel resize ----
   const handleResizeStart = useCallback((e) => {

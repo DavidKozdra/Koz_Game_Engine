@@ -75,12 +75,16 @@
    * @param {Array} objects - project.objects array
    * @returns {Array} Array of GameObject instances
    */
-  function projectToGameObjects(GameObjectCtor, objects) {
+  function projectToGameObjects(GameObjectCtor, objects, prefabs) {
     if (!Array.isArray(objects)) return [];
+    const prefabById = new Map((Array.isArray(prefabs) ? prefabs : []).map(function toPrefabEntry(prefab) {
+      return [prefab.id, prefab];
+    }));
     return objects.map(function toGameObject(obj) {
       const transform = (obj.components && obj.components.Transform) || {};
       const sprite = (obj.components && obj.components.Sprite) || {};
       const collider = (obj.components && obj.components.Collider) || {};
+      const prefab = obj && obj.prefabId ? prefabById.get(obj.prefabId) : null;
       return new GameObjectCtor(obj.type || "generic", transform.x || obj.x || 0, transform.y || obj.y || 0, {
         id: obj.id,
         shape: collider.shape || "rect",
@@ -89,7 +93,13 @@
         rotation: transform.rotation || 0,
         scaleX: transform.scaleX || 1,
         scaleY: transform.scaleY || 1,
-        meta: { name: obj.name, components: clone(obj.components || {}) },
+        meta: {
+          name: obj.name,
+          prefabId: obj.prefabId || null,
+          prefabName: prefab && prefab.name ? prefab.name : null,
+          sourceObjectId: prefab && prefab.sourceObjectId ? prefab.sourceObjectId : null,
+          components: clone(obj.components || {}),
+        },
       });
     });
   }

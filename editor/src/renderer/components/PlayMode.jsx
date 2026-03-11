@@ -82,6 +82,7 @@ export function usePlayMode(project, onLog) {
     (snapshot.scripts || []).forEach(s => { scripts[s.id] = s; });
     const scriptingConfig = snapshot.scripting || { engines: { javascript: true } };
     const assetById = new Map((snapshot.assets || []).map((a) => [a.id, a]));
+    const prefabById = new Map((snapshot.prefabs || []).map((prefab) => [prefab.id, prefab]));
     const warnedMissingAssets = new Set();
 
     // Build console interceptor
@@ -103,8 +104,65 @@ export function usePlayMode(project, onLog) {
       target.appendChild(styleNode);
       cssStyleElements.set(script.id, styleNode);
     };
+    const normalizeLookupValue = (value) => (typeof value === 'string' ? value.trim() : '');
+    const findRuntimeObjectByName = (objects, value) => {
+      const lookup = normalizeLookupValue(value);
+      if (!lookup) return null;
+      const lower = lookup.toLowerCase();
+      const list = Array.isArray(objects) ? objects : [];
+      let caseInsensitiveMatch = null;
+      for (const obj of list) {
+        if (!obj) continue;
+        const fields = [obj.name, obj.prefabName];
+        for (const field of fields) {
+          if (typeof field !== 'string' || !field) continue;
+          if (field === lookup) return obj;
+          if (!caseInsensitiveMatch && field.toLowerCase() === lower) caseInsensitiveMatch = obj;
+        }
+      }
+      return caseInsensitiveMatch;
+    };
+    const findRuntimeObjectById = (objects, value) => {
+      const lookup = normalizeLookupValue(value);
+      if (!lookup) return null;
+      const lower = lookup.toLowerCase();
+      const list = Array.isArray(objects) ? objects : [];
+      const exactId = list.find((obj) => obj && obj.id === lookup);
+      if (exactId) return exactId;
+      let caseInsensitiveMatch = null;
+      for (const obj of list) {
+        if (!obj) continue;
+        const fields = [obj.sourceObjectId, obj.prefabId];
+        for (const field of fields) {
+          if (typeof field !== 'string' || !field) continue;
+          if (field === lookup) return obj;
+          if (!caseInsensitiveMatch && field.toLowerCase() === lower) caseInsensitiveMatch = obj;
+        }
+        if (!caseInsensitiveMatch && typeof obj.id === 'string' && obj.id.toLowerCase() === lower) {
+          caseInsensitiveMatch = obj;
+        }
+      }
+      return caseInsensitiveMatch;
+    };
+    const findRuntimeObjectsByType = (objects, type) => {
+      const lookup = normalizeLookupValue(type);
+      if (!lookup) return [];
+      const lower = lookup.toLowerCase();
+      return (objects || []).filter((obj) => obj && typeof obj.type === 'string' && (obj.type === lookup || obj.type.toLowerCase() === lower));
+    };
+    const findRuntimeObject = (objects, value) => {
+      const lookup = normalizeLookupValue(value);
+      if (!lookup) return null;
+      return (
+        findRuntimeObjectByName(objects, lookup) ||
+        findRuntimeObjectById(objects, lookup) ||
+        findRuntimeObjectsByType(objects, lookup)[0] ||
+        null
+      );
+    };
     const buildRuntimeObject = (obj) => {
       const t = (obj.components && obj.components.Transform) || {};
+      const prefab = obj && obj.prefabId ? prefabById.get(obj.prefabId) : null;
       const tx = Number.isFinite(t.x) ? t.x : (Number.isFinite(obj.x) ? obj.x : 0);
       const ty = Number.isFinite(t.y) ? t.y : (Number.isFinite(obj.y) ? obj.y : 0);
       const tro = Number.isFinite(t.rotation) ? t.rotation : 0;
@@ -114,6 +172,9 @@ export function usePlayMode(project, onLog) {
       const sh = (obj.components && obj.components.Sprite && obj.components.Sprite.height) || 32;
       return {
         id: obj.id, name: obj.name, type: obj.type,
+        prefabId: obj.prefabId || null,
+        prefabName: prefab && prefab.name ? prefab.name : null,
+        sourceObjectId: prefab && prefab.sourceObjectId ? prefab.sourceObjectId : null,
         x: tx, y: ty,
         rotation: tro,
         scaleX: tsx,
@@ -325,8 +386,10 @@ export function usePlayMode(project, onLog) {
         sceneManager: runtimeState.sceneManager || null,
         lightingManager: runtimeState.lightingManager || null,
         lighting: runtimeState.lightingManager || null,
-        findObject: (id) => runtimeState.gameObjects.find((o) => o.id === id) || null,
-        findObjectsByType: (type) => runtimeState.gameObjects.filter((o) => o.type === type),
+        findObject: (value) => findRuntimeObject(runtimeState.gameObjects, value),
+        findObjectById: (value) => findRuntimeObjectById(runtimeState.gameObjects, value),
+        findObjectsByType: (type) => findRuntimeObjectsByType(runtimeState.gameObjects, type),
+        findObjectByType: (type) => findRuntimeObjectsByType(runtimeState.gameObjects, type)[0] || null,
         keyIsDown: (code) => keysRef.current.has(code),
         viewport: {
           width: canvasRef.current ? canvasRef.current.width : 960,
@@ -715,8 +778,10 @@ export function usePlayMode(project, onLog) {
             sceneManager: state.sceneManager || null,
             lightingManager: state.lightingManager || null,
             lighting: state.lightingManager || null,
-            findObject: (id) => state.gameObjects.find(o => o.id === id) || null,
-            findObjectsByType: (type) => state.gameObjects.filter((o) => o.type === type),
+            findObject: (value) => findRuntimeObject(state.gameObjects, value),
+            findObjectById: (value) => findRuntimeObjectById(state.gameObjects, value),
+            findObjectsByType: (type) => findRuntimeObjectsByType(state.gameObjects, type),
+            findObjectByType: (type) => findRuntimeObjectsByType(state.gameObjects, type)[0] || null,
             keyIsDown: (code) => keysRef.current.has(code),
             viewport: {
               width: canvasRef.current ? canvasRef.current.width : 960,

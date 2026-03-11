@@ -44,6 +44,11 @@ async function main() {
   assert(html.includes('particles:'), 'export runtime exposes particle helpers to scripts');
   assert(html.includes('storage:'), 'export runtime exposes storage helpers to scripts');
   assert(html.includes('components: clone(obj.components || {})'), 'export runtime clones scene component data before mutation');
+  assert(html.includes('prefabId: obj.prefabId || null'), 'export runtime preserves prefab ids on runtime objects');
+  assert(html.includes('findObjectById: function(value) { return findObjectById(value); }'), 'export runtime exposes an explicit id lookup helper');
+  assert(html.includes("findObjectByType: function(type) { return findObjectsByType(type)[0] || null; }"), 'export runtime exposes a singular type lookup helper');
+  assert(playModeSource.includes("findObjectById: (value) => findRuntimeObjectById(runtimeState.gameObjects, value)"), 'editor play runtime exposes an explicit id lookup helper');
+  assert(playModeSource.includes("findObjectByType: (type) => findRuntimeObjectsByType(runtimeState.gameObjects, type)[0] || null"), 'editor play runtime exposes a singular type lookup helper');
   assert(playModeSource.includes('components: JSON.parse(JSON.stringify(obj.components || {}))'), 'editor play runtime clones scene component data before mutation');
   assert(html.includes("source: 'engine-fallback'"), 'export runtime includes engine fallback camera metadata');
   assert(html.includes('webgl-3d'), 'export runtime contains the WebGL render mode');

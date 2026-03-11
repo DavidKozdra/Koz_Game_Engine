@@ -1,19 +1,24 @@
 import React, { useMemo, useState } from 'react';
 import Modal from './Modal.jsx';
+import Icon from './Icon.jsx';
 
 const AVAILABLE_COMPONENTS = [
-  { id: 'Grid', label: 'Grid', defaults: { cols: 10, rows: 10, cellSize: 24, visible: true, layerId: null } },
-  { id: 'Sprite', label: 'Sprite', defaults: { assetId: null, color: '#4ade80', width: 32, height: 32, frameAssetIds: [], fps: 8 } },
-  { id: 'LightingManager', label: 'Lighting Manager', defaults: { enabled: false, ambientColor: '#0b1220', ambientIntensity: 0.35, overlayOpacity: 0.82, fogColor: '#07111d', fogDensity: 0.65 } },
-  { id: 'Light', label: 'Light', defaults: { enabled: true, color: '#ffd27a', intensity: 1, radius: 180, falloff: 0.65, offsetX: 0, offsetY: 0, height: 18 } },
-  { id: 'Sound', label: 'Sound', defaults: { assetId: null, category: 'sfx', autoplay: false, loop: false, volume: 1, maxDistance: 0 } },
-  { id: 'Collider', label: 'Collider', defaults: { shape: 'rect', width: 32, height: 32 } },
-  { id: 'Collision', label: 'Collision', defaults: { enabled: true, isTrigger: false } },
-  { id: 'RigidBody', label: 'RigidBody', defaults: { enabled: false, weight: 1, friction: 0.4 } },
-  { id: 'Animator', label: 'Animator', defaults: { clipId: null, autoplay: false } },
-  { id: 'Camera', label: 'Camera', defaults: { enabled: true, targetObjectId: null, speed: 8, offsetX: 0, offsetY: 0, deadZoneWidth: 180, deadZoneHeight: 120, lookAheadX: 0, lookAheadY: 0, visibleMargin: 40, followX: true, followY: true, clampToWorld: true, maxSpeed: 2000 } },
-  { id: 'ParticleEmitter', label: 'Particle Emitter', defaults: { enabled: true, count: 24, rate: 0, burst: true, life: 500, speed: 80, spreadAngle: 360, direction: 270, color: '#fb923c', size: 4, sizeEnd: 1, gravity: 0, drag: 0.98, loop: true, interval: 1000, worldSpace: true } },
+  { id: 'Grid', label: 'Grid', icon: 'grid', color: '#60a5fa', defaults: { cols: 10, rows: 10, cellSize: 24, visible: true, layerId: null } },
+  { id: 'Sprite', label: 'Sprite', icon: 'objSprite', color: '#a78bfa', defaults: { assetId: null, color: '#4ade80', width: 32, height: 32, frameAssetIds: [], fps: 8 } },
+  { id: 'LightingManager', label: 'Lighting Manager', icon: 'objLightingManager', color: '#f59e0b', defaults: { enabled: false, ambientColor: '#0b1220', ambientIntensity: 0.35, overlayOpacity: 0.82, fogColor: '#07111d', fogDensity: 0.65 } },
+  { id: 'Light', label: 'Light', icon: 'objLight', color: '#fbbf24', defaults: { enabled: true, color: '#ffd27a', intensity: 1, radius: 180, falloff: 0.65, offsetX: 0, offsetY: 0, height: 18 } },
+  { id: 'Sound', label: 'Sound', icon: 'audio', color: '#f472b6', defaults: { assetId: null, category: 'sfx', autoplay: false, loop: false, volume: 1, maxDistance: 0 } },
+  { id: 'Collider', label: 'Collider', icon: 'collider', color: '#38bdf8', defaults: { shape: 'rect', width: 32, height: 32 } },
+  { id: 'Collision', label: 'Collision', icon: 'collision', color: '#fb7185', defaults: { enabled: true, isTrigger: false } },
+  { id: 'RigidBody', label: 'RigidBody', icon: 'rigidBody', color: '#94a3b8', defaults: { enabled: false, weight: 1, friction: 0.4 } },
+  { id: 'Animator', label: 'Animator', icon: 'objAnimator', color: '#34d399', defaults: { clipId: null, autoplay: false } },
+  { id: 'Camera', label: 'Camera', icon: 'camera', color: '#93c5fd', defaults: { enabled: true, targetObjectId: null, speed: 8, offsetX: 0, offsetY: 0, deadZoneWidth: 180, deadZoneHeight: 120, lookAheadX: 0, lookAheadY: 0, visibleMargin: 40, followX: true, followY: true, clampToWorld: true, maxSpeed: 2000 } },
+  { id: 'ParticleEmitter', label: 'Particle Emitter', icon: 'objParticleEmitter', color: '#fb923c', defaults: { enabled: true, count: 24, rate: 0, burst: true, life: 500, speed: 80, spreadAngle: 360, direction: 270, color: '#fb923c', size: 4, sizeEnd: 1, gravity: 0, drag: 0.98, loop: true, interval: 1000, worldSpace: true } },
 ];
+
+function componentIcon(comp, size = 16) {
+  return <Icon name={comp.icon || 'objGeneric'} size={size} style={{ color: comp.color || '#94a3b8', flexShrink: 0 }} />;
+}
 
 function parseScriptProps(source) {
   if (!source) return [];
@@ -57,6 +62,8 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
   const [audioQuery, setAudioQuery] = useState('');
   const [showComponentPicker, setShowComponentPicker] = useState(false);
   const [componentQuery, setComponentQuery] = useState('');
+  const [addingPropertyFor, setAddingPropertyFor] = useState(null);
+  const [newPropertyName, setNewPropertyName] = useState('');
   const selectedId = editorState.selectedObjectId;
   const obj = selectedId && project ? project.objects.find(o => o.id === selectedId) : null;
   const components = obj?.components || {};
@@ -143,9 +150,17 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
   }
 
   function handleAddProperty(bindingIndex) {
-    const key = prompt('Property name:');
-    if (!key || !key.trim()) return;
-    handlePropertyChange(bindingIndex, key.trim(), '');
+    setAddingPropertyFor(bindingIndex);
+    setNewPropertyName('');
+  }
+
+  function handleConfirmAddProperty() {
+    if (addingPropertyFor == null) return;
+    const key = newPropertyName.trim();
+    if (!key) { setAddingPropertyFor(null); return; }
+    handlePropertyChange(addingPropertyFor, key, '');
+    setAddingPropertyFor(null);
+    setNewPropertyName('');
   }
 
   function handleRemoveProperty(bindingIndex, key) {
@@ -1098,8 +1113,22 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
                           style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 11, padding: '0 2px' }}>x</button>
                       </div>
                     ))}
-                    <button className="btn btn-sm" onClick={() => handleAddProperty(idx)}
-                      style={{ fontSize: 10, padding: '1px 6px', marginTop: 2 }}>+ Property</button>
+                    {addingPropertyFor === idx ? (
+                      <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
+                        <input
+                          autoFocus
+                          value={newPropertyName}
+                          onChange={(e) => setNewPropertyName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmAddProperty(); if (e.key === 'Escape') setAddingPropertyFor(null); }}
+                          onBlur={handleConfirmAddProperty}
+                          placeholder="Property name"
+                          style={{ fontSize: 11, padding: '1px 4px', flex: 1, minWidth: 0 }}
+                        />
+                      </div>
+                    ) : (
+                      <button className="btn btn-sm" onClick={() => handleAddProperty(idx)}
+                        style={{ fontSize: 10, padding: '1px 6px', marginTop: 2 }}>+ Property</button>
+                    )}
                   </div>
                 );
               })()}
@@ -1156,32 +1185,40 @@ export default function Inspector({ project, editorState, onUpdateObject, onUpda
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
             {filteredComponents.length} result{filteredComponents.length === 1 ? '' : 's'}
           </div>
-          <div style={{ maxHeight: '56vh', overflow: 'auto', border: '1px solid var(--border)', borderRadius: 6, padding: 10, background: '#0b1220', display: 'grid', gap: 8 }}>
+          <div style={{ maxHeight: '56vh', overflow: 'auto', border: '1px solid var(--border)', borderRadius: 6, padding: 10, background: '#0b1220' }}>
             {filteredComponents.length === 0 && (
               <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>No matching components available.</div>
             )}
-            {filteredComponents.map((comp) => (
-              <button
-                key={comp.id}
-                type="button"
-                onClick={() => {
-                  if (onUpdateComponent) onUpdateComponent(obj.id, comp.id, { ...comp.defaults });
-                  setShowComponentPicker(false);
-                }}
-                style={{
-                  border: '1px solid var(--border)',
-                  borderRadius: 6,
-                  background: '#111827',
-                  color: 'var(--text)',
-                  padding: '10px 12px',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                }}
-              >
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{comp.label}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{comp.id}</div>
-              </button>
-            ))}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 10 }}>
+              {filteredComponents.map((comp) => (
+                <button
+                  key={comp.id}
+                  type="button"
+                  onClick={() => {
+                    if (onUpdateComponent) onUpdateComponent(obj.id, comp.id, { ...comp.defaults });
+                    setShowComponentPicker(false);
+                  }}
+                  style={{
+                    border: '1px solid var(--border)',
+                    borderRadius: 6,
+                    background: '#111827',
+                    color: 'var(--text)',
+                    padding: 8,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <div style={{ height: 76, background: '#1f2937', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 7 }}>
+                    {componentIcon(comp, 34)}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {componentIcon(comp, 14)}
+                    <span>{comp.label}</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>{comp.id}</div>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </Modal>
