@@ -1,6 +1,12 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { getCellType, normalizeCellTypeId } from '../state/projectModel.js';
 import { buildWorldSparseIndex, queryWorldSparseIndex } from '../lib/worldSparseIndex.js';
+import {
+  createObjectSpatialIndex,
+  queryObjectSpatialIndex,
+  rebuildObjectSpatialIndex,
+  syncObjectSpatialIndex,
+} from '../lib/objectSpatialIndex.js';
 
 const TAILWIND_RE = /@apply\s|@tailwind\s|@import\s+["']tailwindcss["']|@theme\s/;
 let tailwindLoaded = false;
@@ -33,6 +39,7 @@ function transpileTS(source) {
  */
 
 const CELL_SIZE = 24;
+const PLAY_OBJECT_CULL_MARGIN = CELL_SIZE * 4;
 const PLAY_RENDER_MODE_WEBGL_3D = 'webgl-3d';
 const DEFAULT_SCENE_LIGHTING = {
   enabled: false,
@@ -97,6 +104,7 @@ export function usePlayMode(project, onLog) {
 
     // Deep clone project as runtime snapshot (isolate from editor)
     const snapshot = JSON.parse(JSON.stringify(project));
+    const scriptFactoryCache = new Map();
 
     const scripts = {};
     const cssStyleElements = new Map();
@@ -237,6 +245,17 @@ export function usePlayMode(project, onLog) {
         });
       });
     };
+    const compileScriptFactory = (script) => {
+      if (!script || !script.id) return null;
+      const source = String(script.source || '');
+      const language = script.language || 'javascript';
+      const cached = scriptFactoryCache.get(script.id);
+      if (cached && cached.source === source && cached.language === language) return cached.factory;
+      const jsSource = language === 'typescript' ? transpileTS(source) : source;
+      const factory = new Function('return (function(self, props, console, keyIsDown, LEFT_ARROW, RIGHT_ARROW, UP_ARROW, DOWN_ARROW, SPACE) { ' + jsSource + ' return { onInit: typeof onInit==="function"?onInit:null, onUpdate: typeof onUpdate==="function"?onUpdate:null }; })')();
+      scriptFactoryCache.set(script.id, { source, language, factory });
+      return factory;
+    };
 
     const state = {
       running: true,
@@ -257,6 +276,8 @@ export function usePlayMode(project, onLog) {
       viewX: 0,
       viewY: 0,
       worldSparse: null,
+      objectSpatialIndex: createObjectSpatialIndex(),
+      objectLayerOrder: buildPlayObjectLayerOrder(snapshot),
       cssStyleElements,
       _animStates: new Map(),
       _clipIndex: new Map((animClips || []).map((c) => [c.id, c])),
@@ -457,6 +478,7 @@ export function usePlayMode(project, onLog) {
       runtimeState.projectSnapshot.objects = nextScene.objects || runtimeState.projectSnapshot.objects;
       runtimeState.world = JSON.parse(JSON.stringify(nextScene.world || runtimeState.projectSnapshot.world || {}));
       runtimeState.gameObjects.splice(0, runtimeState.gameObjects.length, ...((nextScene.objects || runtimeState.projectSnapshot.objects || []).map(buildRuntimeObject)));
+      rebuildObjectSpatialIndex(runtimeState.objectSpatialIndex, runtimeState.gameObjects);
       runtimeState.sceneLighting = resolvePlayLightingSettings(runtimeState, nextScene);
       runtimeState.scriptInstances = [];
       runtimeState.pendingSceneId = null;
@@ -485,7 +507,6 @@ export function usePlayMode(project, onLog) {
         bindings.forEach((binding) => {
           if (!binding.active || !binding.scriptId || !scripts[binding.scriptId]) return;
           try {
-            const rawSrc = scripts[binding.scriptId].source;
             const language = scripts[binding.scriptId].language || 'javascript';
             if (language === 'css') {
               applyCssScript(scripts[binding.scriptId]);
@@ -497,8 +518,7 @@ export function usePlayMode(project, onLog) {
               onLog({ type: 'warn', message: `Script "${scripts[binding.scriptId].name}" skipped (${language} runtime unavailable in play mode).`, time: new Date().toLocaleTimeString() });
               return;
             }
-            const src = isTS ? transpileTS(rawSrc) : rawSrc;
-            const factory = new Function('return (function(self, props, console, keyIsDown, LEFT_ARROW, RIGHT_ARROW, UP_ARROW, DOWN_ARROW, SPACE) { ' + src + ' return { onInit: typeof onInit==="function"?onInit:null, onUpdate: typeof onUpdate==="function"?onUpdate:null }; })')();
+            const factory = compileScriptFactory(scripts[binding.scriptId]);
             const props = binding.properties ? JSON.parse(JSON.stringify(binding.properties)) : {};
             const hooks = factory(obj, props, sandboxConsole, (code) => keysRef.current.has(code), 37, 39, 38, 40, 32);
             runtimeState.scriptInstances.push({ obj, hooks, props });
@@ -836,7 +856,13 @@ export function usePlayMode(project, onLog) {
       // Snapshot positions before scripts so we can detect which was changed
       const prePositions = state.gameObjects.map((obj) => {
         const t = (obj.components && obj.components.Transform) || {};
-        return { x: obj.x, y: obj.y, tx: t.x, ty: t.y };
+        return {
+          tx: t.x,
+          ty: t.y,
+          transformRotation: t.rotation,
+          transformScaleX: t.scaleX,
+          transformScaleY: t.scaleY,
+        };
       });
 
       // Script updates
@@ -863,12 +889,32 @@ export function usePlayMode(project, onLog) {
         // If script changed Transform, prefer that; otherwise use obj.x/y
         if (Number.isFinite(t.x) && t.x !== pre.tx) obj.x = t.x;
         if (Number.isFinite(t.y) && t.y !== pre.ty) obj.y = t.y;
+        if (Number.isFinite(t.rotation) && t.rotation !== pre.transformRotation) obj.rotation = t.rotation;
+        if (Number.isFinite(t.scaleX) && t.scaleX !== pre.transformScaleX) obj.scaleX = t.scaleX;
+        if (Number.isFinite(t.scaleY) && t.scaleY !== pre.transformScaleY) obj.scaleY = t.scaleY;
         // Keep both in sync
         t.x = obj.x;
         t.y = obj.y;
+        t.rotation = obj.rotation;
+        t.scaleX = obj.scaleX;
+        t.scaleY = obj.scaleY;
+        const sprite = (obj.components && obj.components.Sprite) || {};
+        const spriteWidth = Number.isFinite(sprite.width) ? sprite.width : 32;
+        const spriteHeight = Number.isFinite(sprite.height) ? sprite.height : 32;
+        const scaleX = Number.isFinite(obj.scaleX) ? obj.scaleX : 1;
+        const scaleY = Number.isFinite(obj.scaleY) ? obj.scaleY : 1;
+        obj.width = spriteWidth * scaleX;
+        obj.height = spriteHeight * scaleY;
       });
 
       resolveCellCollisions(state);
+      state.gameObjects.forEach((obj) => {
+        const t = obj.components && obj.components.Transform;
+        if (!t) return;
+        t.x = obj.x;
+        t.y = obj.y;
+      });
+      syncObjectSpatialIndex(state.objectSpatialIndex, state.gameObjects);
       if (state.particleSystem) state.particleSystem.update(dt, state.gameObjects);
 
       // Render
@@ -982,16 +1028,17 @@ export function usePlayMode(project, onLog) {
     renderPlayWorldElements(ctx, state);
 
     // Objects
-    const proj = state.projectSnapshot || {};
-    const objectLayers = ((proj.layers && proj.layers.objects) || [])
-      .filter((layer) => layer.visible !== false)
-      .sort((a, b) => (a.order || 0) - (b.order || 0));
-    state.gameObjects.slice().sort((a, b) => {
+    const visibleObjects = queryObjectSpatialIndex(
+      state.objectSpatialIndex,
+      (state.viewX || 0) - PLAY_OBJECT_CULL_MARGIN,
+      (state.viewY || 0) - PLAY_OBJECT_CULL_MARGIN,
+      (state.viewX || 0) + w + PLAY_OBJECT_CULL_MARGIN,
+      (state.viewY || 0) + h + PLAY_OBJECT_CULL_MARGIN,
+    );
+    visibleObjects.sort((a, b) => {
       const ar = (a.components && a.components.Render) || {};
       const br = (b.components && b.components.Render) || {};
-      const ao = objectLayers.find((l) => l.id === ar.layerId);
-      const bo = objectLayers.find((l) => l.id === br.layerId);
-      const layerDelta = ((ao && ao.order) || 0) - ((bo && bo.order) || 0);
+      const layerDelta = (state.objectLayerOrder.get(ar.layerId) || 0) - (state.objectLayerOrder.get(br.layerId) || 0);
       if (layerDelta !== 0) return layerDelta;
       return (ar.zIndex || 0) - (br.zIndex || 0);
     }).forEach(obj => {
@@ -1327,6 +1374,17 @@ function createInitialPlay3DState(state) {
       eyeHeight: CELL_SIZE * 0.72,
     },
   };
+}
+
+function buildPlayObjectLayerOrder(project) {
+  const order = new Map();
+  ((((project && project.layers) || {}).objects) || [])
+    .filter((layer) => layer && layer.visible !== false)
+    .sort((a, b) => (a.order || 0) - (b.order || 0))
+    .forEach((layer, index) => {
+      if (layer && layer.id) order.set(layer.id, Number.isFinite(layer.order) ? layer.order : index);
+    });
+  return order;
 }
 
 function createPlayWorldApi(projectSnapshot, state, metrics) {
@@ -2209,7 +2267,9 @@ function createPlayParticleSystem(assetById, imageCacheRef) {
         const particle = particles[i];
         particle.life -= dt;
         if (particle.life <= 0) {
-          particles.splice(i, 1);
+          const lastIndex = particles.length - 1;
+          if (i !== lastIndex) particles[i] = particles[lastIndex];
+          particles.pop();
           continue;
         }
         const dragFactor = Math.pow(particle.drag, dt * 60);

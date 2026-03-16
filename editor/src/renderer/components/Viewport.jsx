@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { getCellType, normalizeCellTypeId, getBrushValue } from '../state/projectModel.js';
 import { buildWorldSparseIndex, queryWorldSparseIndex } from '../lib/worldSparseIndex.js';
+import { createObjectSpatialIndex, queryObjectSpatialIndex, rebuildObjectSpatialIndex } from '../lib/objectSpatialIndex.js';
 import {
   getSelectionBounds, getSelectionRotation,
   drawMoveGizmo, drawRotateGizmo, drawScaleGizmo,
@@ -17,10 +18,12 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
   const dragRef = useRef({ dragging: false, button: -1, startX: 0, startY: 0, lastX: 0, lastY: 0 });
   const imageCacheRef = useRef(new Map());
   const sparseRef = useRef({ world: null, cellTypes: null, index: null });
+  const objectIndexRef = useRef({ objects: null, index: createObjectSpatialIndex() });
   const [canvasSize, setCanvasSize] = useState(0);
   const [hoveredGizmoPart, setHoveredGizmoPart] = useState(null);
 
   const cellSize = 24;
+  const objectCullMargin = cellSize * 4;
 
   const worldToScreen = useCallback((wx, wy) => {
     const cam = editorState.camera;
@@ -319,12 +322,24 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
       const objectLayers = ((project.layers && project.layers.objects) || [])
         .filter((layer) => layer.visible !== false)
         .sort((a, b) => (a.order || 0) - (b.order || 0));
-      const objects = project.objects.slice().sort((a, b) => {
+      const objectLayerOrder = new Map();
+      objectLayers.forEach((layer, index) => {
+        if (layer && layer.id) objectLayerOrder.set(layer.id, Number.isFinite(layer.order) ? layer.order : index);
+      });
+      if (objectIndexRef.current.objects !== project.objects) {
+        objectIndexRef.current.objects = project.objects;
+        rebuildObjectSpatialIndex(objectIndexRef.current.index, project.objects);
+      }
+      const objects = queryObjectSpatialIndex(
+        objectIndexRef.current.index,
+        cam.x - objectCullMargin,
+        cam.y - objectCullMargin,
+        cam.x + (canvas.width / zoom) + objectCullMargin,
+        cam.y + (canvas.height / zoom) + objectCullMargin,
+      ).sort((a, b) => {
         const ar = (a.components && a.components.Render) || {};
         const br = (b.components && b.components.Render) || {};
-        const ao = objectLayers.find((l) => l.id === ar.layerId);
-        const bo = objectLayers.find((l) => l.id === br.layerId);
-        const layerDelta = ((ao && ao.order) || 0) - ((bo && bo.order) || 0);
+        const layerDelta = (objectLayerOrder.get(ar.layerId) || 0) - (objectLayerOrder.get(br.layerId) || 0);
         if (layerDelta !== 0) return layerDelta;
         return (ar.zIndex || 0) - (br.zIndex || 0);
       });

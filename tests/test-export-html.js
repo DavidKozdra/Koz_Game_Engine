@@ -24,13 +24,17 @@ async function main() {
 
   const modulePath = path.join(__dirname, '..', 'editor', 'src', 'renderer', 'lib', 'exportHtml.js');
   const moduleSource = fs.readFileSync(modulePath, 'utf8');
+  const sanitizedModuleSource = moduleSource.replace(
+    "import tailwindBrowserJs from '@tailwindcss/browser?raw';",
+    "const tailwindBrowserJs = '';",
+  );
   const playModePath = path.join(__dirname, '..', 'editor', 'src', 'renderer', 'components', 'PlayMode.jsx');
   const playModeSource = fs.readFileSync(playModePath, 'utf8');
-  const moduleUrl = `data:text/javascript;base64,${Buffer.from(moduleSource).toString('base64')}`;
+  const moduleUrl = `data:text/javascript;base64,${Buffer.from(sanitizedModuleSource).toString('base64')}`;
   const { buildExportHtml } = await import(moduleUrl);
   const projectPath = path.join(__dirname, '..', 'projects', 'template-3d-fps-shell', 'project.json');
   const project = JSON.parse(fs.readFileSync(projectPath, 'utf8'));
-  const html = buildExportHtml(project, JSON.stringify(project), 'html-zip', { minify: false });
+  const html = await buildExportHtml(project, JSON.stringify(project), 'html-zip', { minify: false });
   const disabledFullscreenProject = {
     ...project,
     meta: {
@@ -43,7 +47,7 @@ async function main() {
       },
     },
   };
-  const disabledFullscreenHtml = buildExportHtml(disabledFullscreenProject, JSON.stringify(disabledFullscreenProject), 'html-zip', { minify: false });
+  const disabledFullscreenHtml = await buildExportHtml(disabledFullscreenProject, JSON.stringify(disabledFullscreenProject), 'html-zip', { minify: false });
 
   assert(html.includes('id="game-2d"'), 'export includes a dedicated 2D canvas');
   assert(html.includes('id="game-3d"'), 'export includes a dedicated WebGL canvas');
@@ -59,6 +63,8 @@ async function main() {
   assert(html.includes('drawWorldElements'), 'export runtime renders world elements');
   assert(html.includes('createParticleSystem'), 'export runtime includes particle support');
   assert(html.includes('particles:'), 'export runtime exposes particle helpers to scripts');
+  assert(html.includes('queryObjectSpatialIndex'), 'export runtime includes object spatial culling support');
+  assert(html.includes('compileScriptFactory'), 'export runtime caches compiled script factories');
   assert(html.includes('storage:'), 'export runtime exposes storage helpers to scripts');
   assert(html.includes('components: clone(obj.components || {})'), 'export runtime clones scene component data before mutation');
   assert(html.includes('prefabId: obj.prefabId || null'), 'export runtime preserves prefab ids on runtime objects');
@@ -70,6 +76,9 @@ async function main() {
   assert(playModeSource.includes("findObjectById: (value) => findRuntimeObjectById(runtimeState.gameObjects, value)"), 'editor play runtime exposes an explicit id lookup helper');
   assert(playModeSource.includes("findObjectByType: (type) => findRuntimeObjectsByType(runtimeState.gameObjects, type)[0] || null"), 'editor play runtime exposes a singular type lookup helper');
   assert(playModeSource.includes('components: JSON.parse(JSON.stringify(obj.components || {}))'), 'editor play runtime clones scene component data before mutation');
+  assert(playModeSource.includes('syncObjectSpatialIndex(state.objectSpatialIndex, state.gameObjects);'), 'editor play runtime refreshes object culling data after movement');
+  assert(!playModeSource.includes('particles.splice(i, 1);'), 'editor play particle updates avoid O(n) splice removal');
+  assert(!moduleSource.includes('particles.splice(i, 1);'), 'export particle updates avoid O(n) splice removal');
   assert(html.includes("source: 'engine-fallback'"), 'export runtime includes engine fallback camera metadata');
   assert(html.includes('webgl-3d'), 'export runtime contains the WebGL render mode');
   assert(!disabledFullscreenHtml.includes('id="fullscreen-toggle"'), 'export omits the fullscreen button when display settings disable fullscreen');

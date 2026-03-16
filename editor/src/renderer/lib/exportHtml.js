@@ -3,6 +3,7 @@ import tailwindBrowserJs from '@tailwindcss/browser?raw';
 function exportRuntimeMain() {
   var PLAY_RENDER_MODE_WEBGL_3D = 'webgl-3d';
   var CELL_SIZE = 24;
+  var PLAY_OBJECT_CULL_MARGIN = CELL_SIZE * 4;
   var DEFAULT_SCENE_LIGHTING = {
     enabled: false,
     ambientColor: '#0b1220',
@@ -57,9 +58,234 @@ function exportRuntimeMain() {
   var lightingManager = null;
   var storageApi = null;
   var particleSystem = null;
+  var scriptFactoryCache = new Map();
+  var objectSpatialIndex = createObjectSpatialIndex();
+  var objectLayerOrder = buildObjectLayerOrder(project);
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
+  }
+
+  function chunkKey(cx, cy) {
+    return String(cx) + ',' + String(cy);
+  }
+
+  function intersectBounds(bounds, minX, minY, maxX, maxY) {
+    if (!bounds) return false;
+    return !(bounds.maxX < minX || bounds.minX > maxX || bounds.maxY < minY || bounds.minY > maxY);
+  }
+
+  function boundsEqual(a, b) {
+    if (!a || !b) return false;
+    return a.minX === b.minX && a.minY === b.minY && a.maxX === b.maxX && a.maxY === b.maxY;
+  }
+
+  function getObjectSpatialBounds(object) {
+    if (!object || typeof object !== 'object') return null;
+    var components = object.components && typeof object.components === 'object' ? object.components : {};
+    var transform = components.Transform && typeof components.Transform === 'object' ? components.Transform : {};
+    var sprite = components.Sprite && typeof components.Sprite === 'object' ? components.Sprite : {};
+    var x = Number.isFinite(object.x) ? object.x : (Number.isFinite(transform.x) ? transform.x : 0);
+    var y = Number.isFinite(object.y) ? object.y : (Number.isFinite(transform.y) ? transform.y : 0);
+    var rotation = Number.isFinite(object.rotation) ? object.rotation : (Number.isFinite(transform.rotation) ? transform.rotation : 0);
+    var scaleX = Number.isFinite(object.scaleX) ? object.scaleX : (Number.isFinite(transform.scaleX) ? transform.scaleX : 1);
+    var scaleY = Number.isFinite(object.scaleY) ? object.scaleY : (Number.isFinite(transform.scaleY) ? transform.scaleY : 1);
+    var width = Math.max(1, (Number.isFinite(sprite.width) ? sprite.width : 32) * Math.abs(scaleX || 1));
+    var height = Math.max(1, (Number.isFinite(sprite.height) ? sprite.height : 32) * Math.abs(scaleY || 1));
+    var radians = (rotation * Math.PI) / 180;
+    var cos = Math.abs(Math.cos(radians));
+    var sin = Math.abs(Math.sin(radians));
+    var halfWidth = ((width * cos) + (height * sin)) * 0.5;
+    var halfHeight = ((width * sin) + (height * cos)) * 0.5;
+    var centerX = x + (width * 0.5);
+    var centerY = y + (height * 0.5);
+    return {
+      minX: centerX - halfWidth,
+      minY: centerY - halfHeight,
+      maxX: centerX + halfWidth,
+      maxY: centerY + halfHeight,
+    };
+  }
+
+  function createObjectSpatialIndex(chunkSize) {
+    return {
+      chunkSize: Math.max(32, Number(chunkSize) || 256),
+      chunks: new Map(),
+      entries: new Map(),
+    };
+  }
+
+  function clearObjectSpatialIndex(index) {
+    if (!index) return index;
+    index.chunks.clear();
+    index.entries.clear();
+    return index;
+  }
+
+  function removeObjectSpatialIndexEntry(index, objectId) {
+    if (!index || !index.entries) return false;
+    var entry = index.entries.get(objectId);
+    var cx;
+    var cy;
+    var key;
+    var bucket;
+    if (!entry) return false;
+    for (cy = entry.minCY; cy <= entry.maxCY; cy += 1) {
+      for (cx = entry.minCX; cx <= entry.maxCX; cx += 1) {
+        key = chunkKey(cx, cy);
+        bucket = index.chunks.get(key);
+        if (!bucket) continue;
+        bucket.delete(objectId);
+        if (bucket.size === 0) index.chunks.delete(key);
+      }
+    }
+    index.entries.delete(objectId);
+    return true;
+  }
+
+  function setObjectSpatialIndexEntry(index, object, bounds) {
+    var cs = index.chunkSize || 256;
+    var minCX = Math.floor(bounds.minX / cs);
+    var minCY = Math.floor(bounds.minY / cs);
+    var maxCX = Math.floor(bounds.maxX / cs);
+    var maxCY = Math.floor(bounds.maxY / cs);
+    var cx;
+    var cy;
+    var key;
+    var bucket;
+    for (cy = minCY; cy <= maxCY; cy += 1) {
+      for (cx = minCX; cx <= maxCX; cx += 1) {
+        key = chunkKey(cx, cy);
+        bucket = index.chunks.get(key);
+        if (!bucket) {
+          bucket = new Set();
+          index.chunks.set(key, bucket);
+        }
+        bucket.add(object.id);
+      }
+    }
+    index.entries.set(object.id, {
+      object: object,
+      bounds: bounds,
+      minCX: minCX,
+      minCY: minCY,
+      maxCX: maxCX,
+      maxCY: maxCY,
+    });
+    return true;
+  }
+
+  function rebuildObjectSpatialIndex(index, objects) {
+    var next = index || createObjectSpatialIndex();
+    var i;
+    var bounds;
+    clearObjectSpatialIndex(next);
+    if (!Array.isArray(objects)) return next;
+    for (i = 0; i < objects.length; i += 1) {
+      if (!objects[i] || !objects[i].id) continue;
+      bounds = getObjectSpatialBounds(objects[i]);
+      if (!bounds) continue;
+      setObjectSpatialIndexEntry(next, objects[i], bounds);
+    }
+    return next;
+  }
+
+  function syncObjectSpatialIndex(index, objects) {
+    var next = index || createObjectSpatialIndex();
+    var seen;
+    var i;
+    var object;
+    var bounds;
+    var entry;
+    if (!Array.isArray(objects) || objects.length === 0) {
+      clearObjectSpatialIndex(next);
+      return next;
+    }
+
+    seen = new Set();
+    for (i = 0; i < objects.length; i += 1) {
+      object = objects[i];
+      if (!object || !object.id) continue;
+      seen.add(object.id);
+      bounds = getObjectSpatialBounds(object);
+      if (!bounds) {
+        removeObjectSpatialIndexEntry(next, object.id);
+        continue;
+      }
+      entry = next.entries.get(object.id);
+      if (!entry) {
+        setObjectSpatialIndexEntry(next, object, bounds);
+        continue;
+      }
+      if (entry.object !== object || !boundsEqual(entry.bounds, bounds)) {
+        removeObjectSpatialIndexEntry(next, object.id);
+        setObjectSpatialIndexEntry(next, object, bounds);
+        continue;
+      }
+      entry.object = object;
+    }
+
+    Array.from(next.entries.keys()).forEach(function(objectId) {
+      if (!seen.has(objectId)) removeObjectSpatialIndexEntry(next, objectId);
+    });
+    return next;
+  }
+
+  function queryObjectSpatialIndex(index, minX, minY, maxX, maxY) {
+    if (!index || !index.chunks || index.chunks.size === 0) return [];
+    var cs = index.chunkSize || 256;
+    var minCX = Math.floor(minX / cs);
+    var minCY = Math.floor(minY / cs);
+    var maxCX = Math.floor(maxX / cs);
+    var maxCY = Math.floor(maxY / cs);
+    var seen = new Set();
+    var out = [];
+    var cy;
+    var cx;
+    var bucket;
+    var entry;
+    minX = Number(minX) || 0;
+    minY = Number(minY) || 0;
+    maxX = Number(maxX) || 0;
+    maxY = Number(maxY) || 0;
+
+    for (cy = minCY; cy <= maxCY; cy += 1) {
+      for (cx = minCX; cx <= maxCX; cx += 1) {
+        bucket = index.chunks.get(chunkKey(cx, cy));
+        if (!bucket || bucket.size === 0) continue;
+        bucket.forEach(function(objectId) {
+          if (seen.has(objectId)) return;
+          seen.add(objectId);
+          entry = index.entries.get(objectId);
+          if (!entry || !intersectBounds(entry.bounds, minX, minY, maxX, maxY)) return;
+          out.push(entry.object);
+        });
+      }
+    }
+    return out;
+  }
+
+  function buildObjectLayerOrder(projectLike) {
+    var order = new Map();
+    ((((projectLike && projectLike.layers) || {}).objects) || [])
+      .filter(function(layer) { return layer && layer.visible !== false; })
+      .sort(function(a, b) { return (a.order || 0) - (b.order || 0); })
+      .forEach(function(layer, index) {
+        if (layer && layer.id) order.set(layer.id, Number.isFinite(layer.order) ? layer.order : index);
+      });
+    return order;
+  }
+
+  function compileScriptFactory(script) {
+    if (!script || !script.id) return null;
+    var source = String(script.source || '');
+    var language = script.language || 'javascript';
+    var cached = scriptFactoryCache.get(script.id);
+    var factory;
+    if (cached && cached.source === source && cached.language === language) return cached.factory;
+    factory = new Function('return (function(self, props, console, keyIsDown, LEFT_ARROW, RIGHT_ARROW, UP_ARROW, DOWN_ARROW, SPACE){' + source + '; return { onInit: typeof onInit === "function" ? onInit : null, onUpdate: typeof onUpdate === "function" ? onUpdate : null }; })')();
+    scriptFactoryCache.set(script.id, { source: source, language: language, factory: factory });
+    return factory;
   }
 
   function clampLighting01(value) {
@@ -901,9 +1127,12 @@ function exportRuntimeMain() {
         for (i = particles.length - 1; i >= 0; i -= 1) {
           var particle = particles[i];
           var dragFactor;
+          var lastIndex;
           particle.life -= dt;
           if (particle.life <= 0) {
-            particles.splice(i, 1);
+            lastIndex = particles.length - 1;
+            if (i !== lastIndex) particles[i] = particles[lastIndex];
+            particles.pop();
             continue;
           }
           dragFactor = Math.pow(particle.drag, dt * 60);
@@ -1782,16 +2011,23 @@ function exportRuntimeMain() {
   }
 
   function drawObjects(drawViewX, drawViewY) {
+    var visibleObjects;
+    var viewWidth;
+    var viewHeight;
     if (!ctx2d) return;
-    var objectLayers = ((project.layers && project.layers.objects) || [])
-      .filter(function(layer) { return layer.visible !== false; })
-      .sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
-    gameObjects.slice().sort(function(a, b) {
+    viewWidth = canvas2d ? canvas2d.width : 960;
+    viewHeight = canvas2d ? canvas2d.height : 540;
+    visibleObjects = queryObjectSpatialIndex(
+      objectSpatialIndex,
+      drawViewX - PLAY_OBJECT_CULL_MARGIN,
+      drawViewY - PLAY_OBJECT_CULL_MARGIN,
+      drawViewX + viewWidth + PLAY_OBJECT_CULL_MARGIN,
+      drawViewY + viewHeight + PLAY_OBJECT_CULL_MARGIN
+    );
+    visibleObjects.sort(function(a, b) {
       var ar = (a.components && a.components.Render) || {};
       var br = (b.components && b.components.Render) || {};
-      var ao = objectLayers.find(function(layer) { return layer.id === ar.layerId; });
-      var bo = objectLayers.find(function(layer) { return layer.id === br.layerId; });
-      var layerDelta = ((ao && ao.order) || 0) - ((bo && bo.order) || 0);
+      var layerDelta = (objectLayerOrder.get(ar.layerId) || 0) - (objectLayerOrder.get(br.layerId) || 0);
       if (layerDelta !== 0) return layerDelta;
       return (ar.zIndex || 0) - (br.zIndex || 0);
     }).forEach(function(obj) {
@@ -1912,8 +2148,7 @@ function exportRuntimeMain() {
         }
         if (!scripts[binding.scriptId]) return;
         try {
-          var src = scripts[binding.scriptId].source || '';
-          var factory = new Function('return (function(self, props, console, keyIsDown, LEFT_ARROW, RIGHT_ARROW, UP_ARROW, DOWN_ARROW, SPACE){' + src + '; return { onInit: typeof onInit === "function" ? onInit : null, onUpdate: typeof onUpdate === "function" ? onUpdate : null }; })')();
+          var factory = compileScriptFactory(scripts[binding.scriptId]);
           var props = binding.properties ? clone(binding.properties) : {};
           var hooks = factory(obj, props, console, engine.keyIsDown, 37, 39, 38, 40, 32);
           scriptInstances.push({ obj: obj, hooks: hooks });
@@ -1934,6 +2169,7 @@ function exportRuntimeMain() {
     project.objects = nextScene.objects || project.objects;
     world = clone(nextScene.world || project.world || {});
     gameObjects.splice(0, gameObjects.length, ...((nextScene.objects || project.objects || []).map(buildRuntimeObject)));
+    rebuildObjectSpatialIndex(objectSpatialIndex, gameObjects);
     sceneLighting = resolveLightingSettings(nextScene);
     scriptInstances = [];
     pendingSceneId = null;
@@ -2181,7 +2417,13 @@ function exportRuntimeMain() {
 
     var prePositions = gameObjects.map(function(obj) {
       var t = (obj.components && obj.components.Transform) || {};
-      return { x: obj.x, y: obj.y, tx: t.x, ty: t.y };
+      return {
+        tx: t.x,
+        ty: t.y,
+        transformRotation: t.rotation,
+        transformScaleX: t.scaleX,
+        transformScaleY: t.scaleY,
+      };
     });
 
     scriptInstances.forEach(function(inst) {
@@ -2201,12 +2443,30 @@ function exportRuntimeMain() {
     }
 
     gameObjects.forEach(function(obj, index) {
+      var sprite;
+      var spriteWidth;
+      var spriteHeight;
+      var scaleX;
+      var scaleY;
       if (!obj.components || !obj.components.Transform) return;
       var pre = prePositions[index];
       if (Number.isFinite(obj.components.Transform.x) && obj.components.Transform.x !== pre.tx) obj.x = obj.components.Transform.x;
       if (Number.isFinite(obj.components.Transform.y) && obj.components.Transform.y !== pre.ty) obj.y = obj.components.Transform.y;
+      if (Number.isFinite(obj.components.Transform.rotation) && obj.components.Transform.rotation !== pre.transformRotation) obj.rotation = obj.components.Transform.rotation;
+      if (Number.isFinite(obj.components.Transform.scaleX) && obj.components.Transform.scaleX !== pre.transformScaleX) obj.scaleX = obj.components.Transform.scaleX;
+      if (Number.isFinite(obj.components.Transform.scaleY) && obj.components.Transform.scaleY !== pre.transformScaleY) obj.scaleY = obj.components.Transform.scaleY;
       obj.components.Transform.x = obj.x;
       obj.components.Transform.y = obj.y;
+      obj.components.Transform.rotation = obj.rotation;
+      obj.components.Transform.scaleX = obj.scaleX;
+      obj.components.Transform.scaleY = obj.scaleY;
+      sprite = (obj.components && obj.components.Sprite) || {};
+      spriteWidth = Number.isFinite(sprite.width) ? sprite.width : 32;
+      spriteHeight = Number.isFinite(sprite.height) ? sprite.height : 32;
+      scaleX = Number.isFinite(obj.scaleX) ? obj.scaleX : 1;
+      scaleY = Number.isFinite(obj.scaleY) ? obj.scaleY : 1;
+      obj.width = spriteWidth * scaleX;
+      obj.height = spriteHeight * scaleY;
     });
 
     resolveCellCollisions();
@@ -2215,7 +2475,11 @@ function exportRuntimeMain() {
       if (!obj.components || !obj.components.Transform) return;
       obj.components.Transform.x = obj.x;
       obj.components.Transform.y = obj.y;
+      obj.components.Transform.rotation = obj.rotation;
+      obj.components.Transform.scaleX = obj.scaleX;
+      obj.components.Transform.scaleY = obj.scaleY;
     });
+    syncObjectSpatialIndex(objectSpatialIndex, gameObjects);
 
     var camera = resolvePlayCamera(cameraConfig, gameObjects);
     if (audioSystem) audioSystem.updateListener(camera, gameObjects);
