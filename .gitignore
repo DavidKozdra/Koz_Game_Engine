@@ -137,3 +137,11 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Electron build outputs
+editor/dist/
+editor/build/
+editor/squashfs-root/
+editor/linux-unpacked/
+editor/*.AppImage
+editor/*.snap
