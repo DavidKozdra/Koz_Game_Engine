@@ -6,9 +6,68 @@ function exportRuntimeMain() {
   var PLAY_OBJECT_CULL_MARGIN = CELL_SIZE * 4;
   var LIGHTING_MODE_PIXEL = 'pixel';
   var LIGHTING_MODE_SOFT = 'soft';
+  var LIGHTING_COLOR_PRESET_NONE = 'none';
+  var LIGHTING_COLOR_PRESETS = new Set(['none', 'warm', 'cool', 'noir', 'neon', 'sunset', 'moonlight']);
+  var LIGHTING_COLOR_PRESET_PROFILES = {
+    warm: {
+      ambientRgb: [255, 184, 128],
+      ambientMix: 0.18,
+      fogRgb: [120, 68, 38],
+      fogMix: 0.28,
+      lightRgb: [255, 214, 156],
+      lightMix: 0.26,
+    },
+    cool: {
+      ambientRgb: [126, 168, 255],
+      ambientMix: 0.2,
+      fogRgb: [28, 64, 124],
+      fogMix: 0.3,
+      lightRgb: [188, 228, 255],
+      lightMix: 0.24,
+    },
+    noir: {
+      ambientRgb: [156, 163, 175],
+      ambientMix: 0.12,
+      fogRgb: [11, 15, 23],
+      fogMix: 0.48,
+      lightRgb: [226, 232, 240],
+      lightMix: 0.12,
+      desaturate: 0.78,
+    },
+    neon: {
+      ambientRgb: [82, 32, 118],
+      ambientMix: 0.18,
+      fogRgb: [24, 11, 44],
+      fogMix: 0.36,
+      lightRgb: [74, 255, 209],
+      lightMix: 0.34,
+    },
+    sunset: {
+      ambientRgb: [255, 145, 102],
+      ambientMix: 0.24,
+      fogRgb: [111, 39, 64],
+      fogMix: 0.28,
+      lightRgb: [255, 200, 130],
+      lightMix: 0.22,
+    },
+    moonlight: {
+      ambientRgb: [130, 158, 220],
+      ambientMix: 0.22,
+      fogRgb: [11, 28, 72],
+      fogMix: 0.38,
+      lightRgb: [198, 220, 255],
+      lightMix: 0.26,
+    },
+  };
   var DEFAULT_SCENE_LIGHTING = {
     enabled: false,
     mode: LIGHTING_MODE_PIXEL,
+    flicker: false,
+    volumetric: false,
+    fogBoost: 0,
+    dither: false,
+    vignette: 0,
+    colorPreset: LIGHTING_COLOR_PRESET_NONE,
     ambientColor: '#0b1220',
     ambientIntensity: 0.35,
     overlayOpacity: 0.82,
@@ -66,6 +125,8 @@ function exportRuntimeMain() {
   var objectLayerOrder = buildObjectLayerOrder(project);
   var lightingCanvas = null;
   var lightingCtx = null;
+  var lightingPatternCanvas = null;
+  var lightingPattern = null;
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -306,6 +367,11 @@ function exportRuntimeMain() {
     return fallback || LIGHTING_MODE_PIXEL;
   }
 
+  function normalizeLightingColorPreset(value, fallback) {
+    var preset = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    return LIGHTING_COLOR_PRESETS.has(preset) ? preset : (fallback || LIGHTING_COLOR_PRESET_NONE);
+  }
+
   function normalizeRenderMode(value, fallback) {
     var mode = typeof value === 'string' ? value.trim().toLowerCase() : '';
     if (mode === '3d' || mode === PLAY_RENDER_MODE_WEBGL_3D) return PLAY_RENDER_MODE_WEBGL_3D;
@@ -347,6 +413,12 @@ function exportRuntimeMain() {
     return {
       enabled: source.enabled === true,
       mode: normalizeLightingMode(source.mode, DEFAULT_SCENE_LIGHTING.mode),
+      flicker: source.flicker === true,
+      volumetric: source.volumetric === true,
+      fogBoost: clampLighting01(source.fogBoost == null ? DEFAULT_SCENE_LIGHTING.fogBoost : source.fogBoost),
+      dither: source.dither === true,
+      vignette: clampLighting01(source.vignette == null ? DEFAULT_SCENE_LIGHTING.vignette : source.vignette),
+      colorPreset: normalizeLightingColorPreset(source.colorPreset, DEFAULT_SCENE_LIGHTING.colorPreset),
       ambientColor: typeof source.ambientColor === 'string' && source.ambientColor ? source.ambientColor : DEFAULT_SCENE_LIGHTING.ambientColor,
       ambientIntensity: clampLighting01(source.ambientIntensity == null ? DEFAULT_SCENE_LIGHTING.ambientIntensity : source.ambientIntensity),
       overlayOpacity: clampLighting01(source.overlayOpacity == null ? DEFAULT_SCENE_LIGHTING.overlayOpacity : source.overlayOpacity),
@@ -388,6 +460,30 @@ function exportRuntimeMain() {
     if (!lightingCtx) return null;
     lightingCtx.imageSmoothingEnabled = false;
     return { canvas: lightingCanvas, ctx: lightingCtx };
+  }
+
+  function ensureLightingPattern(overlayCtx) {
+    if (!overlayCtx || typeof document === 'undefined') return null;
+    if (!lightingPatternCanvas) {
+      lightingPatternCanvas = document.createElement('canvas');
+      lightingPatternCanvas.width = 4;
+      lightingPatternCanvas.height = 4;
+      var patternCtx = lightingPatternCanvas.getContext('2d');
+      if (!patternCtx) return null;
+      patternCtx.clearRect(0, 0, 4, 4);
+      patternCtx.fillStyle = 'rgba(255, 255, 255, 1)';
+      patternCtx.fillRect(0, 0, 1, 1);
+      patternCtx.fillRect(2, 0, 1, 1);
+      patternCtx.fillRect(1, 1, 1, 1);
+      patternCtx.fillRect(3, 1, 1, 1);
+      patternCtx.fillRect(0, 2, 1, 1);
+      patternCtx.fillRect(2, 2, 1, 1);
+      patternCtx.fillRect(1, 3, 1, 1);
+      patternCtx.fillRect(3, 3, 1, 1);
+      lightingPattern = null;
+    }
+    if (!lightingPattern) lightingPattern = overlayCtx.createPattern(lightingPatternCanvas, 'repeat');
+    return lightingPattern;
   }
 
   function getLightingManagerObject() {
@@ -1464,8 +1560,88 @@ function exportRuntimeMain() {
     });
   }
 
+  function mixRgb(from, to, amount) {
+    var t = clamp01(amount);
+    return [
+      Math.round(from[0] + ((to[0] - from[0]) * t)),
+      Math.round(from[1] + ((to[1] - from[1]) * t)),
+      Math.round(from[2] + ((to[2] - from[2]) * t)),
+    ];
+  }
+
+  function desaturateRgb(rgb, amount) {
+    var gray = Math.round((rgb[0] * 0.299) + (rgb[1] * 0.587) + (rgb[2] * 0.114));
+    return mixRgb(rgb, [gray, gray, gray], amount);
+  }
+
   function rgbaString(rgb, alpha) {
     return 'rgba(' + rgb[0] + ', ' + rgb[1] + ', ' + rgb[2] + ', ' + clamp01(alpha) + ')';
+  }
+
+  function hashLightingKey(value) {
+    var text = String(value || '');
+    var hash = 0;
+    var index;
+    for (index = 0; index < text.length; index += 1) {
+      hash = ((hash * 31) + text.charCodeAt(index)) >>> 0;
+    }
+    return hash;
+  }
+
+  function getLightingPresetProfile(preset) {
+    return LIGHTING_COLOR_PRESET_PROFILES[normalizeLightingColorPreset(preset)] || null;
+  }
+
+  function tintLightingRgb(rgb, targetRgb, mix, desaturateAmount) {
+    var next = Array.isArray(targetRgb) ? mixRgb(rgb, targetRgb, mix) : rgb.slice();
+    if (desaturateAmount > 0) next = desaturateRgb(next, desaturateAmount);
+    return next;
+  }
+
+  function resolveLightingPalette(lighting) {
+    var normalized = normalizeSceneLighting(lighting);
+    var preset = getLightingPresetProfile(normalized.colorPreset);
+    var desaturateAmount = preset ? clamp01(preset.desaturate || 0) : 0;
+    var ambientRgb = parseHexColor(normalized.ambientColor, [11, 18, 32]);
+    var fogRgb = parseHexColor(normalized.fogColor, [7, 17, 29]);
+    return {
+      ambientRgb: preset ? tintLightingRgb(ambientRgb, preset.ambientRgb, preset.ambientMix, desaturateAmount) : ambientRgb,
+      fogRgb: preset ? tintLightingRgb(fogRgb, preset.fogRgb, preset.fogMix, desaturateAmount) : fogRgb,
+      preset: preset,
+      desaturateAmount: desaturateAmount,
+    };
+  }
+
+  function resolveLightRenderRgb(lightRgb, lightingPalette) {
+    if (!lightingPalette || !lightingPalette.preset) return lightRgb.slice();
+    return tintLightingRgb(
+      lightRgb,
+      lightingPalette.preset.lightRgb,
+      lightingPalette.preset.lightMix,
+      lightingPalette.desaturateAmount
+    );
+  }
+
+  function resolveLightFlicker(light, lighting, elapsedSeconds) {
+    if (!lighting || !lighting.flicker) {
+      return {
+        intensity: light.intensity,
+        radius: light.radius,
+        worldY: light.worldY,
+      };
+    }
+    var seed = (hashLightingKey(light.id) % 1024) / 1024;
+    var t = Number.isFinite(elapsedSeconds) ? elapsedSeconds : 0;
+    var waveA = Math.sin((t * 11.5) + (seed * Math.PI * 2));
+    var waveB = Math.sin((t * 23.75) + (seed * 17.37));
+    var pulse = (waveA * 0.58) + (waveB * 0.42);
+    var intensityScale = 0.9 + (pulse * 0.11);
+    var radiusScale = 0.94 + (pulse * 0.08);
+    return {
+      intensity: clamp01(light.intensity * intensityScale),
+      radius: Math.max(8, light.radius * radiusScale),
+      worldY: light.worldY + (waveB * Math.max(1, light.radius) * 0.015),
+    };
   }
 
   function resolveLightAnchor(obj, light) {
@@ -1501,9 +1677,24 @@ function exportRuntimeMain() {
     }).filter(Boolean);
   }
 
+  function getRenderLights(lighting, lightingPalette) {
+    var resolvedLighting = normalizeSceneLighting(lighting);
+    var palette = lightingPalette || resolveLightingPalette(resolvedLighting);
+    return getActiveLights().map(function(light) {
+      var flicker = resolveLightFlicker(light, resolvedLighting, elapsed);
+      return Object.assign({}, light, {
+        rgb: resolveLightRenderRgb(light.rgb, palette),
+        intensity: flicker.intensity,
+        radius: flicker.radius,
+        worldY: flicker.worldY,
+      });
+    });
+  }
+
   function buildLightingSignature() {
     sceneLighting = resolveLightingSettings(currentScene);
-    var lights = getActiveLights().map(function(light) {
+    var lightingPalette = resolveLightingPalette(sceneLighting);
+    var lights = getRenderLights(sceneLighting, lightingPalette).map(function(light) {
       return [
         light.id,
         Math.round(light.worldX * 10) / 10,
@@ -1518,11 +1709,18 @@ function exportRuntimeMain() {
     return JSON.stringify({
       enabled: sceneLighting.enabled,
       mode: sceneLighting.mode,
+      flicker: sceneLighting.flicker,
+      volumetric: sceneLighting.volumetric,
+      fogBoost: sceneLighting.fogBoost,
+      dither: sceneLighting.dither,
+      vignette: sceneLighting.vignette,
+      colorPreset: sceneLighting.colorPreset,
       ambientColor: sceneLighting.ambientColor,
       ambientIntensity: sceneLighting.ambientIntensity,
       overlayOpacity: sceneLighting.overlayOpacity,
       fogColor: sceneLighting.fogColor,
       fogDensity: sceneLighting.fogDensity,
+      animationTick: sceneLighting.flicker ? Math.floor(elapsed * 8) : 0,
       lights: lights,
     });
   }
@@ -1535,9 +1733,10 @@ function exportRuntimeMain() {
     return clamp01(intensity) * Math.pow(remaining, exponent);
   }
 
-  function apply3DLighting(baseRgb, samplePoint, lights) {
+  function apply3DLighting(baseRgb, samplePoint, lights, lightingPalette) {
     if (!sceneLighting.enabled) return baseRgb.slice();
-    var ambientRgb = parseHexColor(sceneLighting.ambientColor, [11, 18, 32]);
+    var palette = lightingPalette || resolveLightingPalette(sceneLighting);
+    var ambientRgb = palette.ambientRgb;
     var ambient = clamp01(sceneLighting.ambientIntensity);
     var next = [
       baseRgb[0] * (0.18 + ambient * 0.82) + ambientRgb[0] * (1 - ambient) * 0.08,
@@ -1557,13 +1756,46 @@ function exportRuntimeMain() {
     });
   }
 
+  function applyLightingDither(overlayCtx, width, height, strength) {
+    var pattern = ensureLightingPattern(overlayCtx);
+    if (!pattern) return;
+    overlayCtx.save();
+    overlayCtx.globalCompositeOperation = 'destination-out';
+    overlayCtx.globalAlpha = clamp01(strength);
+    overlayCtx.fillStyle = pattern;
+    overlayCtx.fillRect(0, 0, width, height);
+    overlayCtx.restore();
+  }
+
+  function applyLightingVignette(overlayCtx, lightingPalette, width, height, strength) {
+    if (strength <= 0) return;
+    var vignette = overlayCtx.createRadialGradient(
+      width * 0.5,
+      height * 0.5,
+      Math.max(width, height) * 0.12,
+      width * 0.5,
+      height * 0.5,
+      Math.max(width, height) * 0.72
+    );
+    vignette.addColorStop(0, rgbaString(lightingPalette.fogRgb, 0));
+    vignette.addColorStop(0.68, rgbaString(lightingPalette.fogRgb, strength * 0.18));
+    vignette.addColorStop(1, rgbaString(lightingPalette.fogRgb, strength * 0.62));
+    overlayCtx.save();
+    overlayCtx.globalCompositeOperation = 'source-over';
+    overlayCtx.fillStyle = vignette;
+    overlayCtx.fillRect(0, 0, width, height);
+    overlayCtx.restore();
+  }
+
   function renderFrame2DLighting() {
     if (!ctx2d || !sceneLighting.enabled) return;
     var surface = ensureLightingSurface(canvas2d.width, canvas2d.height);
     if (!surface) return;
     var overlayCtx = surface.ctx;
-    var ambientRgb = parseHexColor(sceneLighting.ambientColor, [11, 18, 32]);
-    var lights = getActiveLights();
+    var lightingPalette = resolveLightingPalette(sceneLighting);
+    var ambientRgb = lightingPalette.ambientRgb;
+    var fogRgb = lightingPalette.fogRgb;
+    var lights = getRenderLights(sceneLighting, lightingPalette);
     var renderView = getRenderView();
     var pixelMode = sceneLighting.mode !== LIGHTING_MODE_SOFT;
     var worldElementCount = getWorldElements().length;
@@ -1585,11 +1817,16 @@ function exportRuntimeMain() {
     var isEffectivelyEmptyScene = lights.length === 0 && visibleObjects === 0 && !hasFilledCells && worldElementCount === 0;
     var baseOverlayAlpha = clamp01(sceneLighting.overlayOpacity * (1 - (sceneLighting.ambientIntensity * 0.6)));
     var overlayAlpha = isEffectivelyEmptyScene ? Math.min(baseOverlayAlpha, 0.28) : baseOverlayAlpha;
+    var fogBoostAlpha = clamp01((0.08 + (overlayAlpha * 0.18)) * sceneLighting.fogBoost);
 
     overlayCtx.save();
     overlayCtx.clearRect(0, 0, canvas2d.width, canvas2d.height);
     overlayCtx.fillStyle = rgbaString(ambientRgb, overlayAlpha);
     overlayCtx.fillRect(0, 0, canvas2d.width, canvas2d.height);
+    if (fogBoostAlpha > 0) {
+      overlayCtx.fillStyle = rgbaString(fogRgb, fogBoostAlpha);
+      overlayCtx.fillRect(0, 0, canvas2d.width, canvas2d.height);
+    }
     if (lights.length > 0) {
       overlayCtx.globalCompositeOperation = 'destination-out';
       lights.forEach(function(light) {
@@ -1637,8 +1874,32 @@ function exportRuntimeMain() {
         overlayCtx.arc(sx, sy, radius, 0, Math.PI * 2);
         overlayCtx.fill();
       });
+      if (sceneLighting.volumetric) {
+        lights.forEach(function(light) {
+          var sx = pixelMode ? Math.round(light.worldX - renderView.x) : light.worldX - renderView.x;
+          var sy = pixelMode ? Math.round(light.worldY - renderView.y) : light.worldY - renderView.y;
+          var beamWidth = Math.max(10, light.radius * 0.58);
+          var beamHeight = Math.max(14, light.radius * 1.25);
+          var beam = overlayCtx.createLinearGradient(sx, sy - (beamHeight * 0.8), sx, sy + (beamHeight * 0.35));
+          beam.addColorStop(0, rgbaString(light.rgb, light.intensity * (pixelMode ? 0.06 : 0.11)));
+          beam.addColorStop(0.55, rgbaString(light.rgb, light.intensity * (pixelMode ? 0.03 : 0.07)));
+          beam.addColorStop(1, rgbaString(light.rgb, 0));
+          overlayCtx.save();
+          overlayCtx.fillStyle = beam;
+          overlayCtx.beginPath();
+          overlayCtx.ellipse(sx, sy - (beamHeight * 0.18), beamWidth, beamHeight, 0, 0, Math.PI * 2);
+          overlayCtx.fill();
+          overlayCtx.restore();
+        });
+      }
     }
     overlayCtx.restore();
+    if (sceneLighting.dither) {
+      applyLightingDither(overlayCtx, canvas2d.width, canvas2d.height, 0.08 + (sceneLighting.fogBoost * 0.08) + (pixelMode ? 0.02 : 0));
+    }
+    if (sceneLighting.vignette > 0) {
+      applyLightingVignette(overlayCtx, lightingPalette, canvas2d.width, canvas2d.height, sceneLighting.vignette);
+    }
     ctx2d.drawImage(surface.canvas, 0, 0, canvas2d.width, canvas2d.height);
   }
 
@@ -1659,7 +1920,8 @@ function exportRuntimeMain() {
   function build3DMesh() {
     var positions = [];
     var colors = [];
-    var activeLights = getActiveLights();
+    var lightingPalette = resolveLightingPalette(sceneLighting);
+    var activeLights = getRenderLights(sceneLighting, lightingPalette);
     var metrics = resolveWorldMetrics(world, CELL_SIZE);
     if (!metrics) {
       return { positions: new Float32Array(0), colors: new Float32Array(0), farPlane: 600 };
@@ -1674,8 +1936,8 @@ function exportRuntimeMain() {
     var minZ = metrics.minY;
     var maxX = metrics.maxX;
     var maxZ = metrics.maxY;
-    var floorLit = apply3DLighting(floorColor, [(minX + maxX) * 0.5, 0, (minZ + maxZ) * 0.5], []);
-    var ceilingLit = apply3DLighting(ceilingColor, [(minX + maxX) * 0.5, wallHeight, (minZ + maxZ) * 0.5], []);
+    var floorLit = apply3DLighting(floorColor, [(minX + maxX) * 0.5, 0, (minZ + maxZ) * 0.5], [], lightingPalette);
+    var ceilingLit = apply3DLighting(ceilingColor, [(minX + maxX) * 0.5, wallHeight, (minZ + maxZ) * 0.5], [], lightingPalette);
 
     pushColoredQuad(positions, colors, [minX, 0, minZ], [maxX, 0, minZ], [maxX, 0, maxZ], [minX, 0, maxZ], floorLit);
     pushColoredQuad(positions, colors, [minX, wallHeight, maxZ], [maxX, wallHeight, maxZ], [maxX, wallHeight, minZ], [minX, wallHeight, minZ], ceilingLit);
@@ -1691,16 +1953,16 @@ function exportRuntimeMain() {
         var z0 = y * metrics.cellSize;
         var z1 = z0 + metrics.cellSize;
         if (!isCollidableCell(readWorldCell(world, x, y - 1))) {
-          pushColoredQuad(positions, colors, [x0, 0, z0], [x1, 0, z0], [x1, wallHeight, z0], [x0, wallHeight, z0], apply3DLighting(shadeRgb(baseColor, 1), [x0 + (metrics.cellSize * 0.5), wallHeight * 0.5, z0], activeLights));
+          pushColoredQuad(positions, colors, [x0, 0, z0], [x1, 0, z0], [x1, wallHeight, z0], [x0, wallHeight, z0], apply3DLighting(shadeRgb(baseColor, 1), [x0 + (metrics.cellSize * 0.5), wallHeight * 0.5, z0], activeLights, lightingPalette));
         }
         if (!isCollidableCell(readWorldCell(world, x, y + 1))) {
-          pushColoredQuad(positions, colors, [x1, 0, z1], [x0, 0, z1], [x0, wallHeight, z1], [x1, wallHeight, z1], apply3DLighting(shadeRgb(baseColor, 0.82), [x0 + (metrics.cellSize * 0.5), wallHeight * 0.5, z1], activeLights));
+          pushColoredQuad(positions, colors, [x1, 0, z1], [x0, 0, z1], [x0, wallHeight, z1], [x1, wallHeight, z1], apply3DLighting(shadeRgb(baseColor, 0.82), [x0 + (metrics.cellSize * 0.5), wallHeight * 0.5, z1], activeLights, lightingPalette));
         }
         if (!isCollidableCell(readWorldCell(world, x - 1, y))) {
-          pushColoredQuad(positions, colors, [x0, 0, z1], [x0, 0, z0], [x0, wallHeight, z0], [x0, wallHeight, z1], apply3DLighting(shadeRgb(baseColor, 0.7), [x0, wallHeight * 0.5, z0 + (metrics.cellSize * 0.5)], activeLights));
+          pushColoredQuad(positions, colors, [x0, 0, z1], [x0, 0, z0], [x0, wallHeight, z0], [x0, wallHeight, z1], apply3DLighting(shadeRgb(baseColor, 0.7), [x0, wallHeight * 0.5, z0 + (metrics.cellSize * 0.5)], activeLights, lightingPalette));
         }
         if (!isCollidableCell(readWorldCell(world, x + 1, y))) {
-          pushColoredQuad(positions, colors, [x1, 0, z0], [x1, 0, z1], [x1, wallHeight, z1], [x1, wallHeight, z0], apply3DLighting(shadeRgb(baseColor, 0.9), [x1, wallHeight * 0.5, z0 + (metrics.cellSize * 0.5)], activeLights));
+          pushColoredQuad(positions, colors, [x1, 0, z0], [x1, 0, z1], [x1, wallHeight, z1], [x1, wallHeight, z0], apply3DLighting(shadeRgb(baseColor, 0.9), [x1, wallHeight * 0.5, z0 + (metrics.cellSize * 0.5)], activeLights, lightingPalette));
         }
       }
     }
@@ -1881,9 +2143,13 @@ function exportRuntimeMain() {
     var width = canvas3d.width || 960;
     var height = canvas3d.height || 540;
     var camera = render3D.camera || {};
-    var clear = parseHexColor(sceneLighting.enabled ? sceneLighting.fogColor : ((render3D.options && render3D.options.clearColor) || '#07111d'), [7, 17, 29]);
-    var fogColor = parseHexColor(sceneLighting.fogColor || '#07111d', [7, 17, 29]);
-    var fogDensity = sceneLighting.enabled ? clamp01(sceneLighting.fogDensity) : 0.65;
+    var lightingPalette = resolveLightingPalette(sceneLighting);
+    var defaultClear = parseHexColor((render3D.options && render3D.options.clearColor) || '#07111d', [7, 17, 29]);
+    var fogColor = lightingPalette.fogRgb;
+    var clear = sceneLighting.enabled
+      ? mixRgb(defaultClear, fogColor, 0.78 + (sceneLighting.fogBoost * 0.18))
+      : defaultClear;
+    var fogDensity = sceneLighting.enabled ? clamp01(sceneLighting.fogDensity + (sceneLighting.fogBoost * 0.28)) : 0.65;
     var eye = [
       Number.isFinite(camera.x) ? camera.x : CELL_SIZE * 1.5,
       Number.isFinite(camera.y) ? camera.y : CELL_SIZE * 0.72,

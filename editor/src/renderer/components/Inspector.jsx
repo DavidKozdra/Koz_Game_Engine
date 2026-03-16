@@ -3,11 +3,20 @@ import Modal from './Modal.jsx';
 import Icon from './Icon.jsx';
 
 const PREFAB_DELETE_KEY = '__kozPrefabDelete';
+const LIGHTING_COLOR_PRESET_OPTIONS = [
+  { value: 'none', label: 'None' },
+  { value: 'warm', label: 'Warm' },
+  { value: 'cool', label: 'Cool' },
+  { value: 'noir', label: 'Noir' },
+  { value: 'neon', label: 'Neon' },
+  { value: 'sunset', label: 'Sunset' },
+  { value: 'moonlight', label: 'Moonlight' },
+];
 
 const AVAILABLE_COMPONENTS = [
   { id: 'Grid', label: 'Grid', icon: 'grid', color: '#60a5fa', defaults: { cols: 10, rows: 10, cellSize: 24, visible: true, layerId: null } },
   { id: 'Sprite', label: 'Sprite', icon: 'objSprite', color: '#a78bfa', defaults: { assetId: null, color: '#4ade80', width: 32, height: 32, frameAssetIds: [], fps: 8 } },
-  { id: 'LightingManager', label: 'Lighting Manager', icon: 'objLightingManager', color: '#f59e0b', defaults: { enabled: false, mode: 'pixel', ambientColor: '#0b1220', ambientIntensity: 0.35, overlayOpacity: 0.82, fogColor: '#07111d', fogDensity: 0.65 } },
+  { id: 'LightingManager', label: 'Lighting Manager', icon: 'objLightingManager', color: '#f59e0b', defaults: { enabled: false, mode: 'pixel', flicker: false, volumetric: false, fogBoost: 0, dither: false, vignette: 0, colorPreset: 'none', ambientColor: '#0b1220', ambientIntensity: 0.35, overlayOpacity: 0.82, fogColor: '#07111d', fogDensity: 0.65 } },
   { id: 'Light', label: 'Light', icon: 'objLight', color: '#fbbf24', defaults: { enabled: true, color: '#ffd27a', intensity: 1, radius: 180, falloff: 0.65, offsetX: 0, offsetY: 0, height: 18 } },
   { id: 'Sound', label: 'Sound', icon: 'audio', color: '#f472b6', defaults: { assetId: null, category: 'sfx', autoplay: false, loop: false, volume: 1, maxDistance: 0 } },
   { id: 'Collider', label: 'Collider', icon: 'collider', color: '#38bdf8', defaults: { shape: 'rect', width: 32, height: 32 } },
@@ -1036,6 +1045,63 @@ export default function Inspector({
               <option value="pixel">Pixel</option>
               <option value="soft">Soft</option>
             </select>
+          </div>
+          <div className="field">
+            {renderFieldLabel('Preset', 'components.LightingManager.colorPreset')}
+            <select
+              value={components.LightingManager.colorPreset || 'none'}
+              onChange={(e) => handleComponentChange('LightingManager', 'colorPreset', e.target.value)}
+            >
+              {LIGHTING_COLOR_PRESET_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            {renderFieldLabel('Flicker', 'components.LightingManager.flicker')}
+            <input
+              type="checkbox"
+              checked={components.LightingManager.flicker === true}
+              onChange={(e) => handleComponentChange('LightingManager', 'flicker', e.target.checked)}
+            />
+          </div>
+          <div className="field">
+            {renderFieldLabel('Volumetric', 'components.LightingManager.volumetric')}
+            <input
+              type="checkbox"
+              checked={components.LightingManager.volumetric === true}
+              onChange={(e) => handleComponentChange('LightingManager', 'volumetric', e.target.checked)}
+            />
+          </div>
+          <div className="field">
+            {renderFieldLabel('Fog Boost', 'components.LightingManager.fogBoost')}
+            <input
+              type="number"
+              min="0"
+              max="1"
+              step="0.05"
+              value={Number.isFinite(components.LightingManager.fogBoost) ? components.LightingManager.fogBoost : 0}
+              onChange={(e) => handleComponentChange('LightingManager', 'fogBoost', Math.max(0, Math.min(1, parseFloat(e.target.value) || 0)))}
+            />
+          </div>
+          <div className="field">
+            {renderFieldLabel('Dither', 'components.LightingManager.dither')}
+            <input
+              type="checkbox"
+              checked={components.LightingManager.dither === true}
+              onChange={(e) => handleComponentChange('LightingManager', 'dither', e.target.checked)}
+            />
+          </div>
+          <div className="field">
+            {renderFieldLabel('Vignette', 'components.LightingManager.vignette')}
+            <input
+              type="number"
+              min="0"
+              max="1"
+              step="0.05"
+              value={Number.isFinite(components.LightingManager.vignette) ? components.LightingManager.vignette : 0}
+              onChange={(e) => handleComponentChange('LightingManager', 'vignette', Math.max(0, Math.min(1, parseFloat(e.target.value) || 0)))}
+            />
           </div>
           <div className="field">
             {renderFieldLabel('Ambient', 'components.LightingManager.ambientColor')}

@@ -43,9 +43,68 @@ const PLAY_OBJECT_CULL_MARGIN = CELL_SIZE * 4;
 const PLAY_RENDER_MODE_WEBGL_3D = 'webgl-3d';
 const LIGHTING_MODE_PIXEL = 'pixel';
 const LIGHTING_MODE_SOFT = 'soft';
+const LIGHTING_COLOR_PRESET_NONE = 'none';
+const LIGHTING_COLOR_PRESETS = new Set(['none', 'warm', 'cool', 'noir', 'neon', 'sunset', 'moonlight']);
+const LIGHTING_COLOR_PRESET_PROFILES = {
+  warm: {
+    ambientRgb: [255, 184, 128],
+    ambientMix: 0.18,
+    fogRgb: [120, 68, 38],
+    fogMix: 0.28,
+    lightRgb: [255, 214, 156],
+    lightMix: 0.26,
+  },
+  cool: {
+    ambientRgb: [126, 168, 255],
+    ambientMix: 0.2,
+    fogRgb: [28, 64, 124],
+    fogMix: 0.3,
+    lightRgb: [188, 228, 255],
+    lightMix: 0.24,
+  },
+  noir: {
+    ambientRgb: [156, 163, 175],
+    ambientMix: 0.12,
+    fogRgb: [11, 15, 23],
+    fogMix: 0.48,
+    lightRgb: [226, 232, 240],
+    lightMix: 0.12,
+    desaturate: 0.78,
+  },
+  neon: {
+    ambientRgb: [82, 32, 118],
+    ambientMix: 0.18,
+    fogRgb: [24, 11, 44],
+    fogMix: 0.36,
+    lightRgb: [74, 255, 209],
+    lightMix: 0.34,
+  },
+  sunset: {
+    ambientRgb: [255, 145, 102],
+    ambientMix: 0.24,
+    fogRgb: [111, 39, 64],
+    fogMix: 0.28,
+    lightRgb: [255, 200, 130],
+    lightMix: 0.22,
+  },
+  moonlight: {
+    ambientRgb: [130, 158, 220],
+    ambientMix: 0.22,
+    fogRgb: [11, 28, 72],
+    fogMix: 0.38,
+    lightRgb: [198, 220, 255],
+    lightMix: 0.26,
+  },
+};
 const DEFAULT_SCENE_LIGHTING = {
   enabled: false,
   mode: LIGHTING_MODE_PIXEL,
+  flicker: false,
+  volumetric: false,
+  fogBoost: 0,
+  dither: false,
+  vignette: 0,
+  colorPreset: LIGHTING_COLOR_PRESET_NONE,
   ambientColor: '#0b1220',
   ambientIntensity: 0.35,
   overlayOpacity: 0.82,
@@ -1271,14 +1330,13 @@ export function usePlayMode(project, onLog) {
   const h = canvas.height || 540;
   const camera = state.render3D.camera || {};
   const sceneLighting = normalizePlaySceneLighting(state && state.sceneLighting);
-  const clear = parseHexColor(
-    sceneLighting.enabled
-      ? sceneLighting.fogColor
-      : ((state.render3D.options && state.render3D.options.clearColor) || '#07111d'),
-    [7, 17, 29],
-  );
-  const fogColor = parseHexColor(sceneLighting.fogColor || '#07111d', [7, 17, 29]);
-  const fogDensity = sceneLighting.enabled ? clamp01(sceneLighting.fogDensity) : 0.65;
+  const lightingPalette = resolvePlayLightingPalette(sceneLighting);
+  const defaultClear = parseHexColor((state.render3D.options && state.render3D.options.clearColor) || '#07111d', [7, 17, 29]);
+  const fogColor = lightingPalette.fogRgb;
+  const clear = sceneLighting.enabled
+    ? mixRgb(defaultClear, fogColor, 0.78 + (sceneLighting.fogBoost * 0.18))
+    : defaultClear;
+  const fogDensity = sceneLighting.enabled ? clamp01(sceneLighting.fogDensity + (sceneLighting.fogBoost * 0.28)) : 0.65;
   const eye = [
     Number.isFinite(camera.x) ? camera.x : CELL_SIZE * 1.5,
       Number.isFinite(camera.y) ? camera.y : CELL_SIZE * 0.72,
@@ -1492,6 +1550,20 @@ function shadeRgb(rgb, factor) {
   return rgb.map((value) => Math.max(0, Math.min(255, Math.round(value * factor))));
 }
 
+function mixRgb(from, to, amount) {
+  const t = clamp01(amount);
+  return [
+    Math.round(from[0] + ((to[0] - from[0]) * t)),
+    Math.round(from[1] + ((to[1] - from[1]) * t)),
+    Math.round(from[2] + ((to[2] - from[2]) * t)),
+  ];
+}
+
+function desaturateRgb(rgb, amount) {
+  const gray = Math.round((rgb[0] * 0.299) + (rgb[1] * 0.587) + (rgb[2] * 0.114));
+  return mixRgb(rgb, [gray, gray, gray], amount);
+}
+
 function normalizeLightingMode(value, fallback = LIGHTING_MODE_PIXEL) {
   const mode = typeof value === 'string' ? value.trim().toLowerCase() : '';
   if (mode === LIGHTING_MODE_SOFT) return LIGHTING_MODE_SOFT;
@@ -1499,11 +1571,22 @@ function normalizeLightingMode(value, fallback = LIGHTING_MODE_PIXEL) {
   return fallback;
 }
 
+function normalizeLightingColorPreset(value, fallback = LIGHTING_COLOR_PRESET_NONE) {
+  const preset = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  return LIGHTING_COLOR_PRESETS.has(preset) ? preset : fallback;
+}
+
 function normalizePlaySceneLighting(lighting) {
   const source = lighting && typeof lighting === 'object' ? lighting : {};
   return {
     enabled: source.enabled === true,
     mode: normalizeLightingMode(source.mode, DEFAULT_SCENE_LIGHTING.mode),
+    flicker: source.flicker === true,
+    volumetric: source.volumetric === true,
+    fogBoost: clamp01(source.fogBoost ?? DEFAULT_SCENE_LIGHTING.fogBoost),
+    dither: source.dither === true,
+    vignette: clamp01(source.vignette ?? DEFAULT_SCENE_LIGHTING.vignette),
+    colorPreset: normalizeLightingColorPreset(source.colorPreset, DEFAULT_SCENE_LIGHTING.colorPreset),
     ambientColor: typeof source.ambientColor === 'string' && source.ambientColor ? source.ambientColor : DEFAULT_SCENE_LIGHTING.ambientColor,
     ambientIntensity: clamp01(source.ambientIntensity ?? DEFAULT_SCENE_LIGHTING.ambientIntensity),
     overlayOpacity: clamp01(source.overlayOpacity ?? DEFAULT_SCENE_LIGHTING.overlayOpacity),
@@ -1544,6 +1627,33 @@ function ensurePlayLightingSurface(state, width, height) {
   return { canvas, ctx };
 }
 
+function ensurePlayLightingPattern(state, overlayCtx) {
+  if (!state || !overlayCtx || typeof document === 'undefined') return null;
+  if (!state.lightingPatternCanvas) {
+    const patternCanvas = document.createElement('canvas');
+    patternCanvas.width = 4;
+    patternCanvas.height = 4;
+    const patternCtx = patternCanvas.getContext('2d');
+    if (!patternCtx) return null;
+    patternCtx.clearRect(0, 0, 4, 4);
+    patternCtx.fillStyle = 'rgba(255, 255, 255, 1)';
+    patternCtx.fillRect(0, 0, 1, 1);
+    patternCtx.fillRect(2, 0, 1, 1);
+    patternCtx.fillRect(1, 1, 1, 1);
+    patternCtx.fillRect(3, 1, 1, 1);
+    patternCtx.fillRect(0, 2, 1, 1);
+    patternCtx.fillRect(2, 2, 1, 1);
+    patternCtx.fillRect(1, 3, 1, 1);
+    patternCtx.fillRect(3, 3, 1, 1);
+    state.lightingPatternCanvas = patternCanvas;
+    state.lightingPattern = null;
+  }
+  if (!state.lightingPattern) {
+    state.lightingPattern = overlayCtx.createPattern(state.lightingPatternCanvas, 'repeat');
+  }
+  return state.lightingPattern;
+}
+
 function resolvePlayLightingSettings(state, sceneLike = null) {
   const managerObject = getPlayLightingManagerObject(state);
   if (managerObject && managerObject.components && managerObject.components.LightingManager) {
@@ -1569,6 +1679,85 @@ function normalizePlayLightComponent(light) {
 function rgbaString(rgb, alpha = 1) {
   const a = clamp01(alpha);
   return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${a})`;
+}
+
+function hashLightingKey(value) {
+  const text = String(value || '');
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash * 31) + text.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
+function getLightingPresetProfile(preset) {
+  return LIGHTING_COLOR_PRESET_PROFILES[normalizeLightingColorPreset(preset)] || null;
+}
+
+function tintLightingRgb(rgb, targetRgb, mix, desaturateAmount = 0) {
+  let next = Array.isArray(targetRgb) ? mixRgb(rgb, targetRgb, mix) : rgb.slice();
+  if (desaturateAmount > 0) next = desaturateRgb(next, desaturateAmount);
+  return next;
+}
+
+function resolvePlayLightingPalette(lighting) {
+  const normalized = normalizePlaySceneLighting(lighting);
+  const preset = getLightingPresetProfile(normalized.colorPreset);
+  const desaturateAmount = preset ? clamp01(preset.desaturate || 0) : 0;
+  const ambientRgb = parseHexColor(normalized.ambientColor, [11, 18, 32]);
+  const fogRgb = parseHexColor(normalized.fogColor, [7, 17, 29]);
+  return {
+    ambientRgb: preset ? tintLightingRgb(ambientRgb, preset.ambientRgb, preset.ambientMix, desaturateAmount) : ambientRgb,
+    fogRgb: preset ? tintLightingRgb(fogRgb, preset.fogRgb, preset.fogMix, desaturateAmount) : fogRgb,
+    preset,
+    desaturateAmount,
+  };
+}
+
+function resolvePlayLightRenderRgb(lightRgb, lightingPalette) {
+  if (!lightingPalette || !lightingPalette.preset) return lightRgb.slice();
+  return tintLightingRgb(
+    lightRgb,
+    lightingPalette.preset.lightRgb,
+    lightingPalette.preset.lightMix,
+    lightingPalette.desaturateAmount,
+  );
+}
+
+function resolvePlayLightFlicker(light, lighting, elapsedSeconds = 0) {
+  if (!lighting || !lighting.flicker) {
+    return {
+      intensity: light.intensity,
+      radius: light.radius,
+      worldY: light.worldY,
+    };
+  }
+  const seed = (hashLightingKey(light.id) % 1024) / 1024;
+  const t = Number.isFinite(elapsedSeconds) ? elapsedSeconds : 0;
+  const waveA = Math.sin((t * 11.5) + (seed * Math.PI * 2));
+  const waveB = Math.sin((t * 23.75) + (seed * 17.37));
+  const pulse = (waveA * 0.58) + (waveB * 0.42);
+  const intensityScale = 0.9 + (pulse * 0.11);
+  const radiusScale = 0.94 + (pulse * 0.08);
+  return {
+    intensity: clamp01(light.intensity * intensityScale),
+    radius: Math.max(8, light.radius * radiusScale),
+    worldY: light.worldY + (waveB * Math.max(1, light.radius) * 0.015),
+  };
+}
+
+function getPlayRenderLights(state, lighting, lightingPalette = resolvePlayLightingPalette(lighting)) {
+  const elapsedSeconds = Number.isFinite(state && state.elapsed) ? state.elapsed : 0;
+  return getPlayActiveLights(state).map((light) => {
+    const flicker = resolvePlayLightFlicker(light, lighting, elapsedSeconds);
+    return {
+      ...light,
+      rgb: resolvePlayLightRenderRgb(light.rgb, lightingPalette),
+      intensity: flicker.intensity,
+      radius: flicker.radius,
+      worldY: flicker.worldY,
+    };
+  });
 }
 
 function resolvePlayLightAnchor(obj, light) {
@@ -1726,7 +1915,8 @@ function renderPlayBlankStageOverlay(ctx, state, width, height) {
 
 function buildPlayLightingSignature(state) {
   const lighting = normalizePlaySceneLighting(state && state.sceneLighting);
-  const lights = getPlayActiveLights(state)
+  const lightingPalette = resolvePlayLightingPalette(lighting);
+  const lights = getPlayRenderLights(state, lighting, lightingPalette)
     .map((light) => [
       light.id,
       Math.round(light.worldX * 10) / 10,
@@ -1741,11 +1931,18 @@ function buildPlayLightingSignature(state) {
   return JSON.stringify({
     enabled: lighting.enabled,
     mode: lighting.mode,
+    flicker: lighting.flicker,
+    volumetric: lighting.volumetric,
+    fogBoost: lighting.fogBoost,
+    dither: lighting.dither,
+    vignette: lighting.vignette,
+    colorPreset: lighting.colorPreset,
     ambientColor: lighting.ambientColor,
     ambientIntensity: lighting.ambientIntensity,
     overlayOpacity: lighting.overlayOpacity,
     fogColor: lighting.fogColor,
     fogDensity: lighting.fogDensity,
+    animationTick: lighting.flicker ? Math.floor((Number.isFinite(state && state.elapsed) ? state.elapsed : 0) * 8) : 0,
     lights,
   });
 }
@@ -1758,10 +1955,10 @@ function computePlayLightStrength(distance, radius, intensity, falloff) {
   return clamp01(intensity) * Math.pow(remaining, exponent);
 }
 
-function applyPlay3DLighting(baseRgb, samplePoint, sceneLighting, lights) {
+function applyPlay3DLighting(baseRgb, samplePoint, sceneLighting, lights, lightingPalette = resolvePlayLightingPalette(sceneLighting)) {
   const lighting = normalizePlaySceneLighting(sceneLighting);
   if (!lighting.enabled) return baseRgb.slice();
-  const ambientRgb = parseHexColor(lighting.ambientColor, [11, 18, 32]);
+  const ambientRgb = lightingPalette.ambientRgb;
   const ambient = clamp01(lighting.ambientIntensity);
   const next = [
     baseRgb[0] * (0.18 + ambient * 0.82) + ambientRgb[0] * (1 - ambient) * 0.08,
@@ -1783,14 +1980,47 @@ function applyPlay3DLighting(baseRgb, samplePoint, sceneLighting, lights) {
   return next.map((value) => Math.max(0, Math.min(255, Math.round(value))));
 }
 
+function applyPlayLightingDither(overlayCtx, state, width, height, strength) {
+  const pattern = ensurePlayLightingPattern(state, overlayCtx);
+  if (!pattern) return;
+  overlayCtx.save();
+  overlayCtx.globalCompositeOperation = 'destination-out';
+  overlayCtx.globalAlpha = clamp01(strength);
+  overlayCtx.fillStyle = pattern;
+  overlayCtx.fillRect(0, 0, width, height);
+  overlayCtx.restore();
+}
+
+function applyPlayLightingVignette(overlayCtx, lightingPalette, width, height, strength) {
+  if (strength <= 0) return;
+  const vignette = overlayCtx.createRadialGradient(
+    width * 0.5,
+    height * 0.5,
+    Math.max(width, height) * 0.12,
+    width * 0.5,
+    height * 0.5,
+    Math.max(width, height) * 0.72,
+  );
+  vignette.addColorStop(0, rgbaString(lightingPalette.fogRgb, 0));
+  vignette.addColorStop(0.68, rgbaString(lightingPalette.fogRgb, strength * 0.18));
+  vignette.addColorStop(1, rgbaString(lightingPalette.fogRgb, strength * 0.62));
+  overlayCtx.save();
+  overlayCtx.globalCompositeOperation = 'source-over';
+  overlayCtx.fillStyle = vignette;
+  overlayCtx.fillRect(0, 0, width, height);
+  overlayCtx.restore();
+}
+
 function renderFrame2DLighting(ctx, state, width, height, renderView = null) {
   const lighting = normalizePlaySceneLighting(state && state.sceneLighting);
   if (!lighting.enabled) return;
   const surface = ensurePlayLightingSurface(state, width, height);
   if (!surface) return;
   const overlayCtx = surface.ctx;
-  const ambientRgb = parseHexColor(lighting.ambientColor, [11, 18, 32]);
-  const lights = getPlayActiveLights(state);
+  const lightingPalette = resolvePlayLightingPalette(lighting);
+  const ambientRgb = lightingPalette.ambientRgb;
+  const fogRgb = lightingPalette.fogRgb;
+  const lights = getPlayRenderLights(state, lighting, lightingPalette);
   const view = renderView || getPlayRenderView(state);
   const pixelMode = lighting.mode !== LIGHTING_MODE_SOFT;
   const worldElementCount = getPlayWorldElements(state).length;
@@ -1799,11 +2029,16 @@ function renderFrame2DLighting(ctx, state, width, height, renderView = null) {
   const isEffectivelyEmptyScene = lights.length === 0 && visibleObjects === 0 && !hasFilledCells && worldElementCount === 0;
   const baseOverlayAlpha = clamp01(lighting.overlayOpacity * (1 - (lighting.ambientIntensity * 0.6)));
   const overlayAlpha = isEffectivelyEmptyScene ? Math.min(baseOverlayAlpha, 0.28) : baseOverlayAlpha;
+  const fogBoostAlpha = clamp01((0.08 + (overlayAlpha * 0.18)) * lighting.fogBoost);
 
   overlayCtx.save();
   overlayCtx.clearRect(0, 0, width, height);
   overlayCtx.fillStyle = rgbaString(ambientRgb, overlayAlpha);
   overlayCtx.fillRect(0, 0, width, height);
+  if (fogBoostAlpha > 0) {
+    overlayCtx.fillStyle = rgbaString(fogRgb, fogBoostAlpha);
+    overlayCtx.fillRect(0, 0, width, height);
+  }
   if (lights.length > 0) {
     overlayCtx.globalCompositeOperation = 'destination-out';
     lights.forEach((light) => {
@@ -1851,8 +2086,32 @@ function renderFrame2DLighting(ctx, state, width, height, renderView = null) {
       overlayCtx.arc(sx, sy, radius, 0, Math.PI * 2);
       overlayCtx.fill();
     });
+    if (lighting.volumetric) {
+      lights.forEach((light) => {
+        const sx = pixelMode ? Math.round(light.worldX - view.x) : light.worldX - view.x;
+        const sy = pixelMode ? Math.round(light.worldY - view.y) : light.worldY - view.y;
+        const beamWidth = Math.max(10, light.radius * 0.58);
+        const beamHeight = Math.max(14, light.radius * 1.25);
+        const beam = overlayCtx.createLinearGradient(sx, sy - (beamHeight * 0.8), sx, sy + (beamHeight * 0.35));
+        beam.addColorStop(0, rgbaString(light.rgb, light.intensity * (pixelMode ? 0.06 : 0.11)));
+        beam.addColorStop(0.55, rgbaString(light.rgb, light.intensity * (pixelMode ? 0.03 : 0.07)));
+        beam.addColorStop(1, rgbaString(light.rgb, 0));
+        overlayCtx.save();
+        overlayCtx.fillStyle = beam;
+        overlayCtx.beginPath();
+        overlayCtx.ellipse(sx, sy - (beamHeight * 0.18), beamWidth, beamHeight, 0, 0, Math.PI * 2);
+        overlayCtx.fill();
+        overlayCtx.restore();
+      });
+    }
   }
   overlayCtx.restore();
+  if (lighting.dither) {
+    applyPlayLightingDither(overlayCtx, state, width, height, 0.08 + (lighting.fogBoost * 0.08) + (pixelMode ? 0.02 : 0));
+  }
+  if (lighting.vignette > 0) {
+    applyPlayLightingVignette(overlayCtx, lightingPalette, width, height, lighting.vignette);
+  }
   ctx.drawImage(surface.canvas, 0, 0, width, height);
 }
 
@@ -1878,7 +2137,8 @@ function buildPlay3DMesh(state) {
   const render3D = state && state.render3D;
   const options = (render3D && render3D.options) || {};
   const sceneLighting = normalizePlaySceneLighting(state && state.sceneLighting);
-  const activeLights = getPlayActiveLights(state);
+  const lightingPalette = resolvePlayLightingPalette(sceneLighting);
+  const activeLights = getPlayRenderLights(state, sceneLighting, lightingPalette);
   const metrics = resolveWorldMetrics(world, CELL_SIZE);
   if (!metrics) return { positions: new Float32Array(0), colors: new Float32Array(0), farPlane: 600 };
 
@@ -1890,8 +2150,8 @@ function buildPlay3DMesh(state) {
   const minZ = metrics.minY;
   const maxX = metrics.maxX;
   const maxZ = metrics.maxY;
-  const floorLit = applyPlay3DLighting(floorColor, [(minX + maxX) * 0.5, 0, (minZ + maxZ) * 0.5], sceneLighting, []);
-  const ceilingLit = applyPlay3DLighting(ceilingColor, [(minX + maxX) * 0.5, wallHeight, (minZ + maxZ) * 0.5], sceneLighting, []);
+  const floorLit = applyPlay3DLighting(floorColor, [(minX + maxX) * 0.5, 0, (minZ + maxZ) * 0.5], sceneLighting, [], lightingPalette);
+  const ceilingLit = applyPlay3DLighting(ceilingColor, [(minX + maxX) * 0.5, wallHeight, (minZ + maxZ) * 0.5], sceneLighting, [], lightingPalette);
 
   pushColoredQuad(positions, colors, [minX, 0, minZ], [maxX, 0, minZ], [maxX, 0, maxZ], [minX, 0, maxZ], floorLit);
   pushColoredQuad(positions, colors, [minX, wallHeight, maxZ], [maxX, wallHeight, maxZ], [maxX, wallHeight, minZ], [minX, wallHeight, minZ], ceilingLit);
@@ -1914,7 +2174,7 @@ function buildPlay3DMesh(state) {
           [x1, 0, z0],
           [x1, wallHeight, z0],
           [x0, wallHeight, z0],
-          applyPlay3DLighting(shadeRgb(baseColor, 1), [x0 + (metrics.cellSize * 0.5), wallHeight * 0.5, z0], sceneLighting, activeLights),
+          applyPlay3DLighting(shadeRgb(baseColor, 1), [x0 + (metrics.cellSize * 0.5), wallHeight * 0.5, z0], sceneLighting, activeLights, lightingPalette),
         );
       }
       if (!isCollidableCell(project, readWorldCell(world, x, y + 1))) {
@@ -1925,7 +2185,7 @@ function buildPlay3DMesh(state) {
           [x0, 0, z1],
           [x0, wallHeight, z1],
           [x1, wallHeight, z1],
-          applyPlay3DLighting(shadeRgb(baseColor, 0.82), [x0 + (metrics.cellSize * 0.5), wallHeight * 0.5, z1], sceneLighting, activeLights),
+          applyPlay3DLighting(shadeRgb(baseColor, 0.82), [x0 + (metrics.cellSize * 0.5), wallHeight * 0.5, z1], sceneLighting, activeLights, lightingPalette),
         );
       }
       if (!isCollidableCell(project, readWorldCell(world, x - 1, y))) {
@@ -1936,7 +2196,7 @@ function buildPlay3DMesh(state) {
           [x0, 0, z0],
           [x0, wallHeight, z0],
           [x0, wallHeight, z1],
-          applyPlay3DLighting(shadeRgb(baseColor, 0.7), [x0, wallHeight * 0.5, z0 + (metrics.cellSize * 0.5)], sceneLighting, activeLights),
+          applyPlay3DLighting(shadeRgb(baseColor, 0.7), [x0, wallHeight * 0.5, z0 + (metrics.cellSize * 0.5)], sceneLighting, activeLights, lightingPalette),
         );
       }
       if (!isCollidableCell(project, readWorldCell(world, x + 1, y))) {
@@ -1947,7 +2207,7 @@ function buildPlay3DMesh(state) {
           [x1, 0, z1],
           [x1, wallHeight, z1],
           [x1, wallHeight, z0],
-          applyPlay3DLighting(shadeRgb(baseColor, 0.9), [x1, wallHeight * 0.5, z0 + (metrics.cellSize * 0.5)], sceneLighting, activeLights),
+          applyPlay3DLighting(shadeRgb(baseColor, 0.9), [x1, wallHeight * 0.5, z0 + (metrics.cellSize * 0.5)], sceneLighting, activeLights, lightingPalette),
         );
       }
     }
