@@ -1,8 +1,10 @@
 {
   "name": "koz-engine-editor",
   "version": "0.1.0",
+  "description": "Editor for building and exporting Koz Engine projects.",
   "main": "src/main/main.js",
   "private": true,
+  "author": "Koz Engine",
   "scripts": {
     "start": "electron .",
     "dev": "concurrently -n vite,electron \"pnpm run vite-dev\" \"pnpm run electron-dev\"",
@@ -18,13 +20,13 @@
     "@codemirror/theme-one-dark": "^6.1.3",
     "@codemirror/view": "^6.39.16",
     "@tailwindcss/browser": "^4.2.1",
-    "codemirror": "^6.0.2",
-    "electron": "^28.0.0",
-    "sucrase": "^3.35.1"
+      "codemirror": "^6.0.2",
+      "sucrase": "^3.35.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.0",
     "concurrently": "^8.2.0",
+    "electron": "^28.0.0",
     "electron-builder": "^24.6.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -37,11 +39,28 @@
     "directories": {
       "buildResources": "build"
     },
+    "extraResources": [
+      {
+        "from": "../projects",
+        "to": "projects",
+        "filter": [
+          "**/project.json"
+        ]
+      },
+      {
+        "from": "../samples",
+        "to": "samples",
+        "filter": [
+          "*.json"
+        ]
+      }
+    ],
     "win": {
       "icon": "build/icon.png"
     },
     "linux": {
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "category": "Development"
     },
     "mac": {
       "icon": "build/icon.png"

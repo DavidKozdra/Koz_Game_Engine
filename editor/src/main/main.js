@@ -36,6 +36,34 @@ function getProjectsRoot() {
   return root;
 }
 
+function getProjectDiscoveryRoots() {
+  const roots = [];
+  const seen = new Set();
+
+  function addRoot(dirPath) {
+    if (!dirPath) return;
+    const resolved = path.resolve(dirPath);
+    if (seen.has(resolved) || !fs.existsSync(resolved)) return;
+    seen.add(resolved);
+    roots.push(resolved);
+  }
+
+  if (app.isPackaged) {
+    addRoot(path.join(process.resourcesPath, 'projects'));
+    addRoot(path.join(process.resourcesPath, 'samples'));
+    // When running a packaged build directly from the repo, the executable still sits under editor/dist.
+    const repoRootNearExecutable = path.resolve(path.dirname(process.execPath), '../../..');
+    addRoot(path.join(repoRootNearExecutable, 'projects'));
+    addRoot(path.join(repoRootNearExecutable, 'samples'));
+  } else {
+    const workspaceRoot = path.resolve(__dirname, '../../..');
+    addRoot(path.join(workspaceRoot, 'projects'));
+    addRoot(path.join(workspaceRoot, 'samples'));
+  }
+
+  return roots;
+}
+
 function resolveProjectJsonPath(projectPath) {
   if (!projectPath) return null;
   const stat = fs.existsSync(projectPath) ? fs.statSync(projectPath) : null;
@@ -130,10 +158,8 @@ async function listProjects() {
     await addProject(jsonPath, fallbackName, true);
   }
 
-  // Also discover projects from workspace locations (for sample projects and user-managed files).
-  const workspaceRoot = path.resolve(__dirname, '../../..');
-  const discoverRoots = [path.join(workspaceRoot, 'samples'), path.join(workspaceRoot, 'projects')];
-  for (const dirPath of discoverRoots) {
+  // Also discover bundled sample projects and nearby workspace projects.
+  for (const dirPath of getProjectDiscoveryRoots()) {
     if (!fs.existsSync(dirPath)) continue;
     const candidates = await collectJsonCandidates(dirPath, 3);
     for (const jsonPath of candidates) {
@@ -591,10 +617,12 @@ async function createWindow() {
     }
   });
 
-  // Auto-detect: if Vite is running use it, otherwise load built files
-  const isDev = process.env.NODE_ENV === 'development'
+  // Only probe a Vite dev server for unpackaged runs. Packaged apps must load bundled assets.
+  const isDev = !app.isPackaged && (
+    process.env.NODE_ENV === 'development'
     || process.argv.includes('--dev')
-    || await checkViteRunning();
+    || await checkViteRunning()
+  );
 
   if (isDev) {
     win.loadURL('http://localhost:5173');

@@ -1,0 +1,984 @@
+{
+  "schemaVersion": 1,
+  "meta": {
+    "name": "Template - 2D Clicker",
+    "version": "1.0.0",
+    "resolution": {
+      "width": 960,
+      "height": 540
+    },
+    "engineVersion": "0.1.0"
+  },
+  "activeSceneId": "scene_menu",
+  "world": {
+    "cols": 18,
+    "rows": 10,
+    "defaultCell": 0,
+    "grid": [
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    ],
+    "elements": [],
+    "meta": {}
+  },
+  "objects": [
+    {
+      "id": "obj_clicker_state",
+      "name": "Clicker State",
+      "type": "controller",
+      "x": 0,
+      "y": 0,
+      "components": {
+        "Transform": {
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        "Sprite": {
+          "assetId": null,
+          "color": "#082f49",
+          "width": 1,
+          "height": 1
+        },
+        "Collider": {
+          "shape": "rect",
+          "width": 1,
+          "height": 1
+        },
+        "ScriptBinding": {
+          "scriptId": null
+        },
+        "ScriptBindings": [
+          {
+            "scriptId": "script_menu_overlay",
+            "active": true,
+            "properties": {
+              "title": "2D Clicker Game",
+              "subtitle": "Mouse-input target practice template",
+              "instructions": "Click the colored targets before the timer runs out.",
+              "actionLabel": "Start Clicking",
+              "note": "This template uses DOM pointer events so it also stress-tests scripting and UI together."
+            }
+          },
+          {
+            "scriptId": "script_clicker_controller",
+            "active": true,
+            "properties": {
+              "timeLimit": "20"
+            }
+          }
+        ],
+        "Animator": {
+          "clipId": null
+        }
+      }
+    },
+    {
+      "id": "obj_target_a",
+      "name": "Target A",
+      "type": "target",
+      "x": 110,
+      "y": 130,
+      "components": {
+        "Transform": {
+          "x": 110,
+          "y": 130,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        "Sprite": {
+          "assetId": null,
+          "color": "#f97316",
+          "width": 46,
+          "height": 46
+        },
+        "Collider": {
+          "shape": "rect",
+          "width": 46,
+          "height": 46
+        },
+        "Collision": {
+          "enabled": true,
+          "isTrigger": true
+        },
+        "ScriptBinding": {
+          "scriptId": "script_target_wobble"
+        },
+        "ScriptBindings": [],
+        "Animator": {
+          "clipId": null
+        }
+      }
+    },
+    {
+      "id": "obj_target_b",
+      "name": "Target B",
+      "type": "target",
+      "x": 290,
+      "y": 240,
+      "components": {
+        "Transform": {
+          "x": 290,
+          "y": 240,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        "Sprite": {
+          "assetId": null,
+          "color": "#22c55e",
+          "width": 46,
+          "height": 46
+        },
+        "Collider": {
+          "shape": "rect",
+          "width": 46,
+          "height": 46
+        },
+        "Collision": {
+          "enabled": true,
+          "isTrigger": true
+        },
+        "ScriptBinding": {
+          "scriptId": "script_target_wobble"
+        },
+        "ScriptBindings": [],
+        "Animator": {
+          "clipId": null
+        }
+      }
+    },
+    {
+      "id": "obj_target_c",
+      "name": "Target C",
+      "type": "target",
+      "x": 470,
+      "y": 130,
+      "components": {
+        "Transform": {
+          "x": 470,
+          "y": 130,
+          "rotation": 0,
+          "scaleX": 1,
+          "scaleY": 1
+        },
+        "Sprite": {
+          "assetId": null,
+          "color": "#a855f7",
+          "width": 46,
+          "height": 46
+        },
+        "Collider": {
+          "shape": "rect",
+          "width": 46,
+          "height": 46
+        },
+        "Collision": {
+          "enabled": true,
+          "isTrigger": true
+        },
+        "ScriptBinding": {
+          "scriptId": "script_target_wobble"
+        },
+        "ScriptBindings": [],
+        "Animator": {
+          "clipId": null
+        }
+      }
+    }
+  ],
+  "scenes": [
+    {
+      "id": "scene_menu",
+      "name": "Main Menu",
+      "world": {
+        "cols": 1,
+        "rows": 1,
+        "defaultCell": 0,
+        "grid": [
+          [
+            0
+          ]
+        ],
+        "elements": [],
+        "meta": {}
+      },
+      "objects": [
+        {
+          "id": "obj_clicker_menu",
+          "name": "Clicker Menu",
+          "type": "controller",
+          "x": 0,
+          "y": 0,
+          "components": {
+            "Transform": {
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#082f49",
+              "width": 1,
+              "height": 1
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 1,
+              "height": 1
+            },
+            "ScriptBinding": {
+              "scriptId": null
+            },
+            "ScriptBindings": [
+              {
+                "scriptId": "script_menu_overlay",
+                "active": true,
+                "properties": {
+                  "title": "Clicker Menu Scene",
+                  "subtitle": "Start menu for the clicker template",
+                  "instructions": "Load Click Arena to start the timer and spawn the target round.",
+                  "actionLabel": "Load Click Arena",
+                  "nextSceneId": "scene_click_arena",
+                  "note": "This template now boots on the menu and uses the runtime scene manager for the transition into gameplay."
+                }
+              }
+            ],
+            "Animator": {
+              "clipId": null
+            }
+          }
+        }
+      ],
+      "renderMode": "2d"
+    },
+    {
+      "id": "scene_click_arena",
+      "name": "Click Arena",
+      "world": {
+        "cols": 18,
+        "rows": 10,
+        "defaultCell": 0,
+        "grid": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "elements": [],
+        "meta": {}
+      },
+      "objects": [
+        {
+          "id": "obj_clicker_lighting_manager",
+          "name": "Lighting Manager",
+          "type": "lighting_manager",
+          "x": 0,
+          "y": 0,
+          "components": {
+            "Transform": {
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#60a5fa",
+              "width": 20,
+              "height": 20
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 20,
+              "height": 20
+            },
+            "Collision": {
+              "enabled": false,
+              "isTrigger": false
+            },
+            "RigidBody": {
+              "enabled": false,
+              "weight": 1,
+              "friction": 0.4
+            },
+            "Render": {
+              "layerId": "obj-fx",
+              "visible": false,
+              "zIndex": 0
+            },
+            "ScriptBinding": {
+              "scriptId": null
+            },
+            "ScriptBindings": [],
+            "Animator": {
+              "clipId": null,
+              "autoplay": false
+            },
+            "LightingManager": {
+              "enabled": true,
+              "ambientColor": "#081118",
+              "ambientIntensity": 0.24,
+              "overlayOpacity": 0.84,
+              "fogColor": "#081118",
+              "fogDensity": 0.3
+            }
+          }
+        },
+        {
+          "id": "obj_clicker_state",
+          "name": "Clicker State",
+          "type": "controller",
+          "x": 0,
+          "y": 0,
+          "components": {
+            "Transform": {
+              "x": 0,
+              "y": 0,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#082f49",
+              "width": 1,
+              "height": 1
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 1,
+              "height": 1
+            },
+            "ScriptBinding": {
+              "scriptId": null
+            },
+            "ScriptBindings": [
+              {
+                "scriptId": "script_menu_overlay",
+                "active": true,
+                "properties": {
+                  "title": "2D Clicker Game",
+                  "subtitle": "Mouse-input target practice template",
+                  "instructions": "Click the colored targets before the timer runs out.",
+                  "actionLabel": "Start Clicking",
+                  "note": "This template uses DOM pointer events so it also stress-tests scripting and UI together."
+                }
+              },
+              {
+                "scriptId": "script_clicker_controller",
+                "active": true,
+                "properties": {
+                  "timeLimit": "20"
+                }
+              }
+            ],
+            "Animator": {
+              "clipId": null
+            }
+          }
+        },
+        {
+          "id": "obj_target_a",
+          "name": "Target A",
+          "type": "target",
+          "x": 110,
+          "y": 130,
+          "components": {
+            "Transform": {
+              "x": 110,
+              "y": 130,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#f97316",
+              "width": 46,
+              "height": 46
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 46,
+              "height": 46
+            },
+            "Collision": {
+              "enabled": true,
+              "isTrigger": true
+            },
+            "ScriptBinding": {
+              "scriptId": "script_target_wobble"
+            },
+            "ScriptBindings": [],
+            "Animator": {
+              "clipId": null
+            }
+          }
+        },
+        {
+          "id": "obj_target_b",
+          "name": "Target B",
+          "type": "target",
+          "x": 290,
+          "y": 240,
+          "components": {
+            "Transform": {
+              "x": 290,
+              "y": 240,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#22c55e",
+              "width": 46,
+              "height": 46
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 46,
+              "height": 46
+            },
+            "Collision": {
+              "enabled": true,
+              "isTrigger": true
+            },
+            "ScriptBinding": {
+              "scriptId": "script_target_wobble"
+            },
+            "ScriptBindings": [],
+            "Animator": {
+              "clipId": null
+            }
+          }
+        },
+        {
+          "id": "obj_target_c",
+          "name": "Target C",
+          "type": "target",
+          "x": 470,
+          "y": 130,
+          "components": {
+            "Transform": {
+              "x": 470,
+              "y": 130,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#a855f7",
+              "width": 46,
+              "height": 46
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 46,
+              "height": 46
+            },
+            "Collision": {
+              "enabled": true,
+              "isTrigger": true
+            },
+            "ScriptBinding": {
+              "scriptId": "script_target_wobble"
+            },
+            "ScriptBindings": [],
+            "Animator": {
+              "clipId": null
+            }
+          }
+        },
+        {
+          "id": "obj_clicker_lamp",
+          "name": "Arena Lamp",
+          "type": "light",
+          "x": 304,
+          "y": 148,
+          "components": {
+            "Transform": {
+              "x": 304,
+              "y": 148,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Sprite": {
+              "assetId": null,
+              "color": "#fbbf24",
+              "width": 18,
+              "height": 18
+            },
+            "Collider": {
+              "shape": "circle",
+              "width": 18,
+              "height": 18
+            },
+            "Collision": {
+              "enabled": false,
+              "isTrigger": false
+            },
+            "RigidBody": {
+              "enabled": false,
+              "weight": 1,
+              "friction": 0.4
+            },
+            "Render": {
+              "layerId": "obj-fx",
+              "visible": true,
+              "zIndex": 0
+            },
+            "ScriptBinding": {
+              "scriptId": null
+            },
+            "ScriptBindings": [],
+            "Animator": {
+              "clipId": null,
+              "autoplay": false
+            },
+            "Light": {
+              "enabled": true,
+              "color": "#ffe08a",
+              "intensity": 1,
+              "radius": 220,
+              "falloff": 0.58,
+              "offsetX": 0,
+              "offsetY": 0,
+              "height": 18
+            }
+          }
+        }
+      ],
+      "renderMode": "2d"
+    }
+  ],
+  "animations": [],
+  "scripts": [
+    {
+      "id": "script_menu_overlay",
+      "name": "MainMenuOverlay",
+      "language": "javascript",
+      "source": "function onInit(self, engine) {\n  if (typeof self.started !== 'boolean') self.started = false;\n  if (typeof self.completed !== 'boolean') self.completed = false;\n  var manager = engine.uiManager || (typeof KozUIManager !== 'undefined' ? KozUIManager : null) || (typeof uiManager !== 'undefined' ? uiManager : null);\n  if (!manager) return;\n  manager.registerScreen(self.id + '_menu', {\n    layer: 'hud',\n    layerOrder: 100,\n    isVisible: function() { return !self.started; },\n    create: function() {\n      var wrap = document.createElement('div');\n      wrap.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at top, rgba(14,165,233,0.18), rgba(2,6,23,0.94));pointer-events:auto;font-family:Trebuchet MS,sans-serif;';\n      var card = document.createElement('div');\n      card.style.cssText = 'width:min(520px,92vw);padding:28px 26px;border-radius:18px;background:rgba(15,23,42,0.96);border:1px solid rgba(148,163,184,0.25);box-shadow:0 24px 80px rgba(0,0,0,0.45);color:#e2e8f0;';\n      var title = document.createElement('h1');\n      title.textContent = props.title || 'Koz Template';\n      title.style.cssText = 'margin:0 0 8px;font-size:34px;';\n      var subtitle = document.createElement('p');\n      subtitle.textContent = props.subtitle || '';\n      subtitle.style.cssText = 'margin:0 0 14px;color:#94a3b8;line-height:1.4;';\n      var instructions = document.createElement('p');\n      instructions.textContent = props.instructions || '';\n      instructions.style.cssText = 'margin:0 0 18px;color:#cbd5e1;line-height:1.5;';\n      var button = document.createElement('button');\n      button.textContent = props.actionLabel || 'Start';\n      button.style.cssText = 'padding:12px 18px;border:none;border-radius:999px;background:#38bdf8;color:#082f49;font-weight:700;cursor:pointer;';\n      button.onclick = function() {\n        self.started = true;\n        self.completed = false;\n        var manager = (engine && engine.sceneManager) || (typeof sceneManager !== 'undefined' ? sceneManager : null) || window.sceneManager;\n        if (props.nextSceneId && manager && typeof manager.loadScene === 'function') {\n          window.__kozPendingAutoStart = true;\n          manager.loadScene(props.nextSceneId);\n          return;\n        }\n        if (typeof self.onStartGame === 'function') self.onStartGame();\n      };\n      var note = document.createElement('p');\n      note.textContent = props.note || '';\n      note.style.cssText = 'margin:14px 0 0;color:#64748b;font-size:12px;line-height:1.5;';\n      card.appendChild(title);\n      if (subtitle.textContent) card.appendChild(subtitle);\n      if (instructions.textContent) card.appendChild(instructions);\n      card.appendChild(button);\n      if (note.textContent) card.appendChild(note);\n      wrap.appendChild(card);\n      return wrap;\n    }\n  });\n}\n\nfunction onUpdate(self, engine, dt) {\n  if (!self.started && !props.nextSceneId && window.__kozPendingAutoStart && typeof self.onStartGame === 'function') {\n    window.__kozPendingAutoStart = false;\n    self.started = true;\n    self.completed = false;\n    self.onStartGame();\n  }\n}\n"
+    },
+    {
+      "id": "script_clicker_controller",
+      "name": "ClickerController",
+      "language": "javascript",
+      "source": "function resetTargets(engine) {\n  var targets = engine.findObjectsByType('target');\n  targets.forEach(function(target, index) {\n    target.x = 110 + (index * 180);\n    target.y = 130 + ((index % 2) * 110);\n    target.width = 46;\n    target.height = 46;\n    target.baseY = target.y;\n  });\n}\n\nfunction onInit(self, engine) {\n  self.score = 0;\n  self.best = 0;\n  self.timeLeft = Number(props.timeLimit || 20);\n  self.onStartGame = function() {\n    self.score = 0;\n    self.timeLeft = Number(props.timeLimit || 20);\n    self.completed = false;\n    resetTargets(engine);\n  };\n\n  if (window.__kozClickerPointerHandler) {\n    window.removeEventListener('pointerdown', window.__kozClickerPointerHandler);\n  }\n  window.__kozClickerPointerHandler = function(event) {\n    if (!self.started) return;\n    var canvas = document.querySelector('[data-koz-play-active=\"true\"]') || document.getElementById('game-2d') || document.getElementById('game-3d') || document.querySelector('canvas');\n    if (!canvas) return;\n    var rect = canvas.getBoundingClientRect();\n    if (!rect.width || !rect.height) return;\n    self.pendingClick = {\n      x: (event.clientX - rect.left) * (canvas.width / rect.width),\n      y: (event.clientY - rect.top) * (canvas.height / rect.height)\n    };\n  };\n  window.addEventListener('pointerdown', window.__kozClickerPointerHandler);\n\n  var manager = engine.uiManager || (typeof KozUIManager !== 'undefined' ? KozUIManager : null) || (typeof uiManager !== 'undefined' ? uiManager : null);\n  if (!manager) return;\n  manager.registerScreen(self.id + '_hud', {\n    layer: 'hud',\n    layerOrder: 10,\n    isVisible: function() { return !!self.started; },\n    create: function() {\n      var panel = document.createElement('div');\n      panel.style.cssText = 'position:absolute;left:16px;top:16px;padding:12px 14px;border-radius:14px;background:rgba(15,23,42,0.78);color:#e2e8f0;font-family:Trebuchet MS,sans-serif;pointer-events:none;';\n      panel.innerHTML = '<div id=\"clickerScore\" style=\"font-size:16px;font-weight:700;\"></div><div id=\"clickerTime\" style=\"margin-top:4px;font-size:12px;color:#93c5fd;\"></div>';\n      return panel;\n    },\n    update: function() {\n      var score = document.getElementById('clickerScore');\n      var time = document.getElementById('clickerTime');\n      if (score) score.textContent = 'Score ' + self.score + ' | Best ' + self.best;\n      if (time) time.textContent = 'Time left ' + self.timeLeft.toFixed(1) + 's';\n    }\n  });\n}\n\nfunction onUpdate(self, engine, dt) {\n  if (!self.started) return;\n  self.timeLeft = Math.max(0, self.timeLeft - dt);\n  if (self.timeLeft <= 0) {\n    self.best = Math.max(self.best, self.score);\n    self.completed = true;\n    self.started = false;\n    return;\n  }\n  if (!self.pendingClick) return;\n  var click = self.pendingClick;\n  self.pendingClick = null;\n  var targets = engine.findObjectsByType('target');\n  for (var i = 0; i < targets.length; i += 1) {\n    var target = targets[i];\n    if (click.x >= target.x && click.x <= target.x + target.width && click.y >= target.y && click.y <= target.y + target.height) {\n      self.score += 1;\n      target.x = 70 + Math.random() * 760;\n      target.y = 90 + Math.random() * 330;\n      target.baseY = target.y;\n      return;\n    }\n  }\n}\n"
+    },
+    {
+      "id": "script_target_wobble",
+      "name": "TargetWobble",
+      "language": "javascript",
+      "source": "function onInit(self, engine) {\n  self.baseY = self.y;\n  self.phase = self.x * 0.01;\n}\n\nfunction onUpdate(self, engine, dt) {\n  var game = engine.findObject('obj_clicker_state');\n  if (!game || !game.started) return;\n  self.phase += dt * 3;\n  self.y = self.baseY + Math.sin(self.phase) * 6;\n}\n"
+    }
+  ],
+  "assets": [],
+  "build": {
+    "profile": "web-prod",
+    "pwa": false
+  }
+}

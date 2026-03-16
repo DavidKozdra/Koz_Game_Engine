@@ -9,11 +9,12 @@ import React, { useState } from 'react';
  */
 export default function KozLogo({ style = {}, size = 400 }) {
   const [imgError, setImgError] = useState(false);
+  const logoSrc = `${import.meta.env.BASE_URL}koz_engine_logo.png`;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', ...style }}>
       {!imgError ? (
         <img
-          src="/koz_engine_logo.png"
+          src={logoSrc}
           alt="Koz Engine Logo"
           width={size}
           height={size}

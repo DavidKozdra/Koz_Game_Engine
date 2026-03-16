@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Koz Engine
+Exec=AppRun --no-sandbox %U
+Terminal=false
+Type=Application
+Icon=koz-engine-editor
+StartupWMClass=Koz Engine
+X-AppImage-Version=0.1.0
+Comment=Editor for building and exporting Koz Engine projects.
+Categories=Development;

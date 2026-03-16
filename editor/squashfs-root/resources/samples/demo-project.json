@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "meta": {
+    "name": "Demo Game",
+    "version": "1.0.0",
+    "resolution": { "width": 960, "height": 540 },
+    "engineVersion": "0.1.0"
+  },
+  "world": {
+    "cols": 30,
+    "rows": 20,
+    "defaultCell": null,
+    "grid": [],
+    "elements": [
+      { "id": 1, "kind": "spawn", "x": 2, "y": 2 },
+      { "id": 2, "kind": "exit", "x": 27, "y": 17 }
+    ],
+    "meta": {}
+  },
+  "objects": [
+    {
+      "id": "obj_player",
+      "name": "Player",
+      "type": "player",
+      "x": 64,
+      "y": 64,
+      "components": {
+        "Transform": { "x": 64, "y": 64, "rotation": 0, "scaleX": 1, "scaleY": 1 },
+        "Sprite": { "assetId": null, "color": "#4ade80", "width": 32, "height": 32 },
+        "Collider": { "shape": "rect", "width": 32, "height": 32 },
+        "ScriptBinding": { "scriptId": "script_movement" },
+        "Animator": { "clipId": null }
+      }
+    },
+    {
+      "id": "obj_enemy",
+      "name": "Enemy",
+      "type": "enemy",
+      "x": 400,
+      "y": 300,
+      "components": {
+        "Transform": { "x": 400, "y": 300, "rotation": 0, "scaleX": 1, "scaleY": 1 },
+        "Sprite": { "assetId": null, "color": "#ef4444", "width": 32, "height": 32 },
+        "Collider": { "shape": "rect", "width": 32, "height": 32 },
+        "ScriptBinding": { "scriptId": null },
+        "Animator": { "clipId": "anim_patrol" }
+      }
+    }
+  ],
+  "animations": [
+    {
+      "id": "anim_patrol",
+      "name": "Patrol",
+      "duration": 4.0,
+      "loop": true,
+      "tracks": [
+        {
+          "targetObjectId": "obj_enemy",
+          "property": "x",
+          "keyframes": [
+            { "time": 0, "value": 400, "easing": "linear" },
+            { "time": 2, "value": 600, "easing": "linear" },
+            { "time": 4, "value": 400, "easing": "linear" }
+          ]
+        }
+      ]
+    }
+  ],
+  "scripts": [
+    {
+      "id": "script_movement",
+      "name": "PlayerMovement",
+      "source": "function onInit(self, engine) {\n  self.speed = 3;\n}\n\nfunction onUpdate(self, engine, dt) {\n  if (typeof keyIsDown === 'function') {\n    if (keyIsDown(65) || keyIsDown(37)) self.x -= self.speed;\n    if (keyIsDown(68) || keyIsDown(39)) self.x += self.speed;\n    if (keyIsDown(87) || keyIsDown(38)) self.y -= self.speed;\n    if (keyIsDown(83) || keyIsDown(40)) self.y += self.speed;\n  }\n}\n"
+    }
+  ],
+  "assets": [],
+  "build": {
+    "profile": "web-prod",
+    "pwa": false
+  }
+}
