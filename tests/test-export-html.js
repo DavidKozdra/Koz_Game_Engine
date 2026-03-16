@@ -79,10 +79,17 @@ async function main() {
   assert(playModeSource.includes('syncObjectSpatialIndex(state.objectSpatialIndex, state.gameObjects);'), 'editor play runtime refreshes object culling data after movement');
   assert(playModeSource.includes('ctx.imageSmoothingEnabled = false;'), 'editor play runtime disables 2D image smoothing for crisp rendering');
   assert(playModeSource.includes('function ensurePlayLightingSurface(state, width, height) {'), 'editor play runtime allocates a dedicated lighting overlay surface');
+  assert(playModeSource.includes('function resolvePlayLightingPalette(lighting) {'), 'editor play runtime includes lighting preset palette support');
+  assert(playModeSource.includes('function applyPlayLightingDither('), 'editor play runtime includes the dither lighting modifier');
+  assert(playModeSource.includes('function applyPlayLightingVignette('), 'editor play runtime includes the vignette lighting modifier');
   assert(!playModeSource.includes('particles.splice(i, 1);'), 'editor play particle updates avoid O(n) splice removal');
   assert(!moduleSource.includes('particles.splice(i, 1);'), 'export particle updates avoid O(n) splice removal');
   assert(moduleSource.includes('ctx2d.imageSmoothingEnabled = false;'), 'export runtime disables 2D image smoothing for crisp rendering');
   assert(moduleSource.includes('function ensureLightingSurface(width, height) {'), 'export runtime allocates a dedicated lighting overlay surface');
+  assert(moduleSource.includes('function resolveLightingPalette(lighting) {'), 'export runtime includes lighting preset palette support');
+  assert(moduleSource.includes('function applyLightingDither('), 'export runtime includes the dither lighting modifier');
+  assert(moduleSource.includes('function applyLightingVignette('), 'export runtime includes the vignette lighting modifier');
+  assert(moduleSource.includes('colorPreset'), 'export runtime includes lighting color preset state');
   assert(html.includes("source: 'engine-fallback'"), 'export runtime includes engine fallback camera metadata');
   assert(html.includes('webgl-3d'), 'export runtime contains the WebGL render mode');
   assert(!disabledFullscreenHtml.includes('id="fullscreen-toggle"'), 'export omits the fullscreen button when display settings disable fullscreen');

@@ -10,9 +10,17 @@
   const DEFAULT_RENDER_MODE = "2d";
   const LIGHTING_MODE_PIXEL = "pixel";
   const LIGHTING_MODE_SOFT = "soft";
+  const LIGHTING_COLOR_PRESET_NONE = "none";
+  const LIGHTING_COLOR_PRESETS = new Set(["none", "warm", "cool", "noir", "neon", "sunset", "moonlight"]);
   const DEFAULT_SCENE_LIGHTING = {
     enabled: false,
     mode: LIGHTING_MODE_PIXEL,
+    flicker: false,
+    volumetric: false,
+    fogBoost: 0,
+    dither: false,
+    vignette: 0,
+    colorPreset: LIGHTING_COLOR_PRESET_NONE,
     ambientColor: "#0b1220",
     ambientIntensity: 0.35,
     overlayOpacity: 0.82,
@@ -22,6 +30,12 @@
   const DEFAULT_LIGHTING_MANAGER_COMPONENT = {
     enabled: false,
     mode: LIGHTING_MODE_PIXEL,
+    flicker: false,
+    volumetric: false,
+    fogBoost: 0,
+    dither: false,
+    vignette: 0,
+    colorPreset: LIGHTING_COLOR_PRESET_NONE,
     ambientColor: "#0b1220",
     ambientIntensity: 0.35,
     overlayOpacity: 0.82,
@@ -64,11 +78,22 @@
     return fallback || LIGHTING_MODE_PIXEL;
   }
 
+  function normalizeLightingColorPreset(value, fallback) {
+    const preset = typeof value === "string" ? value.trim().toLowerCase() : "";
+    return LIGHTING_COLOR_PRESETS.has(preset) ? preset : (fallback || LIGHTING_COLOR_PRESET_NONE);
+  }
+
   function normalizeSceneLighting(lighting) {
     const source = lighting && typeof lighting === "object" ? lighting : {};
     return {
       enabled: source.enabled === true,
       mode: normalizeLightingMode(source.mode, DEFAULT_SCENE_LIGHTING.mode),
+      flicker: source.flicker === true,
+      volumetric: source.volumetric === true,
+      fogBoost: clamp01(source.fogBoost, DEFAULT_SCENE_LIGHTING.fogBoost),
+      dither: source.dither === true,
+      vignette: clamp01(source.vignette, DEFAULT_SCENE_LIGHTING.vignette),
+      colorPreset: normalizeLightingColorPreset(source.colorPreset, DEFAULT_SCENE_LIGHTING.colorPreset),
       ambientColor: typeof source.ambientColor === "string" && source.ambientColor ? source.ambientColor : DEFAULT_SCENE_LIGHTING.ambientColor,
       ambientIntensity: clamp01(source.ambientIntensity, DEFAULT_SCENE_LIGHTING.ambientIntensity),
       overlayOpacity: clamp01(source.overlayOpacity, DEFAULT_SCENE_LIGHTING.overlayOpacity),
@@ -82,6 +107,12 @@
     return {
       enabled: source.enabled === true,
       mode: normalizeLightingMode(source.mode, DEFAULT_LIGHTING_MANAGER_COMPONENT.mode),
+      flicker: source.flicker === true,
+      volumetric: source.volumetric === true,
+      fogBoost: clamp01(source.fogBoost, DEFAULT_LIGHTING_MANAGER_COMPONENT.fogBoost),
+      dither: source.dither === true,
+      vignette: clamp01(source.vignette, DEFAULT_LIGHTING_MANAGER_COMPONENT.vignette),
+      colorPreset: normalizeLightingColorPreset(source.colorPreset, DEFAULT_LIGHTING_MANAGER_COMPONENT.colorPreset),
       ambientColor: typeof source.ambientColor === "string" && source.ambientColor ? source.ambientColor : DEFAULT_LIGHTING_MANAGER_COMPONENT.ambientColor,
       ambientIntensity: clamp01(source.ambientIntensity, DEFAULT_LIGHTING_MANAGER_COMPONENT.ambientIntensity),
       overlayOpacity: clamp01(source.overlayOpacity, DEFAULT_LIGHTING_MANAGER_COMPONENT.overlayOpacity),

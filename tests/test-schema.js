@@ -89,6 +89,12 @@ const migratedLightingManager = migratedLightingProject.scenes[0].objects.find((
 assert(!!migratedLightingManager, 'legacy scene lighting migrates into a LightingManager object');
 assert(!migratedLightingProject.scenes[0].lighting, 'legacy scene lighting metadata is stripped after migration');
 assert(migratedLightingManager.components.LightingManager.mode === 'pixel', 'migrated lighting manager defaults to pixel lighting mode');
+assert(migratedLightingManager.components.LightingManager.flicker === false, 'migrated lighting manager defaults flicker off');
+assert(migratedLightingManager.components.LightingManager.volumetric === false, 'migrated lighting manager defaults volumetric off');
+assert(migratedLightingManager.components.LightingManager.fogBoost === 0, 'migrated lighting manager defaults fog boost to 0');
+assert(migratedLightingManager.components.LightingManager.dither === false, 'migrated lighting manager defaults dither off');
+assert(migratedLightingManager.components.LightingManager.vignette === 0, 'migrated lighting manager defaults vignette to 0');
+assert(migratedLightingManager.components.LightingManager.colorPreset === 'none', 'migrated lighting manager defaults to no color preset');
 
 // Test 5: Create game object
 const obj = projectSchema.createGameObject('Player', 10, 20, { color: '#ff0000' });
@@ -101,6 +107,12 @@ assert(lightObj.components.Collider.shape === 'circle', 'light object uses circl
 const lightingManagerObj = projectSchema.createGameObject('Lighting Manager', 0, 0, { type: 'lighting_manager' });
 assert(lightingManagerObj.components.LightingManager, 'lighting manager object includes LightingManager component');
 assert(lightingManagerObj.components.LightingManager.mode === 'pixel', 'lighting manager object defaults to pixel lighting mode');
+assert(lightingManagerObj.components.LightingManager.flicker === false, 'lighting manager object defaults flicker off');
+assert(lightingManagerObj.components.LightingManager.volumetric === false, 'lighting manager object defaults volumetric off');
+assert(lightingManagerObj.components.LightingManager.fogBoost === 0, 'lighting manager object defaults fog boost to 0');
+assert(lightingManagerObj.components.LightingManager.dither === false, 'lighting manager object defaults dither off');
+assert(lightingManagerObj.components.LightingManager.vignette === 0, 'lighting manager object defaults vignette to 0');
+assert(lightingManagerObj.components.LightingManager.colorPreset === 'none', 'lighting manager object defaults to no color preset');
 assert(lightingManagerObj.components.Render.visible === false, 'lighting manager object is hidden by default');
 
 // Test 6: Create script
