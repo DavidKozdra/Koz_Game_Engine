@@ -36,6 +36,7 @@ import {
   saveBrowserProject,
   saveBrowserProjectAs,
 } from './lib/browserProjects.js';
+import { getDefaultExportTarget, getExportTargetOptions } from './lib/exportTargets.js';
 import template2dPlatformer from '../../../projects/template-2d-platformer/project.json';
 import template2dAdventurePlatformer from '../../../projects/template-2d-adventure-platformer/project.json';
 import template2dClicker from '../../../projects/template-2d-clicker/project.json';
@@ -549,6 +550,11 @@ function getRendererApi() {
   return typeof window !== 'undefined' && window.api ? window.api : null;
 }
 
+function getSafeExportFileName(value) {
+  const trimmed = String(value || '').trim();
+  return trimmed || 'game';
+}
+
 function normalizeProjectFile(fileInfo = {}) {
   return {
     projectPath: fileInfo.projectPath || null,
@@ -639,6 +645,8 @@ function App() {
   const browserProjectCapabilities = useMemo(() => getBrowserProjectCapabilities(), []);
   const rendererApi = getRendererApi();
   const isElectronProjectMode = !!(rendererApi && typeof rendererApi.listProjects === 'function');
+  const hasNativeExport = !!(rendererApi && typeof rendererApi.exportBuild === 'function');
+  const exportTargetOptions = useMemo(() => getExportTargetOptions(hasNativeExport), [hasNativeExport]);
   const loadFromFileLabel = isElectronProjectMode
     ? 'Load From File'
     : browserProjectCapabilities.canOpenFilePicker
@@ -1895,7 +1903,7 @@ def on_update(self, engine, dt):
   const openExportModal = useCallback(() => {
     if (!project) return;
     const normalized = ensureProjectShape(project);
-    const defaultTarget = (normalized.build && normalized.build.target) || 'html-zip';
+    const defaultTarget = getDefaultExportTarget((normalized.build && normalized.build.target) || 'html-zip', hasNativeExport);
     setExportConfig(prev => ({
       ...prev,
       target: defaultTarget,
@@ -1903,12 +1911,12 @@ def on_update(self, engine, dt):
     }));
     setExportProgress([]);
     setShowExportModal(true);
-  }, [project]);
+  }, [hasNativeExport, project]);
 
   const handleExport = useCallback(async () => {
     if (isExporting) return;
     const normalized = ensureProjectShape(project);
-    const target = exportConfig.target || 'html-zip';
+    const target = getDefaultExportTarget(exportConfig.target || 'html-zip', hasNativeExport);
     const persistedProject = ensureProjectShape({
       ...normalized,
       build: { ...normalized.build, target },
@@ -1952,9 +1960,9 @@ def on_update(self, engine, dt):
 
     const json = exportConfig.minify ? JSON.stringify(projectForExport) : JSON.stringify(projectForExport, null, 2);
     const html = await buildExportHtml(projectForExport, json, target, { minify: exportConfig.minify });
-    const baseName = (exportConfig.fileName || projectForExport.meta.name || 'game').trim();
+    const baseName = getSafeExportFileName(exportConfig.fileName || projectForExport.meta.name || 'game');
 
-    const electronApi = window.api && typeof window.api.exportBuild === 'function' ? window.api : null;
+    const electronApi = hasNativeExport ? rendererApi : null;
     if (electronApi) {
       setIsExporting(true);
       setExportProgress((prev) => [...prev, `Starting export for ${target}...`]);
@@ -1996,7 +2004,7 @@ def on_update(self, engine, dt):
     URL.revokeObjectURL(url);
     setShowExportModal(false);
     addLog({ type: 'info', message: `Exported fallback HTML: ${target}`, time: new Date().toLocaleTimeString() });
-  }, [project, addLog, exportConfig, isExporting, projectFile.folderPath]);
+  }, [project, addLog, exportConfig, hasNativeExport, isExporting, projectFile.folderPath, rendererApi]);
 
   // ---- Bottom panel resize ----
   const handleResizeStart = useCallback((e) => {
@@ -2110,6 +2118,12 @@ def on_update(self, engine, dt):
     });
     return () => { if (typeof unbind === 'function') unbind(); };
   }, []);
+
+  useEffect(() => {
+    const nextTarget = getDefaultExportTarget(exportConfig.target, hasNativeExport);
+    if (nextTarget === exportConfig.target) return;
+    setExportConfig((prev) => ({ ...prev, target: nextTarget }));
+  }, [exportConfig.target, hasNativeExport]);
 
   useEffect(() => {
     if (exportConfig.target !== 'electron-exe') return;
@@ -2558,11 +2572,9 @@ def on_update(self, engine, dt):
           <div className="field">
             <label>Target</label>
             <select value={exportConfig.target} onChange={(e) => setExportConfig(prev => ({ ...prev, target: e.target.value }))}>
-              <option value="electron-exe">Electron based EXE</option>
-              <option value="pwa">PWA</option>
-              <option value="html-zip">HTML/ZIP</option>
-              <option value="single-html">Single HTML</option>
-              <option value="tarball">Tarball</option>
+              {exportTargetOptions.map((option) => (
+                <option key={`export-target-${option.value}`} value={option.value}>{option.label}</option>
+              ))}
             </select>
           </div>
           <div className="field">

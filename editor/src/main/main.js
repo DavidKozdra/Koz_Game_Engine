@@ -4,6 +4,7 @@ const net = require('net');
 const fs = require('fs');
 const os = require('os');
 const { execFile, spawn } = require('child_process');
+const { createDesktopExportApp, resolveElectronVersion } = require('./exportDesktopApp');
 
 // Detect dev mode: check if Vite dev server is running on 5173
 function checkViteRunning() {
@@ -300,25 +301,51 @@ async function exportDesktopBuild(event, payload) {
     ? singleFileFormat
     : (opts.desktopFormat || (platform === 'win' ? 'portable' : platform === 'linux' ? 'AppImage' : 'dmg'));
   const editorRoot = path.resolve(__dirname, '../..');
-  const outDir = path.join(editorRoot, 'dist-desktop', `${payload.fileName || 'game'}-${platform}-${Date.now().toString(36)}`);
+  const buildName = sanitizeProjectName((payload && payload.fileName) || 'game');
+  const outDir = path.join(editorRoot, 'dist-desktop', `${projectSlug(buildName)}-${platform}-${Date.now().toString(36)}`);
+  const tempAppDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'koz-desktop-app-'));
+  const electronVersion = resolveElectronVersion(editorRoot);
+  const electronDistPath = path.join(editorRoot, 'node_modules', 'electron', 'dist');
   await fs.promises.mkdir(outDir, { recursive: true });
 
-  event.sender.send('export:progress', { stage: 'desktop', message: `Starting electron-builder (${platform}/${format})...` });
-  const args = [
-    'exec',
-    'electron-builder',
-    desktopPlatformFlag(platform),
-    ...platformTargets(platform, format),
-    '--publish', 'never',
-    `--config.directories.output=${outDir}`,
-  ];
-  await runStreamingCommand('pnpm', args, editorRoot, (line, stream) => {
-    const text = line.trim();
-    if (!text) return;
-    event.sender.send('export:progress', { stage: 'desktop', stream, message: text });
-  });
-  event.sender.send('export:progress', { stage: 'desktop', message: `Desktop build complete at ${outDir}` });
-  return { ok: true, path: outDir };
+  try {
+    if (!payload || !payload.html) {
+      throw new Error('Missing export HTML payload for desktop build');
+    }
+
+    event.sender.send('export:progress', { stage: 'desktop', message: 'Preparing desktop runtime...' });
+    await createDesktopExportApp(tempAppDir, { ...payload, fileName: buildName }, {
+      electronVersion,
+      iconSourcePath: path.join(editorRoot, 'build', 'icon.png'),
+    });
+
+    event.sender.send('export:progress', { stage: 'desktop', message: `Starting electron-builder (${platform}/${format})...` });
+    const args = [
+      'exec',
+      'electron-builder',
+      '--projectDir',
+      tempAppDir,
+      desktopPlatformFlag(platform),
+      ...platformTargets(platform, format),
+      '--publish', 'never',
+      `--config.directories.output=${outDir}`,
+    ];
+    if (electronVersion) args.push(`--config.electronVersion=${electronVersion}`);
+    if (fs.existsSync(electronDistPath)) args.push(`--config.electronDist=${electronDistPath}`);
+    await runStreamingCommand('pnpm', args, editorRoot, (line, stream) => {
+      const text = line.trim();
+      if (!text) return;
+      event.sender.send('export:progress', { stage: 'desktop', stream, message: text });
+    });
+    event.sender.send('export:progress', { stage: 'desktop', message: `Desktop build complete at ${outDir}` });
+    return { ok: true, path: outDir };
+  } finally {
+    try {
+      await fs.promises.rm(tempAppDir, { recursive: true, force: true });
+    } catch (_error) {
+      // ignore temp cleanup errors
+    }
+  }
 }
 
 ipcMain.handle('export:build', async (event, payload) => {
