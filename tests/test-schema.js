@@ -88,6 +88,7 @@ const migratedLightingProject = projectSchema.migrate({
 const migratedLightingManager = migratedLightingProject.scenes[0].objects.find((entry) => entry.components && entry.components.LightingManager);
 assert(!!migratedLightingManager, 'legacy scene lighting migrates into a LightingManager object');
 assert(!migratedLightingProject.scenes[0].lighting, 'legacy scene lighting metadata is stripped after migration');
+assert(migratedLightingManager.components.LightingManager.mode === 'pixel', 'migrated lighting manager defaults to pixel lighting mode');
 
 // Test 5: Create game object
 const obj = projectSchema.createGameObject('Player', 10, 20, { color: '#ff0000' });
@@ -99,6 +100,7 @@ assert(lightObj.components.Light && lightObj.components.Light.enabled === true, 
 assert(lightObj.components.Collider.shape === 'circle', 'light object uses circle collider');
 const lightingManagerObj = projectSchema.createGameObject('Lighting Manager', 0, 0, { type: 'lighting_manager' });
 assert(lightingManagerObj.components.LightingManager, 'lighting manager object includes LightingManager component');
+assert(lightingManagerObj.components.LightingManager.mode === 'pixel', 'lighting manager object defaults to pixel lighting mode');
 assert(lightingManagerObj.components.Render.visible === false, 'lighting manager object is hidden by default');
 
 // Test 6: Create script

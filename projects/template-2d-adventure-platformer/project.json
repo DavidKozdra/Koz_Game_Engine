@@ -8,7 +8,13 @@
       "height": 540
     },
     "engineVersion": "0.1.0",
-    "renderMode": "2d"
+    "renderMode": "2d",
+    "display": {
+      "scaleMode": "contain",
+      "allowFullscreen": true,
+      "showFullscreenButton": true,
+      "backgroundColor": "#0b1220"
+    }
   },
   "activeSceneId": "scene_menu",
   "world": {
@@ -2465,7 +2471,10 @@
               "autoplay": false
             }
           },
-          "prefabId": "prefab_mmlgldd0"
+          "prefabId": "prefab_mmlgldd0",
+          "prefabRevision": 1,
+          "variantId": null,
+          "prefabOverrides": {}
         },
         {
           "id": "obj_goal",
@@ -2648,6 +2657,67 @@
               "maxDistance": 0
             }
           }
+        },
+        {
+          "id": "obj_mmt75hdv_1",
+          "name": "Light",
+          "type": "generic",
+          "x": 268,
+          "y": 217,
+          "parentId": null,
+          "components": {
+            "Transform": {
+              "x": 268,
+              "y": 217,
+              "rotation": 0,
+              "scaleX": 1,
+              "scaleY": 1
+            },
+            "Collider": {
+              "shape": "rect",
+              "width": 32,
+              "height": 32
+            },
+            "Collision": {
+              "enabled": false,
+              "isTrigger": false
+            },
+            "RigidBody": {
+              "enabled": false,
+              "weight": 1,
+              "friction": 0.4
+            },
+            "Render": {
+              "layerId": "obj-main",
+              "visible": true,
+              "zIndex": 0
+            },
+            "ScriptBindings": [],
+            "Animator": {
+              "clipId": null,
+              "autoplay": false
+            },
+            "Light": {
+              "enabled": true,
+              "color": "#ffd27a",
+              "intensity": 1,
+              "radius": 180,
+              "falloff": 0.65,
+              "offsetX": 0,
+              "offsetY": 0,
+              "height": 18
+            },
+            "LightingManager": {
+              "enabled": false,
+              "mode": "pixel",
+              "ambientColor": "#0b1220",
+              "ambientIntensity": 0.35,
+              "overlayOpacity": 0.82,
+              "fogColor": "#07111d",
+              "fogDensity": 0.65
+            }
+          },
+          "editorFolder": "Root"
         }
       ]
     },
@@ -3827,7 +3897,12 @@
               "autoplay": false
             }
           },
-          "prefabId": "prefab_mmlgldd0"
+          "prefabId": "prefab_mmlgldd0",
+          "prefabRevision": 1,
+          "variantId": null,
+          "prefabOverrides": {
+            "name": "Player Prefab"
+          }
         }
       ]
     },
@@ -5043,7 +5118,12 @@
               "autoplay": false
             }
           },
-          "prefabId": "prefab_mmlgldd0"
+          "prefabId": "prefab_mmlgldd0",
+          "prefabRevision": 1,
+          "variantId": null,
+          "prefabOverrides": {
+            "name": "Player Prefab"
+          }
         }
       ]
     },
@@ -6331,7 +6411,12 @@
               "autoplay": false
             }
           },
-          "prefabId": "prefab_mmlgldd0"
+          "prefabId": "prefab_mmlgldd0",
+          "prefabRevision": 1,
+          "variantId": null,
+          "prefabOverrides": {
+            "name": "Player Prefab"
+          }
         }
       ]
     },
@@ -7272,7 +7357,7 @@
             "scaleY": 1
           },
           "Sprite": {
-            "assetId": null,
+            "assetId": "img_mmlg8v6q_1",
             "color": "#38bdf8",
             "width": 22,
             "height": 30
@@ -7310,7 +7395,65 @@
             "autoplay": false
           }
         }
-      }
+      },
+      "revision": 2,
+      "baseObject": {
+        "id": "obj_player",
+        "name": "Player",
+        "type": "player",
+        "x": 48,
+        "y": 320,
+        "parentId": null,
+        "editorFolder": "Root",
+        "components": {
+          "Transform": {
+            "x": 48,
+            "y": 320,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          },
+          "Sprite": {
+            "assetId": "img_mmlg8v6q_1",
+            "color": "#38bdf8",
+            "width": 22,
+            "height": 30
+          },
+          "Collider": {
+            "shape": "rect",
+            "width": 18,
+            "height": 28,
+            "offsetX": 2,
+            "offsetY": 2
+          },
+          "Collision": {
+            "enabled": true,
+            "isTrigger": false
+          },
+          "RigidBody": {
+            "enabled": false,
+            "weight": 1,
+            "friction": 0.4
+          },
+          "Render": {
+            "layerId": "obj-main",
+            "visible": true,
+            "zIndex": 0
+          },
+          "ScriptBindings": [
+            {
+              "scriptId": "script_mmlfbo7s_1",
+              "active": true,
+              "properties": {}
+            }
+          ],
+          "Animator": {
+            "clipId": null,
+            "autoplay": false
+          }
+        }
+      },
+      "variants": []
     },
     {
       "id": "prefab_mmlgldd0",
@@ -7371,7 +7514,65 @@
             "autoplay": false
           }
         }
-      }
+      },
+      "revision": 1,
+      "baseObject": {
+        "id": "obj_player",
+        "name": "Player",
+        "type": "player",
+        "x": 48,
+        "y": 320,
+        "parentId": null,
+        "editorFolder": "Root",
+        "components": {
+          "Transform": {
+            "x": 48,
+            "y": 320,
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1
+          },
+          "Sprite": {
+            "assetId": "img_mmlg8v6q_1",
+            "color": "#38bdf8",
+            "width": 22,
+            "height": 30
+          },
+          "Collider": {
+            "shape": "rect",
+            "width": 18,
+            "height": 28,
+            "offsetX": 2,
+            "offsetY": 2
+          },
+          "Collision": {
+            "enabled": true,
+            "isTrigger": false
+          },
+          "RigidBody": {
+            "enabled": false,
+            "weight": 1,
+            "friction": 0.4
+          },
+          "Render": {
+            "layerId": "obj-main",
+            "visible": true,
+            "zIndex": 0
+          },
+          "ScriptBindings": [
+            {
+              "scriptId": "script_mmlfbo7s_1",
+              "active": true,
+              "properties": {}
+            }
+          ],
+          "Animator": {
+            "clipId": null,
+            "autoplay": false
+          }
+        }
+      },
+      "variants": []
     }
   ],
   "sceneFolders": [

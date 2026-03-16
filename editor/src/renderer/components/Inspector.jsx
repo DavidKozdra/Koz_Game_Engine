@@ -7,7 +7,7 @@ const PREFAB_DELETE_KEY = '__kozPrefabDelete';
 const AVAILABLE_COMPONENTS = [
   { id: 'Grid', label: 'Grid', icon: 'grid', color: '#60a5fa', defaults: { cols: 10, rows: 10, cellSize: 24, visible: true, layerId: null } },
   { id: 'Sprite', label: 'Sprite', icon: 'objSprite', color: '#a78bfa', defaults: { assetId: null, color: '#4ade80', width: 32, height: 32, frameAssetIds: [], fps: 8 } },
-  { id: 'LightingManager', label: 'Lighting Manager', icon: 'objLightingManager', color: '#f59e0b', defaults: { enabled: false, ambientColor: '#0b1220', ambientIntensity: 0.35, overlayOpacity: 0.82, fogColor: '#07111d', fogDensity: 0.65 } },
+  { id: 'LightingManager', label: 'Lighting Manager', icon: 'objLightingManager', color: '#f59e0b', defaults: { enabled: false, mode: 'pixel', ambientColor: '#0b1220', ambientIntensity: 0.35, overlayOpacity: 0.82, fogColor: '#07111d', fogDensity: 0.65 } },
   { id: 'Light', label: 'Light', icon: 'objLight', color: '#fbbf24', defaults: { enabled: true, color: '#ffd27a', intensity: 1, radius: 180, falloff: 0.65, offsetX: 0, offsetY: 0, height: 18 } },
   { id: 'Sound', label: 'Sound', icon: 'audio', color: '#f472b6', defaults: { assetId: null, category: 'sfx', autoplay: false, loop: false, volume: 1, maxDistance: 0 } },
   { id: 'Collider', label: 'Collider', icon: 'collider', color: '#38bdf8', defaults: { shape: 'rect', width: 32, height: 32 } },
@@ -1026,6 +1026,16 @@ export default function Inspector({
               checked={components.LightingManager.enabled === true}
               onChange={(e) => handleComponentChange('LightingManager', 'enabled', e.target.checked)}
             />
+          </div>
+          <div className="field">
+            {renderFieldLabel('Mode', 'components.LightingManager.mode')}
+            <select
+              value={components.LightingManager.mode || 'pixel'}
+              onChange={(e) => handleComponentChange('LightingManager', 'mode', e.target.value)}
+            >
+              <option value="pixel">Pixel</option>
+              <option value="soft">Soft</option>
+            </select>
           </div>
           <div className="field">
             {renderFieldLabel('Ambient', 'components.LightingManager.ambientColor')}

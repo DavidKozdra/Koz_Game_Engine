@@ -4,8 +4,11 @@ function exportRuntimeMain() {
   var PLAY_RENDER_MODE_WEBGL_3D = 'webgl-3d';
   var CELL_SIZE = 24;
   var PLAY_OBJECT_CULL_MARGIN = CELL_SIZE * 4;
+  var LIGHTING_MODE_PIXEL = 'pixel';
+  var LIGHTING_MODE_SOFT = 'soft';
   var DEFAULT_SCENE_LIGHTING = {
     enabled: false,
+    mode: LIGHTING_MODE_PIXEL,
     ambientColor: '#0b1220',
     ambientIntensity: 0.35,
     overlayOpacity: 0.82,
@@ -61,6 +64,8 @@ function exportRuntimeMain() {
   var scriptFactoryCache = new Map();
   var objectSpatialIndex = createObjectSpatialIndex();
   var objectLayerOrder = buildObjectLayerOrder(project);
+  var lightingCanvas = null;
+  var lightingCtx = null;
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -294,6 +299,13 @@ function exportRuntimeMain() {
     return Math.max(0, Math.min(1, n));
   }
 
+  function normalizeLightingMode(value, fallback) {
+    var mode = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    if (mode === LIGHTING_MODE_SOFT) return LIGHTING_MODE_SOFT;
+    if (mode === LIGHTING_MODE_PIXEL || mode === 'crisp' || mode === 'hard') return LIGHTING_MODE_PIXEL;
+    return fallback || LIGHTING_MODE_PIXEL;
+  }
+
   function normalizeRenderMode(value, fallback) {
     var mode = typeof value === 'string' ? value.trim().toLowerCase() : '';
     if (mode === '3d' || mode === PLAY_RENDER_MODE_WEBGL_3D) return PLAY_RENDER_MODE_WEBGL_3D;
@@ -334,6 +346,7 @@ function exportRuntimeMain() {
     var source = lighting && typeof lighting === 'object' ? lighting : {};
     return {
       enabled: source.enabled === true,
+      mode: normalizeLightingMode(source.mode, DEFAULT_SCENE_LIGHTING.mode),
       ambientColor: typeof source.ambientColor === 'string' && source.ambientColor ? source.ambientColor : DEFAULT_SCENE_LIGHTING.ambientColor,
       ambientIntensity: clampLighting01(source.ambientIntensity == null ? DEFAULT_SCENE_LIGHTING.ambientIntensity : source.ambientIntensity),
       overlayOpacity: clampLighting01(source.overlayOpacity == null ? DEFAULT_SCENE_LIGHTING.overlayOpacity : source.overlayOpacity),
@@ -354,6 +367,27 @@ function exportRuntimeMain() {
       offsetY: Number.isFinite(source.offsetY) ? source.offsetY : DEFAULT_LIGHT_COMPONENT.offsetY,
       height: Number.isFinite(source.height) ? Math.max(0, source.height) : DEFAULT_LIGHT_COMPONENT.height,
     };
+  }
+
+  function getRenderView() {
+    return {
+      x: Math.round(Number.isFinite(viewX) ? viewX : 0),
+      y: Math.round(Number.isFinite(viewY) ? viewY : 0),
+    };
+  }
+
+  function ensureLightingSurface(width, height) {
+    if (typeof document === 'undefined') return null;
+    if (!lightingCanvas) {
+      lightingCanvas = document.createElement('canvas');
+      lightingCtx = null;
+    }
+    if (lightingCanvas.width !== width) lightingCanvas.width = width;
+    if (lightingCanvas.height !== height) lightingCanvas.height = height;
+    if (!lightingCtx) lightingCtx = lightingCanvas.getContext('2d');
+    if (!lightingCtx) return null;
+    lightingCtx.imageSmoothingEnabled = false;
+    return { canvas: lightingCanvas, ctx: lightingCtx };
   }
 
   function getLightingManagerObject() {
@@ -1483,6 +1517,7 @@ function exportRuntimeMain() {
     }).sort();
     return JSON.stringify({
       enabled: sceneLighting.enabled,
+      mode: sceneLighting.mode,
       ambientColor: sceneLighting.ambientColor,
       ambientIntensity: sceneLighting.ambientIntensity,
       overlayOpacity: sceneLighting.overlayOpacity,
@@ -1524,8 +1559,13 @@ function exportRuntimeMain() {
 
   function renderFrame2DLighting() {
     if (!ctx2d || !sceneLighting.enabled) return;
+    var surface = ensureLightingSurface(canvas2d.width, canvas2d.height);
+    if (!surface) return;
+    var overlayCtx = surface.ctx;
     var ambientRgb = parseHexColor(sceneLighting.ambientColor, [11, 18, 32]);
     var lights = getActiveLights();
+    var renderView = getRenderView();
+    var pixelMode = sceneLighting.mode !== LIGHTING_MODE_SOFT;
     var worldElementCount = getWorldElements().length;
     var visibleObjects = Array.isArray(gameObjects)
       ? gameObjects.filter(function(obj) { return !obj || !obj.components || !obj.components.Render || obj.components.Render.visible !== false; }).length
@@ -1546,42 +1586,60 @@ function exportRuntimeMain() {
     var baseOverlayAlpha = clamp01(sceneLighting.overlayOpacity * (1 - (sceneLighting.ambientIntensity * 0.6)));
     var overlayAlpha = isEffectivelyEmptyScene ? Math.min(baseOverlayAlpha, 0.28) : baseOverlayAlpha;
 
-    ctx2d.save();
-    ctx2d.fillStyle = rgbaString(ambientRgb, overlayAlpha);
-    ctx2d.fillRect(0, 0, canvas2d.width, canvas2d.height);
+    overlayCtx.save();
+    overlayCtx.clearRect(0, 0, canvas2d.width, canvas2d.height);
+    overlayCtx.fillStyle = rgbaString(ambientRgb, overlayAlpha);
+    overlayCtx.fillRect(0, 0, canvas2d.width, canvas2d.height);
     if (lights.length > 0) {
-      ctx2d.globalCompositeOperation = 'destination-out';
+      overlayCtx.globalCompositeOperation = 'destination-out';
       lights.forEach(function(light) {
-        var radius = Math.max(8, light.radius);
-        var sx = light.worldX - viewX;
-        var sy = light.worldY - viewY;
-        var innerRadius = Math.max(0, radius * (0.12 + ((1 - light.falloff) * 0.18)));
+        var radius = Math.max(8, pixelMode ? Math.round(light.radius) : light.radius);
+        var sx = pixelMode ? Math.round(light.worldX - renderView.x) : light.worldX - renderView.x;
+        var sy = pixelMode ? Math.round(light.worldY - renderView.y) : light.worldY - renderView.y;
+        var innerRadius = pixelMode
+          ? Math.max(0, Math.round(radius * 0.5))
+          : Math.max(0, radius * (0.12 + ((1 - light.falloff) * 0.18)));
         var alpha = clamp01(0.92 * light.intensity);
-        var cutout = ctx2d.createRadialGradient(sx, sy, innerRadius, sx, sy, radius);
+        var cutout = overlayCtx.createRadialGradient(sx, sy, innerRadius, sx, sy, radius);
         cutout.addColorStop(0, 'rgba(0, 0, 0, ' + alpha + ')');
-        cutout.addColorStop(Math.min(0.68, 0.2 + (light.falloff * 0.48)), 'rgba(0, 0, 0, ' + (alpha * 0.42) + ')');
+        if (pixelMode) {
+          cutout.addColorStop(0.42, 'rgba(0, 0, 0, ' + alpha + ')');
+          cutout.addColorStop(0.43, 'rgba(0, 0, 0, ' + (alpha * 0.46) + ')');
+          cutout.addColorStop(0.72, 'rgba(0, 0, 0, ' + (alpha * 0.46) + ')');
+          cutout.addColorStop(0.73, 'rgba(0, 0, 0, 0)');
+        } else {
+          cutout.addColorStop(Math.min(0.68, 0.2 + (light.falloff * 0.48)), 'rgba(0, 0, 0, ' + (alpha * 0.42) + ')');
+        }
         cutout.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        ctx2d.fillStyle = cutout;
-        ctx2d.beginPath();
-        ctx2d.arc(sx, sy, radius, 0, Math.PI * 2);
-        ctx2d.fill();
+        overlayCtx.fillStyle = cutout;
+        overlayCtx.beginPath();
+        overlayCtx.arc(sx, sy, radius, 0, Math.PI * 2);
+        overlayCtx.fill();
       });
-      ctx2d.globalCompositeOperation = 'lighter';
+      overlayCtx.globalCompositeOperation = 'lighter';
       lights.forEach(function(light) {
-        var radius = Math.max(8, light.radius * 0.95);
-        var sx = light.worldX - viewX;
-        var sy = light.worldY - viewY;
-        var glow = ctx2d.createRadialGradient(sx, sy, 0, sx, sy, radius);
-        glow.addColorStop(0, rgbaString(light.rgb, light.intensity * 0.24));
-        glow.addColorStop(0.4, rgbaString(light.rgb, light.intensity * 0.14));
+        var radius = Math.max(8, pixelMode ? Math.round(light.radius * 0.9) : light.radius * 0.95);
+        var sx = pixelMode ? Math.round(light.worldX - renderView.x) : light.worldX - renderView.x;
+        var sy = pixelMode ? Math.round(light.worldY - renderView.y) : light.worldY - renderView.y;
+        var glow = overlayCtx.createRadialGradient(sx, sy, 0, sx, sy, radius);
+        glow.addColorStop(0, rgbaString(light.rgb, light.intensity * (pixelMode ? 0.16 : 0.24)));
+        if (pixelMode) {
+          glow.addColorStop(0.24, rgbaString(light.rgb, light.intensity * 0.16));
+          glow.addColorStop(0.25, rgbaString(light.rgb, light.intensity * 0.08));
+          glow.addColorStop(0.48, rgbaString(light.rgb, light.intensity * 0.08));
+          glow.addColorStop(0.49, rgbaString(light.rgb, 0));
+        } else {
+          glow.addColorStop(0.4, rgbaString(light.rgb, light.intensity * 0.14));
+        }
         glow.addColorStop(1, rgbaString(light.rgb, 0));
-        ctx2d.fillStyle = glow;
-        ctx2d.beginPath();
-        ctx2d.arc(sx, sy, radius, 0, Math.PI * 2);
-        ctx2d.fill();
+        overlayCtx.fillStyle = glow;
+        overlayCtx.beginPath();
+        overlayCtx.arc(sx, sy, radius, 0, Math.PI * 2);
+        overlayCtx.fill();
       });
     }
-    ctx2d.restore();
+    overlayCtx.restore();
+    ctx2d.drawImage(surface.canvas, 0, 0, canvas2d.width, canvas2d.height);
   }
 
   function pushColoredQuad(positions, colors, a, b, c, d, rgb) {
@@ -2052,7 +2110,7 @@ function exportRuntimeMain() {
       var drawn = false;
 
       ctx2d.save();
-      ctx2d.translate(obj.x - drawViewX + width * 0.5, obj.y - drawViewY + height * 0.5);
+      ctx2d.translate(Math.round(obj.x - drawViewX + width * 0.5), Math.round(obj.y - drawViewY + height * 0.5));
       ctx2d.rotate((rotation * Math.PI) / 180);
 
       if (src) {
@@ -2082,13 +2140,15 @@ function exportRuntimeMain() {
 
   function renderFrame2D() {
     if (!ctx2d || !canvas2d) return;
+    var renderView = getRenderView();
+    ctx2d.imageSmoothingEnabled = false;
     ctx2d.clearRect(0, 0, canvas2d.width, canvas2d.height);
     ctx2d.fillStyle = '#0b1220';
     ctx2d.fillRect(0, 0, canvas2d.width, canvas2d.height);
-    drawWorld(viewX, viewY);
-    drawWorldElements(viewX, viewY);
-    drawObjects(viewX, viewY);
-    if (particleSystem) particleSystem.renderWorld(ctx2d, viewX, viewY);
+    drawWorld(renderView.x, renderView.y);
+    drawWorldElements(renderView.x, renderView.y);
+    drawObjects(renderView.x, renderView.y);
+    if (particleSystem) particleSystem.renderWorld(ctx2d, renderView.x, renderView.y);
     renderFrame2DLighting();
     if (particleSystem) particleSystem.renderScreen(ctx2d);
     ctx2d.fillStyle = '#e2e8f0';

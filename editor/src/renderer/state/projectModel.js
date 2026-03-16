@@ -109,8 +109,19 @@ const DEFAULT_SOUND = {
   maxDistance: 0,
 };
 
+const LIGHTING_MODE_PIXEL = 'pixel';
+const LIGHTING_MODE_SOFT = 'soft';
+
+function normalizeLightingMode(value, fallback = LIGHTING_MODE_PIXEL) {
+  const mode = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (mode === LIGHTING_MODE_SOFT) return LIGHTING_MODE_SOFT;
+  if (mode === LIGHTING_MODE_PIXEL || mode === 'crisp' || mode === 'hard') return LIGHTING_MODE_PIXEL;
+  return fallback;
+}
+
 const DEFAULT_SCENE_LIGHTING = {
   enabled: false,
+  mode: LIGHTING_MODE_PIXEL,
   ambientColor: '#0b1220',
   ambientIntensity: 0.35,
   overlayOpacity: 0.82,
@@ -131,6 +142,7 @@ const DEFAULT_LIGHT_COMPONENT = {
 
 const DEFAULT_LIGHTING_MANAGER_COMPONENT = {
   enabled: false,
+  mode: LIGHTING_MODE_PIXEL,
   ambientColor: '#0b1220',
   ambientIntensity: 0.35,
   overlayOpacity: 0.82,
@@ -229,6 +241,7 @@ function normalizeSceneLighting(lighting) {
   const source = lighting && typeof lighting === 'object' ? lighting : {};
   return {
     enabled: source.enabled === true,
+    mode: normalizeLightingMode(source.mode, DEFAULT_SCENE_LIGHTING.mode),
     ambientColor: typeof source.ambientColor === 'string' && source.ambientColor ? source.ambientColor : DEFAULT_SCENE_LIGHTING.ambientColor,
     ambientIntensity: clamp01(source.ambientIntensity, DEFAULT_SCENE_LIGHTING.ambientIntensity),
     overlayOpacity: clamp01(source.overlayOpacity, DEFAULT_SCENE_LIGHTING.overlayOpacity),
@@ -241,6 +254,7 @@ function normalizeLightingManagerComponent(component) {
   const source = component && typeof component === 'object' ? component : {};
   return {
     enabled: source.enabled === true,
+    mode: normalizeLightingMode(source.mode, DEFAULT_LIGHTING_MANAGER_COMPONENT.mode),
     ambientColor: typeof source.ambientColor === 'string' && source.ambientColor ? source.ambientColor : DEFAULT_LIGHTING_MANAGER_COMPONENT.ambientColor,
     ambientIntensity: clamp01(source.ambientIntensity, DEFAULT_LIGHTING_MANAGER_COMPONENT.ambientIntensity),
     overlayOpacity: clamp01(source.overlayOpacity, DEFAULT_LIGHTING_MANAGER_COMPONENT.overlayOpacity),

@@ -41,8 +41,11 @@ function transpileTS(source) {
 const CELL_SIZE = 24;
 const PLAY_OBJECT_CULL_MARGIN = CELL_SIZE * 4;
 const PLAY_RENDER_MODE_WEBGL_3D = 'webgl-3d';
+const LIGHTING_MODE_PIXEL = 'pixel';
+const LIGHTING_MODE_SOFT = 'soft';
 const DEFAULT_SCENE_LIGHTING = {
   enabled: false,
+  mode: LIGHTING_MODE_PIXEL,
   ambientColor: '#0b1220',
   ambientIntensity: 0.35,
   overlayOpacity: 0.82,
@@ -281,6 +284,8 @@ export function usePlayMode(project, onLog) {
       cssStyleElements,
       _animStates: new Map(),
       _clipIndex: new Map((animClips || []).map((c) => [c.id, c])),
+      lightingCanvas: null,
+      lightingCtx: null,
       _debug: {
         canvasSignature: '',
         missingCanvasLogged: false,
@@ -963,8 +968,10 @@ export function usePlayMode(project, onLog) {
     const ctx = canvas.getContext('2d');
     const w = canvas.width;
     const h = canvas.height;
+    const renderView = getPlayRenderView(state);
     const blankScene = isPlaySceneBlank(state);
 
+    ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, w, h);
     if (blankScene) {
       const bg = ctx.createLinearGradient(0, 0, 0, h);
@@ -976,7 +983,7 @@ export function usePlayMode(project, onLog) {
     }
     ctx.fillRect(0, 0, w, h);
     ctx.save();
-    ctx.translate(-(state.viewX || 0), -(state.viewY || 0));
+    ctx.translate(-renderView.x, -renderView.y);
     renderPlayWorldGuides(ctx, state, w, h, { layer: 'background' });
 
     // World
@@ -1070,7 +1077,7 @@ export function usePlayMode(project, onLog) {
         || (asset && (asset.previewUrl || asset.url || asset.src));
       
       ctx.save();
-      ctx.translate(obj.x + w / 2, obj.y + h / 2);
+      ctx.translate(Math.round(obj.x + w / 2), Math.round(obj.y + h / 2));
       ctx.rotate((rotation * Math.PI) / 180);
       
       if (src) {
@@ -1106,10 +1113,10 @@ export function usePlayMode(project, onLog) {
     if (state.particleSystem) state.particleSystem.renderWorld(ctx);
 
     ctx.restore();
-    renderFrame2DLighting(ctx, state, w, h);
+    renderFrame2DLighting(ctx, state, w, h, renderView);
     if (state.particleSystem) state.particleSystem.renderScreen(ctx);
     ctx.save();
-    ctx.translate(-(state.viewX || 0), -(state.viewY || 0));
+    ctx.translate(-renderView.x, -renderView.y);
     renderPlayWorldGuides(ctx, state, w, h, { layer: 'foreground' });
     ctx.restore();
     renderPlayBlankStageOverlay(ctx, state, w, h);
@@ -1219,7 +1226,7 @@ export function usePlayMode(project, onLog) {
       `Objects ${state && Array.isArray(state.gameObjects) ? state.gameObjects.length : 0} total | ${visibleObjects} visible | elements ${worldElementCount} | filled cell chunks ${filledCellChunks}`,
       `View ${Math.round(state && state.viewX || 0)}, ${Math.round(state && state.viewY || 0)} | canvas ${width}x${height}`,
       `Camera ${camera && camera.source === 'object' ? 'scene object' : 'engine fallback'}${camera && camera.objectId ? ` (${camera.objectId})` : ''} | target ${camera && camera.targetObjectId ? camera.targetObjectId : 'None'}`,
-      `Lighting ${lighting.enabled ? 'ON' : 'OFF'} | active lights ${activeLights.length} | overlay ${Math.round((lighting.overlayOpacity || 0) * 100)}%`,
+      `Lighting ${lighting.enabled ? 'ON' : 'OFF'} | ${lighting.mode} | active lights ${activeLights.length} | overlay ${Math.round((lighting.overlayOpacity || 0) * 100)}%`,
     ];
 
     if (visibleObjects === 0 && filledCellChunks === 0 && worldElementCount === 0) {
@@ -1485,10 +1492,18 @@ function shadeRgb(rgb, factor) {
   return rgb.map((value) => Math.max(0, Math.min(255, Math.round(value * factor))));
 }
 
+function normalizeLightingMode(value, fallback = LIGHTING_MODE_PIXEL) {
+  const mode = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (mode === LIGHTING_MODE_SOFT) return LIGHTING_MODE_SOFT;
+  if (mode === LIGHTING_MODE_PIXEL || mode === 'crisp' || mode === 'hard') return LIGHTING_MODE_PIXEL;
+  return fallback;
+}
+
 function normalizePlaySceneLighting(lighting) {
   const source = lighting && typeof lighting === 'object' ? lighting : {};
   return {
     enabled: source.enabled === true,
+    mode: normalizeLightingMode(source.mode, DEFAULT_SCENE_LIGHTING.mode),
     ambientColor: typeof source.ambientColor === 'string' && source.ambientColor ? source.ambientColor : DEFAULT_SCENE_LIGHTING.ambientColor,
     ambientIntensity: clamp01(source.ambientIntensity ?? DEFAULT_SCENE_LIGHTING.ambientIntensity),
     overlayOpacity: clamp01(source.overlayOpacity ?? DEFAULT_SCENE_LIGHTING.overlayOpacity),
@@ -1500,6 +1515,33 @@ function normalizePlaySceneLighting(lighting) {
 function getPlayLightingManagerObject(state) {
   const objects = Array.isArray(state && state.gameObjects) ? state.gameObjects : [];
   return objects.find((obj) => obj && obj.components && obj.components.LightingManager) || null;
+}
+
+function getPlayRenderView(state) {
+  return {
+    x: Math.round(Number.isFinite(state && state.viewX) ? state.viewX : 0),
+    y: Math.round(Number.isFinite(state && state.viewY) ? state.viewY : 0),
+  };
+}
+
+function ensurePlayLightingSurface(state, width, height) {
+  if (!state || typeof document === 'undefined') return null;
+  let canvas = state.lightingCanvas;
+  if (!canvas) {
+    canvas = document.createElement('canvas');
+    state.lightingCanvas = canvas;
+    state.lightingCtx = null;
+  }
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
+  let ctx = state.lightingCtx;
+  if (!ctx) {
+    ctx = canvas.getContext('2d');
+    state.lightingCtx = ctx;
+  }
+  if (!ctx) return null;
+  ctx.imageSmoothingEnabled = false;
+  return { canvas, ctx };
 }
 
 function resolvePlayLightingSettings(state, sceneLike = null) {
@@ -1698,6 +1740,7 @@ function buildPlayLightingSignature(state) {
     .sort();
   return JSON.stringify({
     enabled: lighting.enabled,
+    mode: lighting.mode,
     ambientColor: lighting.ambientColor,
     ambientIntensity: lighting.ambientIntensity,
     overlayOpacity: lighting.overlayOpacity,
@@ -1740,11 +1783,16 @@ function applyPlay3DLighting(baseRgb, samplePoint, sceneLighting, lights) {
   return next.map((value) => Math.max(0, Math.min(255, Math.round(value))));
 }
 
-function renderFrame2DLighting(ctx, state, width, height) {
+function renderFrame2DLighting(ctx, state, width, height, renderView = null) {
   const lighting = normalizePlaySceneLighting(state && state.sceneLighting);
   if (!lighting.enabled) return;
+  const surface = ensurePlayLightingSurface(state, width, height);
+  if (!surface) return;
+  const overlayCtx = surface.ctx;
   const ambientRgb = parseHexColor(lighting.ambientColor, [11, 18, 32]);
   const lights = getPlayActiveLights(state);
+  const view = renderView || getPlayRenderView(state);
+  const pixelMode = lighting.mode !== LIGHTING_MODE_SOFT;
   const worldElementCount = getPlayWorldElements(state).length;
   const visibleObjects = getVisiblePlayObjectCount(state);
   const hasFilledCells = hasPlayFilledCells(state);
@@ -1752,42 +1800,60 @@ function renderFrame2DLighting(ctx, state, width, height) {
   const baseOverlayAlpha = clamp01(lighting.overlayOpacity * (1 - (lighting.ambientIntensity * 0.6)));
   const overlayAlpha = isEffectivelyEmptyScene ? Math.min(baseOverlayAlpha, 0.28) : baseOverlayAlpha;
 
-  ctx.save();
-  ctx.fillStyle = rgbaString(ambientRgb, overlayAlpha);
-  ctx.fillRect(0, 0, width, height);
+  overlayCtx.save();
+  overlayCtx.clearRect(0, 0, width, height);
+  overlayCtx.fillStyle = rgbaString(ambientRgb, overlayAlpha);
+  overlayCtx.fillRect(0, 0, width, height);
   if (lights.length > 0) {
-    ctx.globalCompositeOperation = 'destination-out';
+    overlayCtx.globalCompositeOperation = 'destination-out';
     lights.forEach((light) => {
-      const radius = Math.max(8, light.radius);
-      const sx = light.worldX - (state.viewX || 0);
-      const sy = light.worldY - (state.viewY || 0);
-      const innerRadius = Math.max(0, radius * (0.12 + ((1 - light.falloff) * 0.18)));
+      const radius = Math.max(8, pixelMode ? Math.round(light.radius) : light.radius);
+      const sx = pixelMode ? Math.round(light.worldX - view.x) : light.worldX - view.x;
+      const sy = pixelMode ? Math.round(light.worldY - view.y) : light.worldY - view.y;
+      const innerRadius = pixelMode
+        ? Math.max(0, Math.round(radius * 0.5))
+        : Math.max(0, radius * (0.12 + ((1 - light.falloff) * 0.18)));
       const alpha = clamp01(0.92 * light.intensity);
-      const cutout = ctx.createRadialGradient(sx, sy, innerRadius, sx, sy, radius);
+      const cutout = overlayCtx.createRadialGradient(sx, sy, innerRadius, sx, sy, radius);
       cutout.addColorStop(0, `rgba(0, 0, 0, ${alpha})`);
-      cutout.addColorStop(Math.min(0.68, 0.2 + (light.falloff * 0.48)), `rgba(0, 0, 0, ${alpha * 0.42})`);
+      if (pixelMode) {
+        cutout.addColorStop(0.42, `rgba(0, 0, 0, ${alpha})`);
+        cutout.addColorStop(0.43, `rgba(0, 0, 0, ${alpha * 0.46})`);
+        cutout.addColorStop(0.72, `rgba(0, 0, 0, ${alpha * 0.46})`);
+        cutout.addColorStop(0.73, 'rgba(0, 0, 0, 0)');
+      } else {
+        cutout.addColorStop(Math.min(0.68, 0.2 + (light.falloff * 0.48)), `rgba(0, 0, 0, ${alpha * 0.42})`);
+      }
       cutout.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = cutout;
-      ctx.beginPath();
-      ctx.arc(sx, sy, radius, 0, Math.PI * 2);
-      ctx.fill();
+      overlayCtx.fillStyle = cutout;
+      overlayCtx.beginPath();
+      overlayCtx.arc(sx, sy, radius, 0, Math.PI * 2);
+      overlayCtx.fill();
     });
-    ctx.globalCompositeOperation = 'lighter';
+    overlayCtx.globalCompositeOperation = 'lighter';
     lights.forEach((light) => {
-      const radius = Math.max(8, light.radius * 0.95);
-      const sx = light.worldX - (state.viewX || 0);
-      const sy = light.worldY - (state.viewY || 0);
-      const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, radius);
-      glow.addColorStop(0, rgbaString(light.rgb, light.intensity * 0.24));
-      glow.addColorStop(0.4, rgbaString(light.rgb, light.intensity * 0.14));
+      const radius = Math.max(8, pixelMode ? Math.round(light.radius * 0.9) : light.radius * 0.95);
+      const sx = pixelMode ? Math.round(light.worldX - view.x) : light.worldX - view.x;
+      const sy = pixelMode ? Math.round(light.worldY - view.y) : light.worldY - view.y;
+      const glow = overlayCtx.createRadialGradient(sx, sy, 0, sx, sy, radius);
+      glow.addColorStop(0, rgbaString(light.rgb, light.intensity * (pixelMode ? 0.16 : 0.24)));
+      if (pixelMode) {
+        glow.addColorStop(0.24, rgbaString(light.rgb, light.intensity * 0.16));
+        glow.addColorStop(0.25, rgbaString(light.rgb, light.intensity * 0.08));
+        glow.addColorStop(0.48, rgbaString(light.rgb, light.intensity * 0.08));
+        glow.addColorStop(0.49, rgbaString(light.rgb, 0));
+      } else {
+        glow.addColorStop(0.4, rgbaString(light.rgb, light.intensity * 0.14));
+      }
       glow.addColorStop(1, rgbaString(light.rgb, 0));
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(sx, sy, radius, 0, Math.PI * 2);
-      ctx.fill();
+      overlayCtx.fillStyle = glow;
+      overlayCtx.beginPath();
+      overlayCtx.arc(sx, sy, radius, 0, Math.PI * 2);
+      overlayCtx.fill();
     });
   }
-  ctx.restore();
+  overlayCtx.restore();
+  ctx.drawImage(surface.canvas, 0, 0, width, height);
 }
 
 function pushColoredQuad(positions, colors, a, b, c, d, rgb) {
