@@ -636,7 +636,7 @@ export default function Inspector({
           </div>
         </div>
       </Modal>
-      <Modal open={showAudioPicker} title="Select Audio File" onClose={() => setShowAudioPicker(false)} maxWidth={920} minWidth={620}>
+      <Modal open={showAudioPicker} title="Select Audio File" onClose={() => setShowAudioPicker(false)} maxWidth={980} minWidth={520} resizable={false}>
         <div style={{ display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input
@@ -655,42 +655,51 @@ export default function Inspector({
             {filteredAudios.length === 0 && (
               <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>No audio files match.</div>
             )}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
               {filteredAudios.map((asset) => {
                 const src = asset.previewUrl || asset.url || asset.src || null;
                 const active = components.Sound && components.Sound.assetId === asset.id;
                 return (
-                  <button
+                  <div
                     key={asset.id}
-                    type="button"
-                    onClick={() => {
-                      handleComponentChange('Sound', 'assetId', asset.id);
-                      setShowAudioPicker(false);
-                    }}
                     style={{
                       border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
                       borderRadius: 6,
                       background: active ? 'rgba(59,130,246,0.12)' : '#111827',
                       color: 'var(--text)',
                       padding: 8,
-                      cursor: 'pointer',
-                      textAlign: 'left',
+                      display: 'grid',
+                      gap: 8,
                     }}
                   >
-                    <div style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 6 }}>
-                      {asset.name || asset.id}
-                    </div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {asset.id}
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 6 }} title={asset.name || asset.id}>
+                          {asset.name || asset.id}
+                        </div>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={asset.id}>
+                          {asset.id}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className={`btn btn-sm${active ? ' active' : ''}`}
+                        onClick={() => {
+                          handleComponentChange('Sound', 'assetId', asset.id);
+                          setShowAudioPicker(false);
+                        }}
+                      >
+                        {active ? 'Selected' : 'Use'}
+                      </button>
                     </div>
                     {src ? (
-                      <audio controls preload="none" style={{ width: '100%' }} onClick={(e) => e.stopPropagation()}>
+                      <audio controls preload="none" style={{ width: '100%', minWidth: 0, display: 'block' }}>
                         <source src={src} />
                       </audio>
                     ) : (
                       <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>No preview source</div>
                     )}
-                  </button>
+                  </div>
                 );
               })}
             </div>

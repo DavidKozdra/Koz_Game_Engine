@@ -2345,7 +2345,7 @@ def on_update(self, engine, dt):
           </div>
 
           <div className="editor-center">
-            <div className="main-tabs" style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: '#181c24' }}>
+            <div className="main-tabs" style={{ borderBottom: '1px solid var(--border)', background: '#181c24' }}>
               {['world', 'scripts', 'assets', 'scenes', 'settings'].map(tab => (
                 <button
                   key={tab}
@@ -2463,7 +2463,7 @@ def on_update(self, engine, dt):
                       </button>
                     ))}
                   </div>
-                  <div style={{ flex: 1, minHeight: 0 }}>
+                  <div className="bottom-content">
                     {bottomTab === 'timeline' && (
                       <Timeline
                         project={projectView}
@@ -2488,7 +2488,7 @@ def on_update(self, engine, dt):
               </>
             )}
             {mainTab === 'scripts' && (
-              <div style={{ flex: 1, minHeight: 0 }}>
+              <div className="editor-tab-panel">
                 <ScriptEditor
                   project={projectView}
                   onUpdateScript={handleUpdateScript}
@@ -2502,7 +2502,7 @@ def on_update(self, engine, dt):
               </div>
             )}
             {mainTab === 'assets' && (
-              <div style={{ flex: 1, minHeight: 0 }}>
+              <div className="editor-tab-panel">
                 <SystemsTab
                   mode="assets"
                   project={project}
@@ -2520,7 +2520,7 @@ def on_update(self, engine, dt):
               </div>
             )}
             {mainTab === 'scenes' && (
-              <div style={{ flex: 1, minHeight: 0 }}>
+              <div className="editor-tab-panel">
                 <SystemsTab
                   mode="scenes"
                   project={project}
@@ -2534,7 +2534,7 @@ def on_update(self, engine, dt):
               </div>
             )}
             {mainTab === 'settings' && (
-              <div style={{ flex: 1, minHeight: 0 }}>
+              <div className="editor-tab-panel">
                 <SystemsTab
                   mode="settings"
                   project={project}

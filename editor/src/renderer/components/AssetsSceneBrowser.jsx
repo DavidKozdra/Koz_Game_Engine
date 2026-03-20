@@ -81,6 +81,7 @@ export default function AssetsSceneBrowser({
 }) {
   const [expanded, setExpanded] = useState({ scenes: true, images: true, prefabs: true, audio: true });
   const [assetFilter, setAssetFilter] = useState('');
+  const [audioQuery, setAudioQuery] = useState('');
   const [newSceneName, setNewSceneName] = useState('');
   const [newImageName, setNewImageName] = useState('');
   const [newImageUrl, setNewImageUrl] = useState('');
@@ -105,6 +106,15 @@ export default function AssetsSceneBrowser({
   const filterLower = assetFilter.trim().toLowerCase();
   const images = useMemo(() => filterLower ? allImages.filter(a => (a.name || a.id).toLowerCase().includes(filterLower)) : allImages, [allImages, filterLower]);
   const audios = useMemo(() => filterLower ? allAudios.filter(a => (a.name || a.id).toLowerCase().includes(filterLower)) : allAudios, [allAudios, filterLower]);
+  const audioFilterLower = audioQuery.trim().toLowerCase();
+  const visibleAudios = useMemo(
+    () => (
+      audioFilterLower
+        ? audios.filter((asset) => String(asset.name || asset.id).toLowerCase().includes(audioFilterLower))
+        : audios
+    ),
+    [audios, audioFilterLower],
+  );
   const prefabs = project.prefabs || [];
   const bootSceneId = project.activeSceneId || (scenes[0] && scenes[0].id) || null;
   const currentSceneId = selectedSceneId || bootSceneId;
@@ -651,22 +661,45 @@ export default function AssetsSceneBrowser({
                 style={{ display: 'none' }}
               />
             </div>
-            <div style={{ display: 'grid', gap: 6 }}>
-              {audios.length === 0 && <div style={{ color: '#94a3b8', fontSize: 11 }}>No audio files. Drop or import MP3, OGG, WAV.</div>}
-              {audios.map((aud) => (
-                <div key={aud.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 4, background: '#111827' }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 11, color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{aud.name || aud.id}</div>
-                    <div style={{ fontSize: 10, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{aud.id}</div>
-                    {(aud.previewUrl || aud.url || aud.src) && (
-                      <audio controls preload="none" style={{ width: '100%', marginTop: 4 }}>
+            {allAudios.length > 3 && (
+              <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
+                <input
+                  type="text"
+                  value={audioQuery}
+                  onChange={(e) => setAudioQuery(e.target.value)}
+                  placeholder={`Search ${audios.length} audio file${audios.length === 1 ? '' : 's'}...`}
+                  style={{ width: '100%', padding: '8px 10px', background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12 }}
+                />
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                  {visibleAudios.length} result{visibleAudios.length === 1 ? '' : 's'}
+                </div>
+              </div>
+            )}
+            <div style={{ maxHeight: '42vh', overflowY: 'auto', paddingRight: 2 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
+                {audios.length === 0 && <div style={{ color: '#94a3b8', fontSize: 11 }}>No audio files. Drop or import MP3, OGG, WAV.</div>}
+                {audios.length > 0 && visibleAudios.length === 0 && (
+                  <div style={{ color: '#94a3b8', fontSize: 11 }}>No audio files match the current search.</div>
+                )}
+                {visibleAudios.map((aud) => (
+                  <div key={aud.id} style={{ display: 'grid', gap: 8, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, background: '#111827' }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 11, color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={aud.name || aud.id}>{aud.name || aud.id}</div>
+                        <div style={{ fontSize: 10, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={aud.id}>{aud.id}</div>
+                      </div>
+                      <button className="btn btn-sm btn-danger" onClick={() => onPatchProject({ assets: (project.assets || []).filter(a => a.id !== aud.id) })} aria-label={`Delete audio ${aud.name || aud.id}`}><Icon name="delete" /></button>
+                    </div>
+                    {(aud.previewUrl || aud.url || aud.src) ? (
+                      <audio controls preload="none" style={{ width: '100%', minWidth: 0, display: 'block' }}>
                         <source src={aud.previewUrl || aud.url || aud.src} />
                       </audio>
+                    ) : (
+                      <div style={{ fontSize: 10, color: '#94a3b8' }}>No preview source</div>
                     )}
                   </div>
-                  <button className="btn btn-sm btn-danger" onClick={() => onPatchProject({ assets: (project.assets || []).filter(a => a.id !== aud.id) })} aria-label={`Delete audio ${aud.name || aud.id}`}><Icon name="delete" /></button>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         )}

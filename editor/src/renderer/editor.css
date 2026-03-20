@@ -89,6 +89,7 @@ html, body, #root {
   display: flex; flex-direction: column;
   overflow: hidden;
   min-height: 0;
+  min-width: 0;
 }
 
 .editor-viewport {
@@ -119,13 +120,20 @@ html, body, #root {
   background: var(--bg-panel);
   border-top: 1px solid var(--border);
   overflow: hidden;
+  min-height: 0;
 }
 
+.main-tabs,
 .bottom-tabs {
   display: flex; gap: 0; flex-shrink: 0;
   border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-width: 0;
+  scrollbar-width: thin;
 }
 
+.main-tab,
 .bottom-tab {
   padding: 5px 14px;
   font-size: 11px; font-weight: 500;
@@ -134,12 +142,25 @@ html, body, #root {
   border: none; border-bottom: 2px solid transparent;
   cursor: pointer;
   transition: all 0.15s;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
+.main-tab:hover,
 .bottom-tab:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+.main-tab.active,
 .bottom-tab.active { color: var(--text); border-bottom-color: var(--accent); background: rgba(59,130,246,0.08); }
 
 .bottom-content {
-  flex: 1; overflow: hidden;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.editor-tab-panel {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
 }
 
 /* ---- Right panel ---- */
@@ -151,6 +172,7 @@ html, body, #root {
   position: relative;
   min-width: 220px;
   max-width: 42vw;
+  min-height: 0;
 }
 
 /* ---- Status bar ---- */
