@@ -4,6 +4,7 @@ import { javascript } from '@codemirror/lang-javascript';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { EditorState } from '@codemirror/state';
 import Modal from './Modal.jsx';
+import { resolveScriptFilePath } from '../lib/scriptPaths.js';
 
 const LANGUAGES = [
   { id: 'javascript', label: 'JavaScript' },
@@ -190,15 +191,7 @@ export default function ScriptEditor({
   // Open script in external editor
   const handleOpenInEditor = useCallback(async () => {
     if (!hasFileSupport || !selectedScript?.filePath) return;
-    // Compute the real absolute file path as used by the main process
-    let realPath = selectedScript.filePath;
-    if (!realPath.startsWith('/') && projectPath) {
-      let scriptsDir;
-      let folder = projectPath.endsWith('.json') ? projectPath.substring(0, projectPath.lastIndexOf('/')) : projectPath;
-      if (folder.endsWith('/scripts')) scriptsDir = folder;
-      else scriptsDir = folder + '/scripts';
-      realPath = scriptsDir + '/' + realPath;
-    }
+    const realPath = resolveScriptFilePath(projectPath, selectedScript.filePath);
     try {
       await window.api.openInEditor(realPath, {
         editor: preferredEditor,

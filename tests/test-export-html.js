@@ -76,6 +76,7 @@ async function main() {
   assert(playModeSource.includes("findObjectById: (value) => findRuntimeObjectById(runtimeState.gameObjects, value)"), 'editor play runtime exposes an explicit id lookup helper');
   assert(playModeSource.includes("findObjectByType: (type) => findRuntimeObjectsByType(runtimeState.gameObjects, type)[0] || null"), 'editor play runtime exposes a singular type lookup helper');
   assert(playModeSource.includes('components: JSON.parse(JSON.stringify(obj.components || {}))'), 'editor play runtime clones scene component data before mutation');
+  assert(playModeSource.includes("const isJsLike = language === 'javascript' || language === 'ui';"), 'editor play runtime treats UI scripts as runnable JavaScript');
   assert(playModeSource.includes('syncObjectSpatialIndex(state.objectSpatialIndex, state.gameObjects);'), 'editor play runtime refreshes object culling data after movement');
   assert(playModeSource.includes('ctx.imageSmoothingEnabled = false;'), 'editor play runtime disables 2D image smoothing for crisp rendering');
   assert(playModeSource.includes('function ensurePlayLightingSurface(state, width, height) {'), 'editor play runtime allocates a dedicated lighting overlay surface');
@@ -87,6 +88,7 @@ async function main() {
   assert(moduleSource.includes('ctx2d.imageSmoothingEnabled = false;'), 'export runtime disables 2D image smoothing for crisp rendering');
   assert(moduleSource.includes('function ensureLightingSurface(width, height) {'), 'export runtime allocates a dedicated lighting overlay surface');
   assert(moduleSource.includes('function resolveLightingPalette(lighting) {'), 'export runtime includes lighting preset palette support');
+  assert(moduleSource.includes("if (language !== 'javascript' && language !== 'ui') return;"), 'export runtime keeps UI scripts enabled');
   assert(moduleSource.includes('function applyLightingDither('), 'export runtime includes the dither lighting modifier');
   assert(moduleSource.includes('function applyLightingVignette('), 'export runtime includes the vignette lighting modifier');
   assert(moduleSource.includes('colorPreset'), 'export runtime includes lighting color preset state');

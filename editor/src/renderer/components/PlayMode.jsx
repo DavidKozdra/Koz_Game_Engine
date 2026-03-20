@@ -603,8 +603,9 @@ export function usePlayMode(project, onLog) {
               applyCssScript(scripts[binding.scriptId]);
               return;
             }
+            const isJsLike = language === 'javascript' || language === 'ui';
             const isTS = language === 'typescript';
-            const enabled = language === 'javascript' || isTS || !!(scriptingConfig.engines && scriptingConfig.engines[language]);
+            const enabled = isJsLike || isTS || !!(scriptingConfig.engines && scriptingConfig.engines[language]);
             if (!enabled) {
               onLog({ type: 'warn', message: `Script "${scripts[binding.scriptId].name}" skipped (${language} runtime unavailable in play mode).`, time: new Date().toLocaleTimeString() });
               return;

@@ -2536,11 +2536,12 @@ function exportRuntimeMain() {
 
   (Array.isArray(project.scripts) ? project.scripts : []).forEach(function(script) {
     if (!script || !script.id) return;
-    if (script.language === 'css') {
+    var language = script.language || 'javascript';
+    if (language === 'css') {
       cssScripts[script.id] = script;
       return;
     }
-    if (script.language && script.language !== 'javascript') return;
+    if (language !== 'javascript' && language !== 'ui') return;
     scripts[script.id] = script;
   });
 

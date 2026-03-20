@@ -236,6 +236,31 @@ function runStreamingCommand(cmd, args, cwd, onLine) {
   });
 }
 
+function spawnDetachedCommand(cmd, args) {
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
+    } catch (error) {
+      reject(error);
+      return;
+    }
+
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      callback(value);
+    };
+
+    child.once('error', (error) => finish(reject, error));
+    child.once('spawn', () => {
+      child.unref();
+      finish(resolve);
+    });
+  });
+}
+
 async function createZipArchive(zipPath, cwd) {
   try {
     await runCommand('zip', ['-rq', zipPath, '.'], cwd);
@@ -494,10 +519,11 @@ ipcMain.handle('projects:saveAs', async (_event, payload) => {
 // ---- Script file operations ----
 
 function getScriptsDir(projectPath) {
-  const folder = path.dirname(resolveProjectJsonPath(projectPath) || projectPath);
-  // Avoid double scripts/scripts
-  if (folder.endsWith('/scripts')) return folder;
-  return path.join(folder, 'scripts');
+  const jsonPath = resolveProjectJsonPath(projectPath || '');
+  const folder = jsonPath
+    ? path.dirname(jsonPath)
+    : path.resolve(String(projectPath || '.'));
+  return path.basename(folder).toLowerCase() === 'scripts' ? folder : path.join(folder, 'scripts');
 }
 
 ipcMain.handle('scripts:list', async (_event, payload) => {
@@ -597,7 +623,7 @@ ipcMain.handle('editor:openFile', async (_event, payload) => {
       command = editor;
     }
     
-    await spawn(command, [...extraArgs, fullPath], { detached: true, stdio: 'ignore' });
+    await spawnDetachedCommand(command, [...extraArgs, fullPath]);
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error.message };
