@@ -122,6 +122,33 @@ const DEFAULT_LIGHT_COMPONENT = {
   height: 18,
 };
 
+function resolvePlayKeyCode(event) {
+  if (!event) return 0;
+  const numeric = Number(event.keyCode || event.which);
+  if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  const code = typeof event.code === 'string' ? event.code : '';
+  if (code === 'Space') return 32;
+  if (code === 'ArrowLeft') return 37;
+  if (code === 'ArrowUp') return 38;
+  if (code === 'ArrowRight') return 39;
+  if (code === 'ArrowDown') return 40;
+  if (code === 'ShiftLeft' || code === 'ShiftRight') return 16;
+  if (/^Key[A-Z]$/.test(code)) return code.charCodeAt(3);
+  const key = typeof event.key === 'string' ? event.key : '';
+  if (key === ' ') return 32;
+  if (key === 'ArrowLeft') return 37;
+  if (key === 'ArrowUp') return 38;
+  if (key === 'ArrowRight') return 39;
+  if (key === 'ArrowDown') return 40;
+  if (key === 'Shift') return 16;
+  if (/^[a-z]$/i.test(key)) return key.toUpperCase().charCodeAt(0);
+  return 0;
+}
+
+function isEditableTarget(target) {
+  return !!(target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable));
+}
+
 export function usePlayMode(project, onLog) {
   const stateRef = useRef(null);
   const canvasRef = useRef(null);
@@ -1373,13 +1400,38 @@ export function usePlayMode(project, onLog) {
 
   // Key tracking
   useEffect(() => {
-    const handleDown = (e) => keysRef.current.add(e.keyCode);
-    const handleUp = (e) => keysRef.current.delete(e.keyCode);
+    const gameKeys = new Set([16, 32, 37, 38, 39, 40, 65, 68, 69, 83, 87]);
+    const handleDown = (e) => {
+      const code = resolvePlayKeyCode(e);
+      if (code) keysRef.current.add(code);
+      if (gameKeys.has(code) && !isEditableTarget(e.target)) e.preventDefault();
+    };
+    const handleUp = (e) => {
+      const code = resolvePlayKeyCode(e);
+      if (code) keysRef.current.delete(code);
+      if (gameKeys.has(code) && !isEditableTarget(e.target)) e.preventDefault();
+    };
+    const clearKeys = () => keysRef.current.clear();
+    const focusCanvas = () => {
+      const canvas = canvasRef.current;
+      if (!canvas || typeof canvas.focus !== 'function') return;
+      try {
+        canvas.focus({ preventScroll: true });
+      } catch (_err) {
+        canvas.focus();
+      }
+    };
     window.addEventListener('keydown', handleDown);
     window.addEventListener('keyup', handleUp);
+    window.addEventListener('blur', clearKeys);
+    document.addEventListener('visibilitychange', clearKeys);
+    window.addEventListener('pointerdown', focusCanvas);
     return () => {
       window.removeEventListener('keydown', handleDown);
       window.removeEventListener('keyup', handleUp);
+      window.removeEventListener('blur', clearKeys);
+      document.removeEventListener('visibilitychange', clearKeys);
+      window.removeEventListener('pointerdown', focusCanvas);
     };
   }, []);
 

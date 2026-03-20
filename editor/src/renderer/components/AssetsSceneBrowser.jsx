@@ -1,5 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
+import ImageAssetPreview from './ImageAssetPreview.jsx';
+import SpriteSheetSlicerModal from './SpriteSheetSlicerModal.jsx';
 
 function isImageAsset(asset) {
   if (!asset || typeof asset !== 'object') return false;
@@ -19,10 +21,6 @@ function isAudioAsset(asset) {
 
 const IMAGE_ACCEPT = '.png,.jpg,.jpeg,.gif,.webp,.svg,image/png,image/jpeg,image/gif,image/webp,image/svg+xml';
 const AUDIO_ACCEPT = '.mp3,.ogg,.wav,.m4a,.flac,.aac,audio/mpeg,audio/ogg,audio/wav,audio/mp4,audio/flac,audio/aac';
-
-function imageSrc(asset) {
-  return asset.previewUrl || asset.url || asset.src || null;
-}
 
 function createSceneCameraObject(world, options = {}) {
   const cols = Number.isFinite(world && world.cols) ? world.cols : 30;
@@ -86,10 +84,8 @@ export default function AssetsSceneBrowser({
   const [newSceneName, setNewSceneName] = useState('');
   const [newImageName, setNewImageName] = useState('');
   const [newImageUrl, setNewImageUrl] = useState('');
-  const [sheetAssetId, setSheetAssetId] = useState('');
-  const [sheetCols, setSheetCols] = useState(4);
-  const [sheetRows, setSheetRows] = useState(4);
-  const [sheetPrefix, setSheetPrefix] = useState('frame');
+  const [showSpriteSheetSlicer, setShowSpriteSheetSlicer] = useState(false);
+  const [spriteSheetAssetId, setSpriteSheetAssetId] = useState('');
   const imageFileInputRef = useRef(null);
   const audioFileInputRef = useRef(null);
 
@@ -100,6 +96,11 @@ export default function AssetsSceneBrowser({
   }, [project.scenes, project.world, project.objects]);
 
   const allImages = useMemo(() => (project.assets || []).filter(isImageAsset), [project.assets]);
+  const imageAssetById = useMemo(() => new Map(allImages.map((asset) => [asset.id, asset])), [allImages]);
+  const sliceableImages = useMemo(
+    () => allImages.filter((asset) => asset && !asset.sourceAssetId),
+    [allImages],
+  );
   const allAudios = useMemo(() => (project.assets || []).filter(isAudioAsset), [project.assets]);
   const filterLower = assetFilter.trim().toLowerCase();
   const images = useMemo(() => filterLower ? allImages.filter(a => (a.name || a.id).toLowerCase().includes(filterLower)) : allImages, [allImages, filterLower]);
@@ -213,26 +214,43 @@ export default function AssetsSceneBrowser({
     setNewImageUrl('');
   }
 
-  function importImageFiles(fileList) {
+  function openSpriteSheetSlicer(assetId = '') {
+    setSpriteSheetAssetId(assetId || ((sliceableImages[0] && sliceableImages[0].id) || ''));
+    setShowSpriteSheetSlicer(true);
+  }
+
+  function importImageFiles(fileList, options = {}) {
+    const onComplete = typeof options.onComplete === 'function' ? options.onComplete : null;
     const files = Array.from(fileList || []);
     const imgs = files.filter((file) => file && file.type.startsWith('image/'));
-    if (imgs.length === 0) return;
+    if (imgs.length === 0) {
+      if (onComplete) onComplete([]);
+      return;
+    }
     let pending = imgs.length;
-    const imported = [];
-    imgs.forEach((file) => {
+    const imported = new Array(imgs.length);
+
+    function finishImport() {
+      if (pending !== 0) return;
+      const nextImported = imported.filter(Boolean);
+      if (nextImported.length > 0) onPatchProject({ assets: [...(project.assets || []), ...nextImported] });
+      if (onComplete) onComplete(nextImported);
+    }
+
+    imgs.forEach((file, index) => {
       const reader = new FileReader();
       reader.onload = (ev) => {
         const dataUrl = ev.target && ev.target.result ? String(ev.target.result) : null;
         if (!dataUrl) {
           pending -= 1;
-          if (pending === 0 && imported.length > 0) onPatchProject({ assets: [...(project.assets || []), ...imported] });
+          finishImport();
           return;
         }
         const img = new Image();
         img.onload = () => {
           const ext = file.name.split('.').pop().toLowerCase();
-          imported.push({
-            id: `img_${Date.now().toString(36)}_${imported.length + 1}`,
+          imported[index] = {
+            id: `img_${Date.now().toString(36)}_${index + 1}`,
             kind: 'image',
             mime: file.type || `image/${ext}`,
             name: file.name.replace(/\.[^.]+$/, ''),
@@ -240,13 +258,13 @@ export default function AssetsSceneBrowser({
             previewUrl: dataUrl,
             width: img.naturalWidth || 0,
             height: img.naturalHeight || 0,
-          });
+          };
           pending -= 1;
-          if (pending === 0 && imported.length > 0) onPatchProject({ assets: [...(project.assets || []), ...imported] });
+          finishImport();
         };
         img.onerror = () => {
           pending -= 1;
-          if (pending === 0 && imported.length > 0) onPatchProject({ assets: [...(project.assets || []), ...imported] });
+          finishImport();
         };
         img.src = dataUrl;
       };
@@ -287,73 +305,58 @@ export default function AssetsSceneBrowser({
     onPatchProject({ assets: (project.assets || []).filter((a) => a.id !== imageId) });
   }
 
-  function sliceSpriteSheet() {
-    const source = (project.assets || []).find((a) => a.id === sheetAssetId);
-    if (!source) return;
-    const cols = Math.max(1, parseInt(String(sheetCols), 10) || 1);
-    const rows = Math.max(1, parseInt(String(sheetRows), 10) || 1);
-    const width = source.width || 0;
-    const height = source.height || 0;
-    if (!width || !height) {
-      alert('Selected sprite sheet has no width/height metadata.');
-      return;
-    }
-    const frameW = Math.floor(width / cols);
-    const frameH = Math.floor(height / rows);
-    if (frameW <= 0 || frameH <= 0) return;
-    const created = [];
-    for (let y = 0; y < rows; y++) {
-      for (let x = 0; x < cols; x++) {
-        created.push({
-          id: `frm_${Date.now().toString(36)}_${y}_${x}`,
-          kind: 'image',
-          mime: 'image/png',
-          name: `${sheetPrefix}_${y}_${x}`,
-          sourceAssetId: source.id,
-          frameRect: { x: x * frameW, y: y * frameH, w: frameW, h: frameH },
-          width: frameW,
-          height: frameH,
-          previewUrl: source.previewUrl || source.url || source.src || null,
-        });
-      }
-    }
+  function createSpriteFrames({ sourceAsset, frames }) {
+    if (!sourceAsset || !Array.isArray(frames) || frames.length === 0) return;
+    const timestamp = Date.now().toString(36);
+    const created = frames.map((frame, index) => ({
+      id: `frm_${timestamp}_${index}`,
+      kind: 'image',
+      mime: 'image/png',
+      name: frame.name,
+      sourceAssetId: sourceAsset.id,
+      frameRect: frame.frameRect,
+      width: frame.width,
+      height: frame.height,
+      previewUrl: sourceAsset.previewUrl || sourceAsset.url || sourceAsset.src || null,
+    }));
     onPatchProject({ assets: [...(project.assets || []), ...created] });
   }
 
   return (
-    <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 8, background: 'linear-gradient(180deg, rgba(15,23,42,0.75), rgba(15,23,42,0.4))' }}>
-      <h3>{title}</h3>
-      <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-          <span>Images: {allImages.length}</span>
-          <span>Audio: {allAudios.length}</span>
-          <span>Prefabs: {prefabs.length}</span>
-          <span>Scenes: {scenes.length}</span>
+    <>
+      <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 8, background: 'linear-gradient(180deg, rgba(15,23,42,0.75), rgba(15,23,42,0.4))' }}>
+        <h3>{title}</h3>
+        <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            <span>Images: {allImages.length}</span>
+            <span>Audio: {allAudios.length}</span>
+            <span>Prefabs: {prefabs.length}</span>
+            <span>Scenes: {scenes.length}</span>
+          </div>
         </div>
-      </div>
-      {(allImages.length + allAudios.length) > 5 && (
-        <input
-          type="text"
-          value={assetFilter}
-          onChange={(e) => setAssetFilter(e.target.value)}
-          placeholder={`Filter ${allImages.length + allAudios.length} assets...`}
-          style={{ width: '100%', padding: '4px 8px', marginBottom: 6, background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 11 }}
-        />
-      )}
-      <div
-        style={{ border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden', background: '#0b1220' }}
-        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
-        onDrop={(e) => {
-          e.preventDefault();
-          const files = e.dataTransfer.files;
-          if (files && files.length > 0) {
-            const imgFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
-            const audFiles = Array.from(files).filter(f => f.type.startsWith('audio/'));
-            if (imgFiles.length > 0) importImageFiles(imgFiles);
-            if (audFiles.length > 0) importAudioFiles(audFiles);
-          }
-        }}
-      >
+        {(allImages.length + allAudios.length) > 5 && (
+          <input
+            type="text"
+            value={assetFilter}
+            onChange={(e) => setAssetFilter(e.target.value)}
+            placeholder={`Filter ${allImages.length + allAudios.length} assets...`}
+            style={{ width: '100%', padding: '4px 8px', marginBottom: 6, background: 'var(--bg-input)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 11 }}
+          />
+        )}
+        <div
+          style={{ border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden', background: '#0b1220' }}
+          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+          onDrop={(e) => {
+            e.preventDefault();
+            const files = e.dataTransfer.files;
+            if (files && files.length > 0) {
+              const imgFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+              const audFiles = Array.from(files).filter(f => f.type.startsWith('audio/'));
+              if (imgFiles.length > 0) importImageFiles(imgFiles);
+              if (audFiles.length > 0) importAudioFiles(audFiles);
+            }
+          }}
+        >
         <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: 11, background: 'rgba(2,6,23,0.5)' }}>
           Drop image/audio files anywhere in this panel to import
         </div>
@@ -430,6 +433,10 @@ export default function AssetsSceneBrowser({
                 <Icon name="import" />
                 Import Images
               </button>
+              <button className="btn btn-sm" onClick={() => openSpriteSheetSlicer()}>
+                <Icon name="grid" />
+                Sprite Sheet Tool
+              </button>
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>PNG, JPG, GIF, WEBP, SVG</span>
               <input
                 ref={imageFileInputRef}
@@ -440,18 +447,17 @@ export default function AssetsSceneBrowser({
                 style={{ display: 'none' }}
               />
             </div>
-            <div style={{ border: '1px solid var(--border)', borderRadius: 4, padding: 6, marginBottom: 8 }}>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Sprite Sheet Slicer</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 4 }}>
-                <select value={sheetAssetId} onChange={(e) => setSheetAssetId(e.target.value)} style={{ padding: '3px 4px', background: '#111827', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3 }}>
-                  <option value="">Sheet</option>
-                  {images.map((img) => <option key={`sheet-${img.id}`} value={img.id}>{img.name}</option>)}
-                </select>
-                <input type="number" min={1} value={sheetCols} onChange={(e) => setSheetCols(parseInt(e.target.value, 10) || 1)} placeholder="Cols" style={{ padding: '3px 4px', background: '#111827', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3 }} />
-                <input type="number" min={1} value={sheetRows} onChange={(e) => setSheetRows(parseInt(e.target.value, 10) || 1)} placeholder="Rows" style={{ padding: '3px 4px', background: '#111827', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3 }} />
-                <input value={sheetPrefix} onChange={(e) => setSheetPrefix(e.target.value)} placeholder="Prefix" style={{ padding: '3px 4px', background: '#111827', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3 }} />
-                <button className="btn btn-sm" onClick={sliceSpriteSheet} aria-label="Slice sprite sheet"><Icon name="grid" />Slice</button>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px', marginBottom: 8, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 11, color: '#cbd5e1', fontWeight: 600 }}>Sprite Sheet Tool</div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                  Open a popup slicer with a live preview, drag guides, and image drop support.
+                </div>
               </div>
+              <button className="btn btn-sm" onClick={() => openSpriteSheetSlicer()}>
+                <Icon name="grid" />
+                Open
+              </button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(138px, 1fr))', gap: 8 }}>
               {images.map((img) => (
@@ -462,11 +468,51 @@ export default function AssetsSceneBrowser({
                   style={{ border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden', background: '#111827', cursor: 'grab' }}
                 >
                   <div style={{ height: 72, background: '#1f2937', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {imageSrc(img) ? <img src={imageSrc(img)} alt={img.name || img.id} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'cover', pointerEvents: 'none' }} /> : <span style={{ fontSize: 11, color: '#94a3b8' }}>No Preview</span>}
+                    <ImageAssetPreview
+                      asset={img}
+                      assetById={imageAssetById}
+                      alt={img.name || img.id}
+                      fit="cover"
+                      fallback={<span style={{ fontSize: 11, color: '#94a3b8' }}>No Preview</span>}
+                    />
                   </div>
-                  <div style={{ padding: 6, fontSize: 11, color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{img.name || img.id}</span>
-                    <button className="btn btn-sm btn-danger" onClick={() => removeImage(img.id)} aria-label={`Delete image ${img.name || img.id}`}><Icon name="delete" /></button>
+                  <div style={{ padding: 6, display: 'grid', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#cbd5e1' }}>
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{img.name || img.id}</span>
+                      <span style={{ fontSize: 10, padding: '2px 5px', borderRadius: 999, background: img.sourceAssetId ? 'rgba(14,165,233,0.18)' : 'rgba(59,130,246,0.18)', color: img.sourceAssetId ? '#7dd3fc' : '#93c5fd' }}>
+                        {img.sourceAssetId ? 'Frame' : 'Sheet'}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 10, color: '#94a3b8' }}>
+                      {img.width && img.height ? `${img.width} x ${img.height}` : 'Dimensions pending'}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {!img.sourceAssetId && (
+                        <button
+                          className="btn btn-sm"
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openSpriteSheetSlicer(img.id);
+                          }}
+                          aria-label={`Open sprite sheet tool for ${img.name || img.id}`}
+                        >
+                          <Icon name="grid" />
+                          Slice
+                        </button>
+                      )}
+                      <button
+                        className="btn btn-sm btn-danger"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeImage(img.id);
+                        }}
+                        aria-label={`Delete image ${img.name || img.id}`}
+                      >
+                        <Icon name="delete" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -625,6 +671,15 @@ export default function AssetsSceneBrowser({
           </div>
         )}
       </div>
-    </div>
+      </div>
+      <SpriteSheetSlicerModal
+        open={showSpriteSheetSlicer}
+        images={sliceableImages}
+        initialAssetId={spriteSheetAssetId}
+        onClose={() => setShowSpriteSheetSlicer(false)}
+        onSlice={createSpriteFrames}
+        onImportImages={importImageFiles}
+      />
+    </>
   );
 }

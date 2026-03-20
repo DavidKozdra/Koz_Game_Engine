@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import Modal from './Modal.jsx';
 import Icon from './Icon.jsx';
+import ImageAssetPreview from './ImageAssetPreview.jsx';
 
 const PREFAB_DELETE_KEY = '__kozPrefabDelete';
 const LIGHTING_COLOR_PRESET_OPTIONS = [
@@ -599,7 +600,6 @@ export default function Inspector({
             )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
               {filteredImages.map((asset) => {
-                const preview = asset.previewUrl || asset.url || asset.src || null;
                 const active = components.Sprite && components.Sprite.assetId === asset.id;
                 return (
                   <button
@@ -620,11 +620,13 @@ export default function Inspector({
                     }}
                   >
                     <div style={{ height: 90, background: '#1f2937', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 7 }}>
-                      {preview ? (
-                        <img src={preview} alt={asset.name || asset.id} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'cover' }} />
-                      ) : (
-                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>No Preview</span>
-                      )}
+                      <ImageAssetPreview
+                        asset={asset}
+                        assetById={imageAssetById}
+                        alt={asset.name || asset.id}
+                        fit="cover"
+                        fallback={<span style={{ fontSize: 10, color: 'var(--text-muted)' }}>No Preview</span>}
+                      />
                     </div>
                     <div style={{ fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{asset.name || asset.id}</div>
                   </button>
@@ -1355,7 +1357,6 @@ export default function Inspector({
             )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
               {filteredImages.map((asset) => {
-                const preview = asset.previewUrl || asset.url || asset.src || null;
                 const active = components.ParticleEmitter && components.ParticleEmitter.image === asset.id;
                 return (
                   <button
@@ -1376,11 +1377,14 @@ export default function Inspector({
                     }}
                   >
                     <div style={{ height: 90, background: '#1f2937', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 7 }}>
-                      {preview ? (
-                        <img src={preview} alt={asset.name || asset.id} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', imageRendering: 'pixelated' }} />
-                      ) : (
-                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>No Preview</span>
-                      )}
+                      <ImageAssetPreview
+                        asset={asset}
+                        assetById={imageAssetById}
+                        alt={asset.name || asset.id}
+                        fit="contain"
+                        fallback={<span style={{ fontSize: 10, color: 'var(--text-muted)' }}>No Preview</span>}
+                        imageStyle={{ imageRendering: 'pixelated' }}
+                      />
                     </div>
                     <div style={{ fontSize: 11, fontWeight: active ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {asset.name || asset.id}

@@ -33,10 +33,66 @@
     let audioService = null;
     let running = false;
     let elapsed = 0;
+    let pressedKeys = new Set();
+    let removeInputListeners = null;
     // --- Performance: object ID index for O(1) lookups ---
     let _objectIndex = new Map();
     let _cachedEngineApi = null;
     let _engineApiDirty = true;
+
+    function resolveKeyCode(event) {
+      if (!event) return 0;
+      const numeric = Number(event.keyCode || event.which);
+      if (Number.isFinite(numeric) && numeric > 0) return numeric;
+      const code = typeof event.code === "string" ? event.code : "";
+      if (code === "Space") return 32;
+      if (code === "ArrowLeft") return 37;
+      if (code === "ArrowUp") return 38;
+      if (code === "ArrowRight") return 39;
+      if (code === "ArrowDown") return 40;
+      if (code === "ShiftLeft" || code === "ShiftRight") return 16;
+      if (/^Key[A-Z]$/.test(code)) return code.charCodeAt(3);
+      const key = typeof event.key === "string" ? event.key : "";
+      if (key === " ") return 32;
+      if (key === "ArrowLeft") return 37;
+      if (key === "ArrowUp") return 38;
+      if (key === "ArrowRight") return 39;
+      if (key === "ArrowDown") return 40;
+      if (key === "Shift") return 16;
+      if (/^[a-z]$/i.test(key)) return key.toUpperCase().charCodeAt(0);
+      return 0;
+    }
+
+    function installInputListeners() {
+      if (removeInputListeners || typeof window === "undefined") return;
+      const handleDown = function handleDown(event) {
+        const code = resolveKeyCode(event);
+        if (code) pressedKeys.add(code);
+      };
+      const handleUp = function handleUp(event) {
+        const code = resolveKeyCode(event);
+        if (code) pressedKeys.delete(code);
+      };
+      const clearKeys = function clearKeys() {
+        pressedKeys.clear();
+      };
+      window.addEventListener("keydown", handleDown, true);
+      window.addEventListener("keyup", handleUp, true);
+      window.addEventListener("blur", clearKeys);
+      if (typeof document !== "undefined") {
+        document.addEventListener("visibilitychange", clearKeys);
+      }
+      removeInputListeners = function removeListeners() {
+        window.removeEventListener("keydown", handleDown, true);
+        window.removeEventListener("keyup", handleUp, true);
+        window.removeEventListener("blur", clearKeys);
+        if (typeof document !== "undefined") {
+          document.removeEventListener("visibilitychange", clearKeys);
+        }
+        pressedKeys.clear();
+        removeInputListeners = null;
+      };
+    }
 
     function _rebuildObjectIndex() {
       _objectIndex.clear();
@@ -223,14 +279,16 @@
         };
 
         // Parse script functions from source — props are available in the closure
-        const wrappedSource = `(function(self, props, console) {
+        const wrappedSource = `(function(self, props, console, keyIsDown, LEFT_ARROW, RIGHT_ARROW, UP_ARROW, DOWN_ARROW, SPACE) {
           ${script.source}
           return { onInit: typeof onInit === 'function' ? onInit : null, onUpdate: typeof onUpdate === 'function' ? onUpdate : null };
         })`;
 
         const props = bindingProps ? clone(bindingProps) : {};
         const factory = new Function("return " + wrappedSource)();
-        const hooks = factory(sandbox.self, props, sandbox.console);
+        const hooks = factory(sandbox.self, props, sandbox.console, function keyIsDown(code) {
+          return pressedKeys.has(Number(code) || 0);
+        }, 37, 39, 38, 40, 32);
         return {
           scriptId: script.id,
           gameObject: gameObject,
@@ -246,6 +304,7 @@
     function init() {
       running = true;
       elapsed = 0;
+      installInputListeners();
       if (audioService) audioService.autoplayFromComponents();
 
       const engine = createEngineApi();
@@ -342,6 +401,7 @@
     function stop() {
       running = false;
       if (audioService) audioService.destroy();
+      if (typeof removeInputListeners === "function") removeInputListeners();
       clearActiveCssStyles();
     }
 
@@ -472,6 +532,9 @@
         },
         findObjectByType: function findObjectByType(type) {
           return _findObjectByType(type);
+        },
+        keyIsDown: function runtimeKeyIsDown(code) {
+          return pressedKeys.has(Number(code) || 0);
         },
         animator: createAnimatorApi(),
       };

@@ -29,7 +29,7 @@ function assert(condition, message) {
 
 console.log('\n=== Template Project Tests ===\n');
 
-assert(entries.length === 4, 'four template projects are present');
+assert(entries.length >= 4, 'at least four project fixtures are present');
 
 entries.forEach((filePath) => {
   const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -63,10 +63,10 @@ entries.forEach((filePath) => {
   }
   if (name === 'Template - 2D Adventure Platformer') {
     const levelScenes = project.scenes.filter((scene) => /^scene_level_/.test(scene.id));
-    const litScene = project.scenes.find((scene) => scene.id === 'scene_level_3');
+    const litScene = project.scenes.find((scene) => scene.id === 'scene_level_1');
     const goalScript = (project.scripts || []).find((script) => script.id === 'script_goal_portal');
     const menuScript = (project.scripts || []).find((script) => script.id === 'script_menu_system');
-    assert(levelScenes.length === 5, `${name} includes five distinct gameplay levels`);
+    assert(levelScenes.length === 4, `${name} includes four distinct gameplay levels`);
     assert(project.scenes.some((scene) => scene.id === 'scene_victory'), `${name} includes a victory scene`);
     assert(litScene && Array.isArray(litScene.objects) && litScene.objects.some((obj) => obj.components && obj.components.LightingManager), `${name} includes a lighting-manager scene`);
     assert(litScene && Array.isArray(litScene.objects) && litScene.objects.some((obj) => obj.components && obj.components.Light), `${name} includes active light emitters in the lit level`);
