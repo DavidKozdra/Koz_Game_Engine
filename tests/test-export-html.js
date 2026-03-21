@@ -81,6 +81,7 @@ async function main() {
   assert(playModeSource.includes('ctx.imageSmoothingEnabled = false;'), 'editor play runtime disables 2D image smoothing for crisp rendering');
   assert(playModeSource.includes('function ensurePlayLightingSurface(state, width, height) {'), 'editor play runtime allocates a dedicated lighting overlay surface');
   assert(playModeSource.includes('function resolvePlayLightingPalette(lighting) {'), 'editor play runtime includes lighting preset palette support');
+  assert(playModeSource.includes('const scaleX = Number.isFinite(obj && obj.scaleX) ? obj.scaleX : 1;'), 'editor play collision bounds scale with object transforms');
   assert(playModeSource.includes('function applyPlayLightingDither('), 'editor play runtime includes the dither lighting modifier');
   assert(playModeSource.includes('function applyPlayLightingVignette('), 'editor play runtime includes the vignette lighting modifier');
   assert(!playModeSource.includes('particles.splice(i, 1);'), 'editor play particle updates avoid O(n) splice removal');
@@ -89,6 +90,7 @@ async function main() {
   assert(moduleSource.includes('function ensureLightingSurface(width, height) {'), 'export runtime allocates a dedicated lighting overlay surface');
   assert(moduleSource.includes('function resolveLightingPalette(lighting) {'), 'export runtime includes lighting preset palette support');
   assert(moduleSource.includes("if (language !== 'javascript' && language !== 'ui') return;"), 'export runtime keeps UI scripts enabled');
+  assert(moduleSource.includes("var scaleX = Number.isFinite(obj && obj.scaleX) ? obj.scaleX : 1;"), 'export collision bounds scale with object transforms');
   assert(moduleSource.includes('function applyLightingDither('), 'export runtime includes the dither lighting modifier');
   assert(moduleSource.includes('function applyLightingVignette('), 'export runtime includes the vignette lighting modifier');
   assert(moduleSource.includes('colorPreset'), 'export runtime includes lighting color preset state');

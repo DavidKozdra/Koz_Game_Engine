@@ -1217,8 +1217,8 @@ function App() {
   const handleMoveWorld = useCallback((dx, dy) => {
     if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
     setProject((prev) => mutateActiveScene(prev, ({ world, objects }) => {
-      const cellDx = Math.round(dx / 24);
-      const cellDy = Math.round(dy / 24);
+      const cellDx = Math.trunc(dx / 24);
+      const cellDy = Math.trunc(dy / 24);
       if (cellDx === 0 && cellDy === 0) return { world, objects };
       const nextObjects = objects.map((obj) => {
         const t = (obj.components && obj.components.Transform) || {};

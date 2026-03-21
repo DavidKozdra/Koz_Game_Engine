@@ -3,6 +3,12 @@ import { getCellType, normalizeCellTypeId, getBrushValue } from '../state/projec
 import { buildWorldSparseIndex, queryWorldSparseIndex } from '../lib/worldSparseIndex.js';
 import { createObjectSpatialIndex, queryObjectSpatialIndex, rebuildObjectSpatialIndex } from '../lib/objectSpatialIndex.js';
 import {
+  getObjectColliderMetrics,
+  getObjectRenderBounds,
+  getObjectSpriteMetrics,
+  isWorldPointInObject,
+} from '../lib/objectGeometry.js';
+import {
   getSelectionBounds, getSelectionRotation,
   drawMoveGizmo, drawRotateGizmo, drawScaleGizmo,
   hitTestMoveGizmo, hitTestRotateGizmo, hitTestScaleGizmo,
@@ -102,6 +108,47 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
       height: Number.isFinite(resolution.height) ? resolution.height : 540,
     };
   }, [project]);
+
+  const getObjectLayerOrder = useCallback(() => {
+    const objectLayers = ((project && project.layers && project.layers.objects) || [])
+      .filter((layer) => layer && layer.visible !== false)
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+    const order = new Map();
+    objectLayers.forEach((layer, index) => {
+      if (layer && layer.id) order.set(layer.id, Number.isFinite(layer.order) ? layer.order : index);
+    });
+    return order;
+  }, [project]);
+
+  const compareObjectsForRender = useCallback((a, b, objectLayerOrder = getObjectLayerOrder()) => {
+    const ar = (a && a.components && a.components.Render) || {};
+    const br = (b && b.components && b.components.Render) || {};
+    const layerDelta = (objectLayerOrder.get(ar.layerId) || 0) - (objectLayerOrder.get(br.layerId) || 0);
+    if (layerDelta !== 0) return layerDelta;
+    return (ar.zIndex || 0) - (br.zIndex || 0);
+  }, [getObjectLayerOrder]);
+
+  const ensureObjectIndex = useCallback((objects) => {
+    if (objectIndexRef.current.objects !== objects) {
+      objectIndexRef.current.objects = objects;
+      rebuildObjectSpatialIndex(objectIndexRef.current.index, objects);
+    }
+    return objectIndexRef.current.index;
+  }, []);
+
+  const findTopObjectAtWorldPoint = useCallback((worldX, worldY) => {
+    if (!project || !Array.isArray(project.objects) || project.objects.length === 0) return null;
+    const objectLayerOrder = getObjectLayerOrder();
+    const index = ensureObjectIndex(project.objects);
+    const hits = queryObjectSpatialIndex(index, worldX, worldY, worldX, worldY)
+      .filter((obj) => {
+        const render = (obj && obj.components && obj.components.Render) || {};
+        const isCameraObject = !!(obj && obj.components && obj.components.Camera);
+        return (render.visible !== false || isCameraObject) && isWorldPointInObject(obj, worldX, worldY);
+      })
+      .sort((a, b) => compareObjectsForRender(a, b, objectLayerOrder));
+    return hits.length > 0 ? hits[hits.length - 1] : null;
+  }, [compareObjectsForRender, ensureObjectIndex, getObjectLayerOrder, project]);
 
   // Render
   useEffect(() => {
@@ -319,43 +366,28 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
     // Draw game objects
     if (project.objects) {
       const assetById = new Map((project.assets || []).map((a) => [a.id, a]));
-      const objectLayers = ((project.layers && project.layers.objects) || [])
-        .filter((layer) => layer.visible !== false)
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
-      const objectLayerOrder = new Map();
-      objectLayers.forEach((layer, index) => {
-        if (layer && layer.id) objectLayerOrder.set(layer.id, Number.isFinite(layer.order) ? layer.order : index);
-      });
-      if (objectIndexRef.current.objects !== project.objects) {
-        objectIndexRef.current.objects = project.objects;
-        rebuildObjectSpatialIndex(objectIndexRef.current.index, project.objects);
-      }
+      const objectLayerOrder = getObjectLayerOrder();
+      const objectIndex = ensureObjectIndex(project.objects);
       const objects = queryObjectSpatialIndex(
-        objectIndexRef.current.index,
+        objectIndex,
         cam.x - objectCullMargin,
         cam.y - objectCullMargin,
         cam.x + (canvas.width / zoom) + objectCullMargin,
         cam.y + (canvas.height / zoom) + objectCullMargin,
-      ).sort((a, b) => {
-        const ar = (a.components && a.components.Render) || {};
-        const br = (b.components && b.components.Render) || {};
-        const layerDelta = (objectLayerOrder.get(ar.layerId) || 0) - (objectLayerOrder.get(br.layerId) || 0);
-        if (layerDelta !== 0) return layerDelta;
-        return (ar.zIndex || 0) - (br.zIndex || 0);
-      });
+      ).sort((a, b) => compareObjectsForRender(a, b, objectLayerOrder));
       for (const obj of objects) {
         const sprite = (obj.components && obj.components.Sprite) || {};
-        const transform = (obj.components && obj.components.Transform) || {};
         const render = (obj.components && obj.components.Render) || {};
         const isCameraObject = !!(obj.components && obj.components.Camera);
         if (render.visible === false && !isCameraObject) continue;
-        const ox = Number.isFinite(transform.x) ? transform.x : (Number.isFinite(obj.x) ? obj.x : 0);
-        const oy = Number.isFinite(transform.y) ? transform.y : (Number.isFinite(obj.y) ? obj.y : 0);
-        const rotation = Number.isFinite(transform.rotation) ? transform.rotation : 0;
-        const scaleX = Number.isFinite(transform.scaleX) ? transform.scaleX : 1;
-        const scaleY = Number.isFinite(transform.scaleY) ? transform.scaleY : 1;
-        const w = (sprite.width || 32) * scaleX;
-        const h = (sprite.height || 32) * scaleY;
+        const metrics = getObjectSpriteMetrics(obj);
+        const ox = metrics.x;
+        const oy = metrics.y;
+        const rotation = metrics.rotation;
+        const scaleX = metrics.scaleX;
+        const scaleY = metrics.scaleY;
+        const w = metrics.width;
+        const h = metrics.height;
         let drawn = false;
         const frameIds = Array.isArray(sprite.frameAssetIds) ? sprite.frameAssetIds : [];
         const frameId = frameIds.length > 0
@@ -367,8 +399,9 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
           || (asset && (asset.previewUrl || asset.url || asset.src));
         
         ctx.save();
-        ctx.translate(ox + w / 2, oy + h / 2);
+        ctx.translate(metrics.centerX, metrics.centerY);
         ctx.rotate((rotation * Math.PI) / 180);
+        ctx.scale(scaleX, scaleY);
         
         if (src) {
           if (!imageCacheRef.current.has(src)) {
@@ -379,8 +412,8 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
           const img = imageCacheRef.current.get(src);
           if (img && img.complete && img.naturalWidth > 0) {
             const rect = asset && asset.frameRect;
-            const drawW = sprite.width || 32;
-            const drawH = sprite.height || 32;
+            const drawW = metrics.baseWidth;
+            const drawH = metrics.baseHeight;
             if (rect && Number.isFinite(rect.x) && Number.isFinite(rect.y) && Number.isFinite(rect.w) && Number.isFinite(rect.h)) {
               ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, -drawW / 2, -drawH / 2, drawW, drawH);
             } else {
@@ -391,11 +424,12 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
         }
         if (!drawn && !isCameraObject) {
           ctx.fillStyle = sprite.color || '#4ade80';
-          ctx.fillRect(-(sprite.width || 32) / 2, -(sprite.height || 32) / 2, sprite.width || 32, sprite.height || 32);
+          ctx.fillRect(-(metrics.baseWidth) / 2, -(metrics.baseHeight) / 2, metrics.baseWidth, metrics.baseHeight);
         }
         if (isCameraObject) {
+          const strokeScale = Math.max(metrics.absScaleX, metrics.absScaleY, 1);
           ctx.strokeStyle = '#38bdf8';
-          ctx.lineWidth = 2 / zoom;
+          ctx.lineWidth = 2 / (zoom * strokeScale);
           ctx.beginPath();
           ctx.moveTo(-10, 0);
           ctx.lineTo(10, 0);
@@ -411,37 +445,35 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
         const isSelected = (editorState.selectedObjectIds || []).includes(obj.id) || editorState.selectedObjectId === obj.id;
         if (isSelected) {
           ctx.save();
-          ctx.translate(ox + w / 2, oy + h / 2);
+          ctx.translate(metrics.centerX, metrics.centerY);
           ctx.rotate((rotation * Math.PI) / 180);
+          ctx.scale(scaleX, scaleY);
+          const strokeScale = Math.max(metrics.absScaleX, metrics.absScaleY, 1);
           ctx.strokeStyle = '#3b82f6';
-          ctx.lineWidth = 2 / zoom;
-          ctx.strokeRect(-(sprite.width || 32) / 2 - 1, -(sprite.height || 32) / 2 - 1, (sprite.width || 32) + 2, (sprite.height || 32) + 2);
+          ctx.lineWidth = 2 / (zoom * strokeScale);
+          ctx.strokeRect(-(metrics.baseWidth) / 2 - 1, -(metrics.baseHeight) / 2 - 1, metrics.baseWidth + 2, metrics.baseHeight + 2);
           ctx.restore();
         }
 
         // Collider debug overlay
         if (editorState.showColliders && obj.components && obj.components.Collider) {
-          const collider = obj.components.Collider;
-          const cw = Number.isFinite(collider.width) ? collider.width : (sprite.width || 32);
-          const ch = Number.isFinite(collider.height) ? collider.height : (sprite.height || 32);
-          const cox = Number.isFinite(collider.offsetX) ? collider.offsetX : 0;
-          const coy = Number.isFinite(collider.offsetY) ? collider.offsetY : 0;
+          const collider = getObjectColliderMetrics(obj);
           ctx.save();
-          ctx.translate(ox + w / 2 + cox, oy + h / 2 + coy);
+          ctx.translate(collider.centerX, collider.centerY);
           ctx.rotate((rotation * Math.PI) / 180);
           ctx.strokeStyle = '#22d3ee';
           ctx.fillStyle = 'rgba(34, 211, 238, 0.08)';
           ctx.lineWidth = 1.5 / zoom;
           ctx.setLineDash([6 / zoom, 3 / zoom]);
           if (collider.shape === 'circle') {
-            const radius = Math.max(cw, ch) / 2;
+            const radius = collider.radius;
             ctx.beginPath();
             ctx.arc(0, 0, radius, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
           } else {
-            ctx.fillRect(-cw / 2, -ch / 2, cw, ch);
-            ctx.strokeRect(-cw / 2, -ch / 2, cw, ch);
+            ctx.fillRect(-collider.width / 2, -collider.height / 2, collider.width, collider.height);
+            ctx.strokeRect(-collider.width / 2, -collider.height / 2, collider.width, collider.height);
           }
           ctx.setLineDash([]);
           ctx.restore();
@@ -451,7 +483,8 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
         ctx.fillStyle = '#fff';
         ctx.font = '10px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(obj.name || obj.id, ox + w / 2, oy - 4);
+        const renderBounds = getObjectRenderBounds(obj);
+        ctx.fillText(obj.name || obj.id, metrics.centerX, (renderBounds ? renderBounds.minY : oy) - 4);
       }
 
       const preview = resolveCameraPreview();
@@ -534,7 +567,7 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
     }
   }
 
-  }, [project, editorState, worldToScreen, screenToCell, canvasSize, hoveredGizmoPart]);
+  }, [project, editorState, worldToScreen, screenToCell, canvasSize, hoveredGizmoPart, compareObjectsForRender, ensureObjectIndex, getObjectLayerOrder]);
 
   // Resize observer — also triggers a repaint when canvas becomes visible again
   useEffect(() => {
@@ -562,6 +595,7 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
     dragRef.current = {
       dragging: true, button: e.button, startX: sx, startY: sy, lastX: sx, lastY: sy, lastScreenX: sx, lastScreenY: sy,
       selectDrag: false, selectMarquee: false, selectShift: !!e.shiftKey, selectStartWorld: null, selectStartPositions: null,
+      worldMoveStartScreen: null, worldMoveAppliedCellsX: 0, worldMoveAppliedCellsY: 0,
     };
 
     if (e.button === 1 || (e.button === 0 && e.altKey)) {
@@ -624,20 +658,7 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
       } else if (editorState.activeTool === 'select') {
         // Check if clicking on a game object
         const worldPos = screenToWorld(sx, sy);
-        let found = null;
-        if (project && project.objects) {
-          for (const obj of project.objects) {
-            const t = (obj.components && obj.components.Transform) || {};
-            const s = (obj.components && obj.components.Sprite) || {};
-            const ox = Number.isFinite(t.x) ? t.x : (Number.isFinite(obj.x) ? obj.x : 0);
-            const oy = Number.isFinite(t.y) ? t.y : (Number.isFinite(obj.y) ? obj.y : 0);
-            const w = s.width || 32;
-            const h = s.height || 32;
-            if (worldPos.x >= ox && worldPos.x <= ox + w && worldPos.y >= oy && worldPos.y <= oy + h) {
-              found = obj;
-            }
-          }
-        }
+        const found = findTopObjectAtWorldPoint(worldPos.x, worldPos.y);
         if (found) {
           const current = Array.isArray(editorState.selectedObjectIds) ? editorState.selectedObjectIds : [];
           if (onSelectObject) onSelectObject(found.id, e.shiftKey ? { toggle: true } : undefined);
@@ -668,6 +689,9 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
         if (onPlaceObject) onPlaceObject(Math.floor(worldPos.x), Math.floor(worldPos.y));
       } else if (editorState.activeTool === 'worldMove') {
         dragRef.current.worldMove = true;
+        dragRef.current.worldMoveStartScreen = { x: sx, y: sy };
+        dragRef.current.worldMoveAppliedCellsX = 0;
+        dragRef.current.worldMoveAppliedCellsY = 0;
       }
     }
   }
@@ -783,8 +807,8 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
         if (onCellPaint) onCellPaint(cell.cx, cell.cy, 'empty');
       } else if (editorState.activeTool === 'select' && dragRef.current.selectDrag && dragRef.current.selectStartWorld && dragRef.current.selectStartPositions) {
         const worldPos = screenToWorld(sx, sy);
-        const dxw = Math.floor(worldPos.x - dragRef.current.selectStartWorld.x);
-        const dyw = Math.floor(worldPos.y - dragRef.current.selectStartWorld.y);
+        const dxw = Math.round(worldPos.x - dragRef.current.selectStartWorld.x);
+        const dyw = Math.round(worldPos.y - dragRef.current.selectStartWorld.y);
         const updates = [];
         for (const [id, pos] of dragRef.current.selectStartPositions.entries()) {
           updates.push({ id, x: pos.x + dxw, y: pos.y + dyw });
@@ -792,7 +816,20 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
         if (updates.length === 1 && onMoveObject) onMoveObject(updates[0].id, updates[0].x, updates[0].y);
         else if (updates.length > 1 && onMoveObjects) onMoveObjects(updates);
       } else if (editorState.activeTool === 'worldMove' && dragRef.current.worldMove && onMoveWorld) {
-        onMoveWorld(dx / editorState.camera.zoom, dy / editorState.camera.zoom);
+        const start = dragRef.current.worldMoveStartScreen;
+        if (start) {
+          const totalWorldDx = (sx - start.x) / editorState.camera.zoom;
+          const totalWorldDy = (sy - start.y) / editorState.camera.zoom;
+          const totalCellDx = Math.trunc(totalWorldDx / cellSize);
+          const totalCellDy = Math.trunc(totalWorldDy / cellSize);
+          const deltaCellDx = totalCellDx - (dragRef.current.worldMoveAppliedCellsX || 0);
+          const deltaCellDy = totalCellDy - (dragRef.current.worldMoveAppliedCellsY || 0);
+          if (deltaCellDx !== 0 || deltaCellDy !== 0) {
+            dragRef.current.worldMoveAppliedCellsX = totalCellDx;
+            dragRef.current.worldMoveAppliedCellsY = totalCellDy;
+            onMoveWorld(deltaCellDx * cellSize, deltaCellDy * cellSize);
+          }
+        }
       }
     }
   }
@@ -820,13 +857,9 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
       const maxWy = Math.max(a.y, b.y);
       const ids = [];
       for (const obj of project.objects) {
-        const t = (obj.components && obj.components.Transform) || {};
-        const s = (obj.components && obj.components.Sprite) || {};
-        const ox = Number.isFinite(t.x) ? t.x : (Number.isFinite(obj.x) ? obj.x : 0);
-        const oy = Number.isFinite(t.y) ? t.y : (Number.isFinite(obj.y) ? obj.y : 0);
-        const w = Number.isFinite(s.width) ? s.width : 32;
-        const h = Number.isFinite(s.height) ? s.height : 32;
-        const overlap = ox <= maxWx && ox + w >= minWx && oy <= maxWy && oy + h >= minWy;
+        const bounds = getObjectRenderBounds(obj);
+        if (!bounds) continue;
+        const overlap = bounds.minX <= maxWx && bounds.maxX >= minWx && bounds.minY <= maxWy && bounds.maxY >= minWy;
         if (overlap) ids.push(obj.id);
       }
       onSelectObjects(ids, dragRef.current.selectShift);
@@ -835,6 +868,9 @@ export default function Viewport({ project, editorState, onCellPaint, onCellFill
     dragRef.current.selectDrag = false;
     dragRef.current.selectMarquee = false;
     dragRef.current.worldMove = false;
+    dragRef.current.worldMoveStartScreen = null;
+    dragRef.current.worldMoveAppliedCellsX = 0;
+    dragRef.current.worldMoveAppliedCellsY = 0;
   }
 
   // Attach wheel handler imperatively so we can use { passive: false }

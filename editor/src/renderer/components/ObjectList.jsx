@@ -171,17 +171,16 @@ export default function ObjectList({ project, editorState, onSelectObject, onAdd
           <span style={{ display: 'inline-flex', gap: 2 }}>
             {onDuplicateObject && (
               <button
-                className="btn btn-sm"
+                className="btn btn-sm btn-icon-only"
                 onClick={(e) => { e.stopPropagation(); onDuplicateObject(obj.id); }}
                 title="Duplicate (Ctrl+D)"
-                style={{ fontSize: 10, padding: '0 3px' }}
                 aria-label={`Duplicate ${obj.name || obj.id}`}
               >
                 <Icon name="duplicate" />
               </button>
             )}
             <button
-              className="btn btn-sm btn-danger"
+              className="btn btn-sm btn-danger btn-icon-only"
               onClick={(e) => { e.stopPropagation(); onRemoveObject(obj.id); }}
               title="Delete"
               aria-label={`Delete ${obj.name || obj.id}`}
@@ -209,7 +208,7 @@ export default function ObjectList({ project, editorState, onSelectObject, onAdd
   return (
     <div className="panel-section" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
       <h3>Scene Hierarchy</h3>
-      <div style={{ marginBottom: 6, display: 'flex', gap: 6 }}>
+      <div className="btn-row" style={{ marginBottom: 6 }}>
         <button className="btn btn-sm" onClick={() => setPickerOpen(true)} aria-label="Open add object picker"><Icon name="add" />Add Object</button>
         <button className="btn btn-sm" onClick={onAddCameraObject} aria-label="Add camera object"><Icon name="camera" />Camera</button>
       </div>

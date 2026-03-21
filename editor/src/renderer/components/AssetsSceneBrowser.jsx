@@ -371,7 +371,7 @@ export default function AssetsSceneBrowser({
           Drop image/audio files anywhere in this panel to import
         </div>
         {showScenes && (
-          <button type="button" className="btn btn-sm" style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent' }} onClick={() => toggle('scenes')}>
+          <button type="button" className="btn btn-sm btn-section-toggle" onClick={() => toggle('scenes')}>
             <Icon name={expanded.scenes ? 'chevronDown' : 'chevronRight'} />
             <Icon name="folder" />
             Scenes ({scenes.length})
@@ -379,7 +379,7 @@ export default function AssetsSceneBrowser({
         )}
         {showScenes && expanded.scenes && (
           <div style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <div className="btn-row" style={{ marginBottom: 8 }}>
               <input value={newSceneName} onChange={(e) => setNewSceneName(e.target.value)} placeholder="New scene name" style={{ flex: 1, padding: '3px 6px', background: '#111827', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 3 }} />
               <button className="btn btn-sm" onClick={addScene} aria-label="Add scene"><Icon name="add" />Add</button>
             </div>
@@ -389,7 +389,7 @@ export default function AssetsSceneBrowser({
                 const isBoot = bootSceneId === scene.id;
                 return (
                   <div key={scene.id} style={{ display: 'grid', gap: 6, padding: '6px', border: isSelected ? '1px solid rgba(59,130,246,0.8)' : '1px solid var(--border)', borderRadius: 4, background: isSelected ? 'rgba(59,130,246,0.16)' : '#111827' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div className="btn-row" style={{ minWidth: 0 }}>
                       <button type="button" onClick={() => onSelectScene && onSelectScene(scene.id)} style={{ background: 'none', border: 'none', color: '#cbd5e1', textAlign: 'left', cursor: 'pointer', flex: 1 }}>
                         {scene.name}
                       </button>
@@ -400,10 +400,10 @@ export default function AssetsSceneBrowser({
                           Start
                         </button>
                       )}
-                      <button className="btn btn-sm" onClick={() => moveScene(scene.id, -1)} title="Move Up" aria-label={`Move ${scene.name} up`}><Icon name="arrowUp" /></button>
-                      <button className="btn btn-sm" onClick={() => moveScene(scene.id, 1)} title="Move Down" aria-label={`Move ${scene.name} down`}><Icon name="arrowDown" /></button>
+                      <button className="btn btn-sm btn-icon-only" onClick={() => moveScene(scene.id, -1)} title="Move Up" aria-label={`Move ${scene.name} up`}><Icon name="arrowUp" /></button>
+                      <button className="btn btn-sm btn-icon-only" onClick={() => moveScene(scene.id, 1)} title="Move Down" aria-label={`Move ${scene.name} down`}><Icon name="arrowDown" /></button>
                       <button className="btn btn-sm" onClick={() => duplicateScene(scene.id)} title="Duplicate" aria-label={`Duplicate ${scene.name}`}><Icon name="copy" />Copy</button>
-                      <button className="btn btn-sm btn-danger" onClick={() => removeScene(scene.id)} disabled={scenes.length <= 1} aria-label={`Delete ${scene.name}`}><Icon name="delete" /></button>
+                      <button className="btn btn-sm btn-danger btn-icon-only" onClick={() => removeScene(scene.id)} disabled={scenes.length <= 1} aria-label={`Delete ${scene.name}`}><Icon name="delete" /></button>
                     </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 11 }}>
                     <span>Objects {(scene.objects || []).length}</span>
@@ -425,7 +425,7 @@ export default function AssetsSceneBrowser({
         )}
 
         {showImages && (
-          <button type="button" className="btn btn-sm" style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent' }} onClick={() => toggle('images')}>
+          <button type="button" className="btn btn-sm btn-section-toggle" onClick={() => toggle('images')}>
             <Icon name={expanded.images ? 'chevronDown' : 'chevronRight'} />
             <Icon name="image" />
             Images ({images.length})
@@ -534,7 +534,7 @@ export default function AssetsSceneBrowser({
         )}
 
         {showPrefabs && (
-          <button type="button" className="btn btn-sm" style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', background: 'transparent' }} onClick={() => toggle('prefabs')}>
+          <button type="button" className="btn btn-sm btn-section-toggle" style={{ borderBottom: 'none' }} onClick={() => toggle('prefabs')}>
             <Icon name={expanded.prefabs ? 'chevronDown' : 'chevronRight'} />
             <Icon name="folder" />
             Prefabs ({prefabs.length})
@@ -638,7 +638,7 @@ export default function AssetsSceneBrowser({
         )}
 
         {showAudio && (
-          <button type="button" className="btn btn-sm" style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, border: 'none', background: 'transparent' }} onClick={() => toggle('audio')}>
+          <button type="button" className="btn btn-sm btn-section-toggle" style={{ borderBottom: 'none' }} onClick={() => toggle('audio')}>
             <Icon name={expanded.audio ? 'chevronDown' : 'chevronRight'} />
             <Icon name="audio" />
             Audio ({allAudios.length})

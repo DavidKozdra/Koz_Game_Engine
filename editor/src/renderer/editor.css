@@ -65,7 +65,7 @@ html, body, #root {
 }
 
 .toolbar-group {
-  display: flex; gap: 2px; padding: 0 6px;
+  display: flex; gap: 4px; padding: 0 8px;
   border-right: 1px solid var(--border);
   align-items: center;
 }
@@ -215,6 +215,7 @@ html, body, #root {
   border: 1px solid var(--border); border-radius: 4px;
   background: var(--bg-input); color: var(--text);
   font-size: 12px; cursor: pointer; white-space: nowrap;
+  min-height: 28px;
   transition: all 0.1s;
 }
 .ui-icon {
@@ -225,8 +226,31 @@ html, body, #root {
 .btn.active { background: var(--accent); border-color: var(--accent); }
 .btn:disabled { opacity: 0.4; cursor: default; }
 .btn:disabled:hover { background: var(--bg-input); border-color: var(--border); }
-.btn-sm { padding: 2px 8px; font-size: 11px; }
+.btn-sm { padding: 2px 8px; font-size: 11px; min-height: 24px; }
 .btn-sm .ui-icon { width: 13px; height: 13px; }
+.btn-compact { padding: 1px 6px; font-size: 10px; }
+.btn-icon-only { justify-content: center; min-width: 24px; padding-left: 6px; padding-right: 6px; }
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.btn-row-tight {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.btn-section-toggle {
+  width: 100%;
+  justify-content: flex-start;
+  border-radius: 0;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  padding: 6px 10px;
+}
 
 .btn-danger { border-color: var(--danger); color: var(--danger); }
 .btn-danger:hover { background: var(--danger); color: white; }

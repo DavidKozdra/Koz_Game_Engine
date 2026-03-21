@@ -65,7 +65,7 @@ export default function WorldTools({ project, editorState, onUpdateCamera, onTog
         <label>Target</label>
         <span style={{ fontSize: 11 }}>{project.camera && project.camera.targetObjectId ? project.camera.targetObjectId : 'None'}</span>
       </div>
-      <div style={{ marginTop: 6, display: 'flex', gap: 4 }}>
+      <div className="btn-row-tight" style={{ marginTop: 6 }}>
         <button className="btn btn-sm" onClick={() => {
           if (onResetView) onResetView();
           else onUpdateCamera({ ...editorState.camera, zoom: 1, x: 0, y: 0 });
@@ -80,7 +80,7 @@ export default function WorldTools({ project, editorState, onUpdateCamera, onTog
       </div>
       <div className="field" style={{ marginTop: 8 }}>
         <label>Resize</label>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div className="btn-row-tight">
           <input
             type="number"
             min={1}

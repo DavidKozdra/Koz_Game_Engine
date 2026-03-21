@@ -59,7 +59,7 @@ function CollapsibleSection({ title, defaultOpen = true, onRemove, children }) {
       <h3 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }} onClick={() => setOpen(!open)}>
         <span>{open ? 'v' : '>'} {title}</span>
         {onRemove && (
-          <button className="btn btn-sm btn-danger" onClick={(e) => { e.stopPropagation(); onRemove(); }} style={{ fontSize: 9, padding: '0 4px' }} title={`Remove ${title}`}>x</button>
+          <button className="btn btn-sm btn-danger btn-icon-only" onClick={(e) => { e.stopPropagation(); onRemove(); }} title={`Remove ${title}`}>x</button>
         )}
       </h3>
       {open && children}
@@ -290,13 +290,12 @@ export default function Inspector({
         {overridden && onResetPrefabOverridePath && (
           <button
             type="button"
-            className="btn btn-sm"
+            className="btn btn-sm btn-compact"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               onResetPrefabOverridePath(obj.id, path);
             }}
-            style={{ fontSize: 9, padding: '0 4px' }}
             title={`Reset ${text} to the prefab value`}
           >
             Reset
@@ -333,37 +332,33 @@ export default function Inspector({
               ))}
             </select>
             <button
-              className="btn btn-sm"
+              className="btn btn-sm btn-compact"
               onClick={() => onSavePrefabVariantFromObject && onSavePrefabVariantFromObject(obj.id)}
               disabled={isPrefabSourceObject}
-              style={{ fontSize: 10, padding: '1px 6px' }}
               title={isPrefabSourceObject ? 'Prefab source objects already define the base values.' : "Save this object's current prefab differences as a reusable variant"}
             >
               Save Variant
             </button>
             <button
-              className="btn btn-sm"
+              className="btn btn-sm btn-compact"
               onClick={() => onResetPrefabOverrides && onResetPrefabOverrides(obj.id)}
               disabled={isPrefabSourceObject || !hasPrefabOverrides}
-              style={{ fontSize: 10, padding: '1px 6px' }}
               title="Reset this instance back to the prefab or selected variant"
             >
               Revert
             </button>
             <button
-              className="btn btn-sm"
+              className="btn btn-sm btn-compact"
               onClick={() => onEditPrefabSource && onEditPrefabSource(linkedPrefab.id)}
               disabled={isPrefabSourceObject}
-              style={{ fontSize: 10, padding: '1px 6px' }}
               title={isPrefabSourceObject ? 'Already editing the prefab source object.' : 'Jump to the source object that drives this prefab'}
             >
               Edit Source
             </button>
             <button
-              className="btn btn-sm"
+              className="btn btn-sm btn-compact"
               onClick={() => onUnlinkPrefab && onUnlinkPrefab(obj.id)}
               disabled={isPrefabSourceObject}
-              style={{ fontSize: 10, padding: '1px 6px' }}
               title={isPrefabSourceObject ? 'The source object stays linked to its prefab definition.' : 'Unlink this object from its prefab'}
             >
               Unlink
@@ -386,9 +381,8 @@ export default function Inspector({
                     <button
                       key={path}
                       type="button"
-                      className="btn btn-sm"
+                      className="btn btn-sm btn-compact"
                       onClick={() => onResetPrefabOverridePath && onResetPrefabOverridePath(obj.id, path)}
-                      style={{ fontSize: 10, padding: '1px 6px' }}
                       title={`Reset ${formatPrefabOverridePath(path)} to the prefab value`}
                     >
                       {formatPrefabOverridePath(path)}
@@ -1410,7 +1404,7 @@ export default function Inspector({
       <div className="panel-section">
         <h3 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span>Scripts</span>
-          <button className="btn btn-sm" onClick={handleAddBinding} style={{ fontSize: 10, padding: '1px 6px' }}>+ Add</button>
+          <button className="btn btn-sm btn-compact" onClick={handleAddBinding}>+ Add</button>
         </h3>
         {bindings.length === 0 && (
           <div style={{ color: 'var(--text-muted)', fontSize: 11, padding: '2px 0' }}>No scripts attached</div>
@@ -1439,8 +1433,7 @@ export default function Inspector({
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
-                <button className="btn btn-sm btn-danger" onClick={() => handleRemoveBinding(idx)}
-                  style={{ fontSize: 10, padding: '1px 5px' }}>x</button>
+                <button className="btn btn-sm btn-danger btn-icon-only" onClick={() => handleRemoveBinding(idx)}>x</button>
               </div>
 
               {/* Serialized properties */}
@@ -1508,8 +1501,8 @@ export default function Inspector({
                         />
                       </div>
                     ) : (
-                      <button className="btn btn-sm" onClick={() => handleAddProperty(idx)}
-                        style={{ fontSize: 10, padding: '1px 6px', marginTop: 2 }}>+ Property</button>
+                      <button className="btn btn-sm btn-compact" onClick={() => handleAddProperty(idx)}
+                        style={{ marginTop: 2 }}>+ Property</button>
                     )}
                   </div>
                 );

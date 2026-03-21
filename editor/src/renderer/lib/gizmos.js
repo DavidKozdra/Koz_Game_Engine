@@ -1,3 +1,5 @@
+import { getObjectRenderBounds } from './objectGeometry.js';
+
 /**
  * Transform gizmos for the 2D viewport editor.
  * Provides move, rotate, and scale handles that render on the canvas
@@ -33,16 +35,12 @@ export function getSelectionBounds(objects, selectedIds) {
   let count = 0;
   for (const obj of objects) {
     if (!selectedIds.includes(obj.id)) continue;
-    const t = (obj.components && obj.components.Transform) || {};
-    const s = (obj.components && obj.components.Sprite) || {};
-    const ox = Number.isFinite(t.x) ? t.x : (Number.isFinite(obj.x) ? obj.x : 0);
-    const oy = Number.isFinite(t.y) ? t.y : (Number.isFinite(obj.y) ? obj.y : 0);
-    const w = s.width || 32;
-    const h = s.height || 32;
-    minX = Math.min(minX, ox);
-    minY = Math.min(minY, oy);
-    maxX = Math.max(maxX, ox + w);
-    maxY = Math.max(maxY, oy + h);
+    const bounds = getObjectRenderBounds(obj);
+    if (!bounds) continue;
+    minX = Math.min(minX, bounds.minX);
+    minY = Math.min(minY, bounds.minY);
+    maxX = Math.max(maxX, bounds.maxX);
+    maxY = Math.max(maxY, bounds.maxY);
     count++;
   }
   if (count === 0) return null;

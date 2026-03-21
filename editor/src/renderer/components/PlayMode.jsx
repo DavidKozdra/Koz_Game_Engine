@@ -3228,10 +3228,14 @@ function resolveCellCollisions(state) {
 
 function getColliderRect(obj) {
   const collider = (obj && obj.components && obj.components.Collider) || {};
-  const w = Number.isFinite(collider.width) ? collider.width : (Number.isFinite(obj.width) ? obj.width : 0);
-  const h = Number.isFinite(collider.height) ? collider.height : (Number.isFinite(obj.height) ? obj.height : 0);
-  const ox = Number.isFinite(collider.offsetX) ? collider.offsetX : (Number.isFinite(collider.x) ? collider.x : 0);
-  const oy = Number.isFinite(collider.offsetY) ? collider.offsetY : (Number.isFinite(collider.y) ? collider.y : 0);
+  const scaleX = Number.isFinite(obj && obj.scaleX) ? obj.scaleX : 1;
+  const scaleY = Number.isFinite(obj && obj.scaleY) ? obj.scaleY : 1;
+  const absScaleX = Math.abs(scaleX || 1);
+  const absScaleY = Math.abs(scaleY || 1);
+  const w = Number.isFinite(collider.width) ? collider.width * absScaleX : (Number.isFinite(obj.width) ? obj.width : 0);
+  const h = Number.isFinite(collider.height) ? collider.height * absScaleY : (Number.isFinite(obj.height) ? obj.height : 0);
+  const ox = (Number.isFinite(collider.offsetX) ? collider.offsetX : (Number.isFinite(collider.x) ? collider.x : 0)) * scaleX;
+  const oy = (Number.isFinite(collider.offsetY) ? collider.offsetY : (Number.isFinite(collider.y) ? collider.y : 0)) * scaleY;
   return {
     x: (Number.isFinite(obj.x) ? obj.x : 0) + ox,
     y: (Number.isFinite(obj.y) ? obj.y : 0) + oy,

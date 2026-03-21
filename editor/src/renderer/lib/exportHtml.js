@@ -660,10 +660,14 @@ function exportRuntimeMain() {
 
   function getColliderRect(obj) {
     var collider = (obj && obj.components && obj.components.Collider) || {};
-    var width = Number.isFinite(collider.width) ? collider.width : (Number.isFinite(obj.width) ? obj.width : 0);
-    var height = Number.isFinite(collider.height) ? collider.height : (Number.isFinite(obj.height) ? obj.height : 0);
-    var offsetX = Number.isFinite(collider.offsetX) ? collider.offsetX : (Number.isFinite(collider.x) ? collider.x : 0);
-    var offsetY = Number.isFinite(collider.offsetY) ? collider.offsetY : (Number.isFinite(collider.y) ? collider.y : 0);
+    var scaleX = Number.isFinite(obj && obj.scaleX) ? obj.scaleX : 1;
+    var scaleY = Number.isFinite(obj && obj.scaleY) ? obj.scaleY : 1;
+    var absScaleX = Math.abs(scaleX || 1);
+    var absScaleY = Math.abs(scaleY || 1);
+    var width = Number.isFinite(collider.width) ? collider.width * absScaleX : (Number.isFinite(obj.width) ? obj.width : 0);
+    var height = Number.isFinite(collider.height) ? collider.height * absScaleY : (Number.isFinite(obj.height) ? obj.height : 0);
+    var offsetX = (Number.isFinite(collider.offsetX) ? collider.offsetX : (Number.isFinite(collider.x) ? collider.x : 0)) * scaleX;
+    var offsetY = (Number.isFinite(collider.offsetY) ? collider.offsetY : (Number.isFinite(collider.y) ? collider.y : 0)) * scaleY;
     return {
       x: (Number.isFinite(obj.x) ? obj.x : 0) + offsetX,
       y: (Number.isFinite(obj.y) ? obj.y : 0) + offsetY,

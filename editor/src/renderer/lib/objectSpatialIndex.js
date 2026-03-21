@@ -1,3 +1,5 @@
+import { getObjectRenderBounds } from './objectGeometry.js';
+
 export const OBJECT_INDEX_CHUNK_SIZE = 256;
 
 function chunkKey(cx, cy) {
@@ -16,35 +18,7 @@ function boundsEqual(a, b) {
 
 export function getObjectSpatialBounds(object) {
   if (!object || typeof object !== 'object') return null;
-  const components = object.components && typeof object.components === 'object' ? object.components : {};
-  const transform = components.Transform && typeof components.Transform === 'object' ? components.Transform : {};
-  const sprite = components.Sprite && typeof components.Sprite === 'object' ? components.Sprite : {};
-  const x = Number.isFinite(object.x) ? object.x : (Number.isFinite(transform.x) ? transform.x : 0);
-  const y = Number.isFinite(object.y) ? object.y : (Number.isFinite(transform.y) ? transform.y : 0);
-  const rotation = Number.isFinite(object.rotation)
-    ? object.rotation
-    : (Number.isFinite(transform.rotation) ? transform.rotation : 0);
-  const scaleX = Number.isFinite(object.scaleX)
-    ? object.scaleX
-    : (Number.isFinite(transform.scaleX) ? transform.scaleX : 1);
-  const scaleY = Number.isFinite(object.scaleY)
-    ? object.scaleY
-    : (Number.isFinite(transform.scaleY) ? transform.scaleY : 1);
-  const width = Math.max(1, (Number.isFinite(sprite.width) ? sprite.width : 32) * Math.abs(scaleX || 1));
-  const height = Math.max(1, (Number.isFinite(sprite.height) ? sprite.height : 32) * Math.abs(scaleY || 1));
-  const radians = (rotation * Math.PI) / 180;
-  const cos = Math.abs(Math.cos(radians));
-  const sin = Math.abs(Math.sin(radians));
-  const halfWidth = ((width * cos) + (height * sin)) * 0.5;
-  const halfHeight = ((width * sin) + (height * cos)) * 0.5;
-  const centerX = x + (width * 0.5);
-  const centerY = y + (height * 0.5);
-  return {
-    minX: centerX - halfWidth,
-    minY: centerY - halfHeight,
-    maxX: centerX + halfWidth,
-    maxY: centerY + halfHeight,
-  };
+  return getObjectRenderBounds(object);
 }
 
 export function createObjectSpatialIndex(chunkSize = OBJECT_INDEX_CHUNK_SIZE) {

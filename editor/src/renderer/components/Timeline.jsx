@@ -252,7 +252,7 @@ export default function Timeline({ project, onUpdateAnimation, onAddAnimation, o
                     {(obj ? obj.name : '?')}.{track.property}
                   </span>
                   <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{kfs.length}kf</span>
-                  <button className="btn btn-sm btn-danger" onClick={() => handleDeleteTrack(i)} style={{ fontSize: 9, padding: '0 3px', lineHeight: 1.2 }} title="Delete track" aria-label={`Delete track ${i + 1}`}><Icon name="delete" /></button>
+                  <button className="btn btn-sm btn-danger btn-icon-only" onClick={() => handleDeleteTrack(i)} title="Delete track" aria-label={`Delete track ${i + 1}`}><Icon name="delete" /></button>
                 </div>
               );
             })}
