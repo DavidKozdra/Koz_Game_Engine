@@ -4,6 +4,8 @@
 
 ![Koz Engine Screenshot](https://github.com/user-attachments/assets/318e290a-3179-47c0-a9d8-8174d07526c6)
 
+Made with AI but it shares my name and therefore my sins.
+
 ## Quickstart
 
 1. Start a local web server in this folder (e.g. `npx serve .` or use VS Code Live Server).
