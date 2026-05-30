@@ -2,8 +2,8 @@
 
 Use these as the current source-of-truth docs:
 
-- [migration-roadmap.md](/home/davidk/Documents/CODE/GITHUB/Bargain-Quest/Koz_Engine_Lib/docs/migration-roadmap.md) for the target architecture
-- [module-catalog.md](/home/davidk/Documents/CODE/GITHUB/Bargain-Quest/Koz_Engine_Lib/docs/module-catalog.md) for current module usability and caveats
+- [migration-roadmap.md](migration-roadmap.md) for the target architecture
+- [module-catalog.md](module-catalog.md) for current module usability and caveats
 
 ## Critical blockers
 
@@ -48,7 +48,7 @@ Preferred end state: `game.js` composes engine modules directly, with no engine-
 
 - `classes/MobileSupport.js` now delegates touch math and coordinate mapping to `Koz_Engine_Lib/UI/mobileInput.js`
 - `classes/LevelEditor.js` now delegates world storage, placement, and edit operations to `Koz_Engine_Lib/World/worldSpace.js` and `Koz_Engine_Lib/World/worldEditor.js`
-- `classes/map.js` still owns the Bargain Quest terrain pipeline, but future generalized field/dungeon generation should land in `Koz_Engine_Lib/World/worldGenerators.js` and `Koz_Engine_Lib/World/dungeonMaze.js`
+- `classes/map.js` still owns the game-specific terrain pipeline, but future generalized field/dungeon generation should land in `Koz_Engine_Lib/World/worldGenerators.js` and `Koz_Engine_Lib/World/dungeonMaze.js`
 
 ## Next extraction candidates
 
@@ -64,7 +64,7 @@ Preferred end state: `game.js` composes engine modules directly, with no engine-
 - `classes/SmugglingSystem.js`
 - `classes/TreasureSystem.js`
 
-## Keep in Bargain Quest unless reuse becomes clear
+## Keep in the game unless reuse becomes clear
 
 - `classes/player.js`
 - `classes/Cities.js`
@@ -75,8 +75,8 @@ Preferred end state: `game.js` composes engine modules directly, with no engine-
 - `ui/*.js`
 - `game.js`
 - `content/itemCatalog.js`
-- Bargain Quest event definitions and reward tables
-- Bargain Quest UI flow and presentation
+- game-specific event definitions and reward tables
+- game-specific UI flow and presentation
 
 ## Deferred
 

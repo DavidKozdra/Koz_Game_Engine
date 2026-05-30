@@ -6,9 +6,9 @@ The goal is not "move more files into `Koz_Engine_Lib`."
 
 The goal is:
 
-1. `Koz_Engine_Lib` can be copied into another project without dragging Bargain Quest with it.
-2. Bargain Quest depends on the engine.
-3. The engine does not depend on Bargain Quest.
+1. `Koz_Engine_Lib` can be copied into another project without dragging any specific game with it.
+2. The game depends on the engine.
+3. The engine does not depend on any specific game.
 4. Browser/global bootstrap code is optional host glue, not the engine itself.
 
 ## Current Problems
@@ -25,7 +25,7 @@ That means the engine currently assumes:
 - the global name is `BQLib`
 - the host wants namespace side effects during module load
 
-That is not standalone engine behavior. That is Bargain Quest bootstrap behavior.
+That is not standalone engine behavior. That is game-specific bootstrap behavior.
 
 ### 2. Legacy alias coupling
 
@@ -39,7 +39,7 @@ That `systems` alias is migration debt. It should not survive into the final eng
 
 ### 3. Runtime coupling
 
-Some engine files still know about Bargain Quest runtime objects, globals, or presentation.
+Some engine files still know about game-specific runtime objects, globals, or presentation.
 
 Critical examples:
 
@@ -49,7 +49,7 @@ Critical examples:
   - depends on `notificationManager`
   - depends on `ItemLibrary`
   - depends on `window._isCityManageMode`
-  - contains Bargain Quest event content and rewards
+  - contains game-specific event content and rewards
 - `Koz_Engine_Lib/Time/dayNightCycle.js`
   - depends on `SaveSystem`
   - depends on `gameStateManager`
@@ -95,7 +95,7 @@ Not allowed inside engine modules:
 
 - `window.BQLib`
 - `BQAdapters`
-- Bargain Quest globals
+- game-specific globals
 - p5 globals
 - `document`
 - `localStorage` fallback lookup
@@ -113,7 +113,7 @@ Target pattern:
 
 If globals are needed temporarily, they should be produced by one composition file, not repeated in every module.
 
-### Rule 3. Bargain Quest content stays outside the engine
+### Rule 3. Game content stays outside the engine
 
 Game-owned data stays in the game:
 
@@ -134,7 +134,7 @@ The engine may provide:
 - save/load primitives
 - generic agent logic
 
-But not Bargain Quest content packs.
+But not game-specific content packs.
 
 ### Rule 4. The engine defines contracts, the game supplies them
 
@@ -170,7 +170,7 @@ Target names:
   - generic primitives with no game meaning
 - `Events/`
   - generic event rules only
-  - no Bargain Quest event tables
+  - no game-specific event tables
   - tutorial/tip tracking helpers
 - `SaveLoad/`
   - save/load API
@@ -237,11 +237,11 @@ These still need export cleanup, but the concepts are reusable.
 
 Reason:
 
-It is currently a Bargain Quest system living in the engine folder.
+It is currently a game-specific system living in the engine folder.
 It should move back to the game until it is split into:
 
 - engine: generic event runner and resolution pipeline
-- game: Bargain Quest event content, rewards, UI flow, and state transitions
+- game: game-specific event content, rewards, UI flow, and state transitions
 
 ### Already correctly game-owned
 
@@ -253,7 +253,7 @@ It should move back to the game until it is split into:
 
 Deliverables:
 
-- no new engine file is allowed to reference `BQLib`, `BQAdapters`, or Bargain Quest globals
+- no new engine file is allowed to reference `BQLib`, `BQAdapters`, or game-specific globals
 - all new extraction work must target the end-state contract model
 - `TODO.md` and `README.md` reflect the standalone goal
 
@@ -289,7 +289,7 @@ Work:
 - `api/` + `io/` -> `SaveLoad/`
 - `progression/tipTracker.js` -> `Events/tipTracker.js`
 - `progression/stagedAcquisition.js` -> either:
-  - keep in game if it proves Bargain Quest-specific
+  - keep in game if it proves game-specific
   - or move to a clearly named domain such as `Economy/ownershipStages.js`
 - `fx/` -> `VisualFX/` if it contains reusable render-support code only
 
@@ -314,13 +314,13 @@ Required changes:
 
 - inject dependencies instead of reading globals
 - remove DOM/p5/storage assumptions
-- move Bargain Quest content and presentation back into game-owned files
+- move game-specific content and presentation back into game-owned files
 
 Exit condition:
 
 - engine modules can run with host-provided hooks only
 
-### Phase 4. Rebuild Bargain Quest as a consumer
+### Phase 4. Rebuild the game as a consumer
 
 Goal:
 
@@ -329,14 +329,14 @@ Make `game.js` and adapters the only composition layer.
 Work:
 
 - game imports/loads engine modules
-- adapters convert Bargain Quest data to engine contracts
+- adapters convert game data to engine contracts
 - game owns all UI flow, content, and presentation
 - remove legacy global fallbacks once stable
 
 Exit condition:
 
-- Bargain Quest uses the engine
-- the engine does not mention Bargain Quest
+- the game uses the engine
+- the engine does not mention any specific game
 
 ### Phase 5. Verification gates
 
@@ -354,24 +354,21 @@ Required before calling the engine standalone:
   - `window`
   - `localStorage` fallback lookup
   - p5 globals
-- browser smoke pass:
+- browser smoke pass of the consuming game, exercising every engine-backed system it uses, for example:
   - boot
   - new game
-  - travel
-  - city enter/exit
-  - trading
+  - core gameplay loops
   - random events
-  - combat
   - minigames
   - save/load
-  - mobile controls
+  - input/controls (including mobile)
 
 ## Definition of Done
 
 The engine is only "done" when all of the following are true:
 
-1. `Koz_Engine_Lib` can be copied to another project without Bargain Quest files.
+1. `Koz_Engine_Lib` can be copied to another project without any game-specific files.
 2. Engine modules load without mutating global namespaces.
-3. Engine modules do not reference Bargain Quest nouns or globals.
-4. Bargain Quest still runs by composing the engine from `game.js` and adapters.
+3. Engine modules do not reference game-specific nouns or globals.
+4. The game still runs by composing the engine from `game.js` and adapters.
 5. Folder names are understandable without prior repo knowledge.

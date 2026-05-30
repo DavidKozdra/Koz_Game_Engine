@@ -145,3 +145,5 @@ editor/squashfs-root/
 editor/linux-unpacked/
 editor/*.AppImage
 editor/*.snap
+
+../.claude
